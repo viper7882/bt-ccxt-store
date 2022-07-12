@@ -22,14 +22,17 @@ from __future__ import (absolute_import, division, print_function,
                         unicode_literals)
 
 import collections
+import inspect
 import json
 import datetime
 
 from backtrader import BrokerBase, OrderBase, Order
 from backtrader.position import Position
 from backtrader.utils.py3 import queue, with_metaclass
+from time import time as timer
 
 from .ccxtstore import CCXTStore
+from .utils import print_timestamp_checkpoint
 
 
 class CCXTOrder(OrderBase):
@@ -160,15 +163,13 @@ class CCXTBroker(with_metaclass(MetaCCXTBroker, BrokerBase)):
             value = 0
         return cash, value
 
-    def getcash(self):
-        # Get cash seems to always be called before get value
-        # Therefore it makes sense to add getbalance here.
-        # return self.store.getcash(self.currency)
+    def getcash(self, force=False):
+        if force == True:
+            self.store.get_balance()
         self.cash = self.store._cash
         return self.cash
 
     def getvalue(self, datas=None):
-        # return self.store.getvalue(self.currency)
         self.value = self.store._value
         return self.value
 
@@ -182,11 +183,60 @@ class CCXTBroker(with_metaclass(MetaCCXTBroker, BrokerBase)):
         self.notifs.put(order)
 
     def getposition(self, data, clone=True):
-        # return self.o.getposition(data._dataname, clone=clone)
-        pos = self.positions[data._dataname]
-        if clone:
-            pos = pos.clone()
-        return pos
+        ret_value = Position(size=0.0, price=0.0)
+        for pos_data, pos in self.positions.items():
+            if data._name == pos_data:
+                if clone:
+                    ret_value = pos.clone()
+                else:
+                    ret_value = pos
+                break
+        return ret_value
+
+    def get_pnl(self, datas=None):
+        pnl_comm = 0.0
+        initial_margin = 0.0
+
+        tick_data = None
+        for data in datas or self.positions:
+            if "Ticks" in data._name:
+                tick_data = data
+
+        for data in datas or self.positions:
+            comminfo = self.getcommissioninfo(data)
+            # WARNING: For backtest, data is used
+            # WARNING: For live, data._name is used
+            position = self.positions[data._name]
+
+            if tick_data is None:
+                close_price = data.close[0]
+            else:
+                close_price = tick_data.close[0]
+
+            if comminfo is not None:
+                if position.size != 0.0:
+                    per_data_pnl = comminfo.profitandloss(position.size, position.price, close_price)
+                    entry_comm = comminfo.getcommission(position.size, position.price)
+                    exit_comm = comminfo.getcommission(position.size, close_price)
+                    pnl_comm += per_data_pnl - entry_comm - exit_comm
+
+                    force = False
+                    if comminfo.p.mult is None:
+                        force = True
+
+                    # For Short
+                    if position.size < 0.0:
+                        max_price = max(position.price, close_price)
+                        max_initial_margin = comminfo.get_initial_margin(position.size, max_price, force)
+                        initial_margin += max_initial_margin
+                    # For Long
+                    elif position.size > 0.0:
+                        min_price = min(position.price, close_price)
+                        min_initial_margin = comminfo.get_initial_margin(position.size, min_price, force)
+                        initial_margin += min_initial_margin
+
+        pnl_in_percentage = pnl_comm / (initial_margin or 1.0)
+        return pnl_comm, pnl_in_percentage
 
     def next(self):
         if self.debug:
@@ -241,36 +291,41 @@ class CCXTBroker(with_metaclass(MetaCCXTBroker, BrokerBase)):
 
         if data:
             created = int(data.datetime.datetime(0).timestamp()*1000)
-            symbol_name = data.p.dataname
+            symbol_id = params['params']['symbol']
         else:
             # INFO: Use the current UTC datetime
             utc_dt = datetime.datetime.utcnow()
             created = int(utc_dt.timestamp()*1000)
-            symbol_name = params['params']['symbol']
+            symbol_id = params['params']['symbol']
             # INFO: Remove symbol name from params
             params['params'].pop('symbol', None)
 
         # Extract CCXT specific params if passed to the order
         params = params['params'] if 'params' in params else params
         if not self.use_order_params:
-            ret_ord = self.store.create_order(symbol=symbol_name, order_type=order_type, side=side,
+            ret_ord = self.store.create_order(symbol=symbol_id, order_type=order_type, side=side,
                                               amount=amount, price=price, params={})
         else:
             try:
                 # all params are exchange specific: https://github.com/ccxt/ccxt/wiki/Manual#custom-order-params
                 params['created'] = created  # Add timestamp of order creation for backtesting
-                ret_ord = self.store.create_order(symbol=symbol_name, order_type=order_type, side=side,
+                ret_ord = self.store.create_order(symbol=symbol_id, order_type=order_type, side=side,
                                                   amount=amount, price=price, params=params)
             except:
                 # save some API calls after failure
                 self.use_order_params = False
                 return None
 
-        _order = self.store.fetch_order(ret_ord['id'], symbol_name)
+        if ret_ord is None:
+            return None
+
+        _order = self.store.fetch_order(ret_ord['id'], symbol_id)
 
         # INFO: Exposed simulated so that we could proceed with order without running cerebro
         order = CCXTOrder(owner, data, _order, simulated=simulated)
-        order.price = ret_ord['price']
+
+        # INFO: Retrieve order.price from _order['price'] is proven more reliable than ret_ord['price']
+        order.price = _order['price']
         self.open_orders.append(order)
 
         self.notify(order)
@@ -331,10 +386,16 @@ class CCXTBroker(with_metaclass(MetaCCXTBroker, BrokerBase)):
     def fetch_order(self, order_id, symbol, params={}):
         return self.store.fetch_order(order_id, symbol, params)
 
-    def get_orders_open(self, symbol=None, since=None, limit=None, params={}):
-        return self.store.fetch_open_orders(symbol=symbol, since=since, limit=limit, params=params)
+    def fetch_orders(self, symbol=None, since=None, limit=None, params={}):
+        return self.store.fetch_orders(symbol=symbol, since=since, limit=limit, params=params)
 
-    def get_positions(self, symbols=None, params = {}):
+    def fetch_opened_orders(self, symbol=None, since=None, limit=None, params={}):
+        return self.store.fetch_opened_orders(symbol=symbol, since=since, limit=limit, params=params)
+
+    def fetch_closed_orders(self, symbol=None, since=None, limit=None, params={}):
+        return self.store.fetch_closed_orders(symbol=symbol, since=since, limit=limit, params=params)
+
+    def get_positions(self, symbols=None, params={}):
         return self.store.fetch_opened_positions(symbols, params)
 
     def __common_end_point(self, is_private, type, endpoint, params, prefix):
