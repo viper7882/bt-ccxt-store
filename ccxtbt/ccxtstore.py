@@ -33,11 +33,11 @@ from pprint import pprint
 import backtrader
 import backtrader as bt
 import ccxt
-from pybit import usdt_perpetual
 
 from backtrader.metabase import MetaParams
 from backtrader.utils.py3 import with_metaclass
-from ccxt.base.errors import NetworkError, ExchangeError
+from ccxt.base.errors import NetworkError, ExchangeError, OrderNotFound
+from pybit import usdt_perpetual
 
 
 class MetaSingleton(MetaParams):
@@ -103,9 +103,9 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
         '''Returns broker with *args, **kwargs from registered ``BrokerCls``'''
         return cls.BrokerCls(*args, **kwargs)
 
-    def __init__(self, exchange, currency, config, retries, debug=False, sandbox=False):
+    def __init__(self, exchange, currency, config, mainnet_config, retries, debug=False, sandbox=False):
         self.exchange = getattr(ccxt, exchange)(config)
-        self.mainnet_exchange = getattr(ccxt, exchange)(config)
+        self.mainnet_exchange = getattr(ccxt, exchange)(mainnet_config)
         if sandbox:
             self.exchange.set_sandbox_mode(True)
 
@@ -166,6 +166,10 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
         return granularity
 
     def handle_positions(self, message):
+        '''
+        This routine gets triggered whenever there is a position change. If the position does not changed, it will not
+        appear in the message.
+        '''
         try:
             # print("{} Line: {}: message:".format(
             #     inspect.getframeinfo(inspect.currentframe()).function,
@@ -174,15 +178,49 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
             # pprint(message)
             assert type(message['data']) == list
             responses = self.exchange.safe_value(message, 'data')
-            for i, position in enumerate(responses):
-                # print("{} Line: {}: position:".format(
-                #     inspect.getframeinfo(inspect.currentframe()).function,
-                #     inspect.getframeinfo(inspect.currentframe()).lineno,
-                # ))
-                # pprint(position)
-                if position not in self.ws_positions:
-                    self.ws_positions.append(position)
-                self.ws_positions[i] = position
+
+            '''
+            Ported the following codes from CCXT Bybit Exchange
+            '''
+            results = []
+            symbols = []
+            symbol_type = None
+            for rawPosition in responses:
+                symbol = self.exchange.safe_string(rawPosition, 'symbol')
+                if len(symbols) == 0:
+                    symbols.append(symbol)
+                market = self.exchange.market(symbol)
+                if symbol_type is None:
+                    symbol_type = market['type']
+                results.append(self.exchange.parse_position(rawPosition, market))
+            latest_changed_positions = self.exchange.filter_by_array(results, 'symbol', symbols, False)
+
+            if len(self.ws_positions) == 0:
+                # Exercise the longer time route
+                # Store the outdated positions first
+                self.ws_positions = self._fetch_opened_positions_from_exchange(symbols, params={'type': symbol_type})
+
+            # INFO: Identify ws_position to be changed
+            positions_to_be_changed = []
+            for i, _ in enumerate(self.ws_positions):
+                for latest_changed_position in latest_changed_positions:
+                    if self.ws_positions[i]['side'] == latest_changed_position['side']:
+                        positions_to_be_changed.append((i, latest_changed_position))
+
+            # INFO: Update with the latest position from websocket
+            for position_to_be_changed_tuple in positions_to_be_changed:
+                index, latest_changed_position = position_to_be_changed_tuple
+                self.ws_positions[index] = latest_changed_position
+
+            # Legality Check
+            assert len(self.ws_positions) <= 2, \
+                "len(ws_positions): {} should not be greater than 2!!!".format(len(self.ws_positions))
+
+            if symbol_type == "linear":
+                assert len(self.ws_positions) == 2, \
+                    "For {} symbol, len(ws_positions): {} does not equal to 2!!!".format(
+                        symbol_type, len(self.ws_positions)
+                    )
 
             # Sort dictionary list by key
             reverse = False
@@ -352,7 +390,14 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
 
     @retry
     def _fetch_order_from_exchange(self, oid, symbol, params={}):
-        order = self.exchange.fetch_order(oid, symbol, params)
+        order = None
+        try:
+            # INFO: Due to nature of order is processed async, the order could not be found immediately right after
+            #       order is is opened. Hence, perform retry to confirm if that's the case.
+            order = self.exchange.fetch_order(oid, symbol, params)
+        except OrderNotFound:
+            # INFO: Ignore order not found error
+            pass
         return order
 
     def fetch_order(self, oid, symbol, params={}):
