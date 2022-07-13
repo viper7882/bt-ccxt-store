@@ -29,6 +29,7 @@ import datetime
 from backtrader import BrokerBase, OrderBase, Order
 from backtrader.position import Position
 from backtrader.utils.py3 import queue, with_metaclass
+from ccxt.base.errors import OrderNotFound
 from time import time as timer
 
 from .ccxtstore import CCXTStore
@@ -144,6 +145,7 @@ class CCXTBroker(with_metaclass(MetaCCXTBroker, BrokerBase)):
         self.startingvalue = self.store._value
 
         self.use_order_params = True
+        self.max_retry = 5
 
     def get_balance(self):
         self.store.get_balance()
@@ -253,35 +255,36 @@ class CCXTBroker(with_metaclass(MetaCCXTBroker, BrokerBase)):
             # Get the order
             ccxt_order = self.store.fetch_order(oID, o_order.data.p.dataname)
 
-            # Check for new fills
-            if 'trades' in ccxt_order and ccxt_order['trades'] is not None:
-                for fill in ccxt_order['trades']:
-                    if fill not in o_order.executed_fills:
-                        o_order.execute(fill['datetime'], fill['amount'], fill['price'],
-                                        0, 0.0, 0.0,
-                                        0, 0.0, 0.0,
-                                        0.0, 0.0,
-                                        0, 0.0)
-                        o_order.executed_fills.append(fill['id'])
+            if ccxt_order is not None:
+                # Check for new fills
+                if 'trades' in ccxt_order and ccxt_order['trades'] is not None:
+                    for fill in ccxt_order['trades']:
+                        if fill not in o_order.executed_fills:
+                            o_order.execute(fill['datetime'], fill['amount'], fill['price'],
+                                            0, 0.0, 0.0,
+                                            0, 0.0, 0.0,
+                                            0.0, 0.0,
+                                            0, 0.0)
+                            o_order.executed_fills.append(fill['id'])
 
-            if self.debug:
-                print(json.dumps(ccxt_order, indent=self.indent))
+                if self.debug:
+                    print(json.dumps(ccxt_order, indent=self.indent))
 
-            # Check if the order is closed
-            if ccxt_order[self.mappings['closed_order']['key']] == self.mappings['closed_order']['value']:
-                pos = self.getposition(o_order.data, clone=False)
-                pos.update(o_order.size, o_order.price)
-                o_order.completed()
-                self.notify(o_order)
-                self.open_orders.remove(o_order)
-                self.get_balance()
+                # Check if the order is closed
+                if ccxt_order[self.mappings['closed_order']['key']] == self.mappings['closed_order']['value']:
+                    pos = self.getposition(o_order.data, clone=False)
+                    pos.update(o_order.size, o_order.price)
+                    o_order.completed()
+                    self.notify(o_order)
+                    self.open_orders.remove(o_order)
+                    self.get_balance()
 
-            # Manage case when an order is being Canceled from the Exchange
-            #  from https://github.com/juancols/bt-ccxt-store/
-            if ccxt_order[self.mappings['canceled_order']['key']] == self.mappings['canceled_order']['value']:
-                self.open_orders.remove(o_order)
-                o_order.cancel()
-                self.notify(o_order)
+                # Manage case when an order is being Canceled from the Exchange
+                #  from https://github.com/juancols/bt-ccxt-store/
+                if ccxt_order[self.mappings['canceled_order']['key']] == self.mappings['canceled_order']['value']:
+                    self.open_orders.remove(o_order)
+                    o_order.cancel()
+                    self.notify(o_order)
 
     def _submit(self, owner, data, exectype, side, amount, price, simulated, params):
         if amount == 0 or price == 0:
@@ -319,16 +322,27 @@ class CCXTBroker(with_metaclass(MetaCCXTBroker, BrokerBase)):
         if ret_ord is None:
             return None
 
-        _order = self.store.fetch_order(ret_ord['id'], symbol_id)
+        order = None
+        _order = None
+        for _ in range(self.max_retry):
+            try:
+                # INFO: Due to nature of order is processed async, the order could not be found immediately right after
+                #       order is is opened. Hence, perform retry to confirm if that's the case.
+                _order = self.store.fetch_order(ret_ord['id'], symbol_id)
+            except OrderNotFound:
+                pass
 
-        # INFO: Exposed simulated so that we could proceed with order without running cerebro
-        order = CCXTOrder(owner, data, _order, simulated=simulated)
+            if _order is not None:
+                # INFO: Exposed simulated so that we could proceed with order without running cerebro
+                order = CCXTOrder(owner, data, _order, simulated=simulated)
 
-        # INFO: Retrieve order.price from _order['price'] is proven more reliable than ret_ord['price']
-        order.price = _order['price']
-        self.open_orders.append(order)
+                # INFO: Retrieve order.price from _order['price'] is proven more reliable than ret_ord['price']
+                order.price = _order['price']
+                self.open_orders.append(order)
 
-        self.notify(order)
+                self.notify(order)
+                break
+
         return order
 
     def buy(self, owner, data, size, price=None, plimit=None,
