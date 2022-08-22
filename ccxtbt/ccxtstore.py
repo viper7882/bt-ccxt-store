@@ -72,14 +72,14 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
         (bt.TimeFrame.Minutes, 5): '5m',
         (bt.TimeFrame.Minutes, 15): '15m',
         (bt.TimeFrame.Minutes, 30): '30m',
-        (bt.TimeFrame.Minutes, 60): '1h',
+        (bt.TimeFrame.Hours, 1): '1h',
         (bt.TimeFrame.Minutes, 90): '90m',
-        (bt.TimeFrame.Minutes, 120): '2h',
-        (bt.TimeFrame.Minutes, 180): '3h',
-        (bt.TimeFrame.Minutes, 240): '4h',
-        (bt.TimeFrame.Minutes, 360): '6h',
-        (bt.TimeFrame.Minutes, 480): '8h',
-        (bt.TimeFrame.Minutes, 720): '12h',
+        (bt.TimeFrame.Hours, 2): '2h',
+        (bt.TimeFrame.Hours, 3): '3h',
+        (bt.TimeFrame.Hours, 4): '4h',
+        (bt.TimeFrame.Hours, 6): '6h',
+        (bt.TimeFrame.Hours, 8): '8h',
+        (bt.TimeFrame.Hours, 12): '12h',
         (bt.TimeFrame.Days, 1): '1d',
         (bt.TimeFrame.Days, 3): '3d',
         (bt.TimeFrame.Weeks, 1): '1w',
@@ -104,6 +104,10 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
         return cls.BrokerCls(*args, **kwargs)
 
     def __init__(self, exchange, currency, config, mainnet_config, retries, debug=False, sandbox=False):
+        self.init(exchange, currency, config, mainnet_config, retries, debug, sandbox)
+    
+    def init(self, exchange, currency, config, mainnet_config, retries, debug=False, sandbox=False):
+        self.api_key = config['apiKey']
         self.exchange = getattr(ccxt, exchange)(config)
         self.mainnet_exchange = getattr(ccxt, exchange)(mainnet_config)
         if sandbox:
@@ -432,14 +436,15 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
                         break
             # Else if we are looking for Conditional Order
             else:
-                conditional_oid = params['stop_order_id']
-                for conditional_order in self.ws_conditional_orders:
-                    if conditional_oid == conditional_order['id']:
-                        # Extract the order from the websocket
-                        order = conditional_order
-                        # self.ws_conditional_orders.remove(conditional_order)
-                        found_ws_order = True
-                        break
+                conditional_oid = params.get('stop_order_id', None)
+                if conditional_oid is not None:
+                    for conditional_order in self.ws_conditional_orders:
+                        if conditional_oid == conditional_order['id']:
+                            # Extract the order from the websocket
+                            order = conditional_order
+                            # self.ws_conditional_orders.remove(conditional_order)
+                            found_ws_order = True
+                            break
 
             # print("")
             # if oid is not None:
