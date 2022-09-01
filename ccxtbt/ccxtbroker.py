@@ -397,8 +397,9 @@ class CCXTBroker(with_metaclass(MetaCCXTBroker, BrokerBase)):
     def run_pulse_check_for_ws(self):
         return self.store.run_pulse_check_for_ws()
 
-    def modify_order(self, order_id, symbol, *args):
-        return self.store.edit_order(order_id, symbol, *args)
+    def modify_order(self, order_id, symbol, type, side, amount=None, price=None, trigger_price=None, params={}):
+        return self.store.edit_order(order_id, symbol, type, side, amount=amount, price=price, 
+                                     trigger_price=trigger_price, params=params)
 
     def fetch_order(self, order_id, symbol, params={}):
         return self.store.fetch_order(order_id, symbol, params)

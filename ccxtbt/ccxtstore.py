@@ -238,7 +238,7 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
                 symbol = self.exchange.safe_string(rawPosition, 'symbol')
                 if len(symbols) == 0:
                     symbols.append(symbol)
-                market = self.exchange.market(symbol)
+                market = self.get_market(symbol)
                 if symbol_type is None:
                     symbol_type = market['type']
                 results.append(self.exchange.parse_position(rawPosition, market))
@@ -291,7 +291,7 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
             assert type(responses) == list
             active_orders_to_be_added = []
             for order in responses:
-                market = self.exchange.market(order['symbol'])
+                market = self.get_market(order['symbol'])
                 result = self.exchange.safe_value(message, 'data')
                 active_order = self.exchange.parse_order(result[0], market)
 
@@ -340,7 +340,7 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
             responses = message['data']
             assert type(responses) == list
             for order in responses:
-                market = self.exchange.market(order['symbol'])
+                market = self.get_market(order['symbol'])
                 result = self.exchange.safe_value(message, 'data')
                 conditional_order = self.exchange.parse_order(result[0], market)
 
@@ -414,6 +414,11 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
         return retry_method
 
     @retry
+    def get_market(self, symbol):
+        market = self.exchange.market(symbol)
+        return market
+
+    @retry
     def get_wallet_balance(self, currency, params=None):
         balance = self.exchange.fetch_balance(params)
         return balance
@@ -438,9 +443,10 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
                                           amount=amount, price=price, params=params)
 
     @retry
-    def edit_order(self, order_id, symbol, *arg):
+    def edit_order(self, order_id, symbol, type, side, amount=None, price=None, trigger_price=None, params={}):
         # returns the order
-        return self.exchange.edit_order(order_id, symbol, *arg)
+        return self.exchange.edit_order(order_id, symbol, type, side, amount=amount, price=price, 
+                                        trigger_price=trigger_price, params=params)
 
     @retry
     def cancel_order(self, order_id, symbol):
