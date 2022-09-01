@@ -21,6 +21,7 @@
 from __future__ import (absolute_import, division, print_function,
                         unicode_literals)
 
+import collections
 import copy
 import inspect
 import json
@@ -103,10 +104,10 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
         '''Returns broker with *args, **kwargs from registered ``BrokerCls``'''
         return cls.BrokerCls(*args, **kwargs)
 
-    def __init__(self, exchange, currency, config, mainnet_config, retries, debug=False, sandbox=False):
-        self.init(exchange, currency, config, mainnet_config, retries, debug, sandbox)
+    def __init__(self, exchange, currency, config, mainnet_config, retries, symbols_id, debug=False, sandbox=False):
+        self.init(exchange, currency, config, mainnet_config, retries, symbols_id, debug, sandbox)
     
-    def init(self, exchange, currency, config, mainnet_config, retries, debug=False, sandbox=False):
+    def init(self, exchange, currency, config, mainnet_config, retries, symbols_id, debug=False, sandbox=False):
         self.api_key = config['apiKey']
         self.exchange = getattr(ccxt, exchange)(config)
         self.mainnet_exchange = getattr(ccxt, exchange)(mainnet_config)
@@ -124,14 +125,33 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
                 api_key=config['apiKey'],
                 api_secret=config['secret'],
                 # to pass a custom domain in case of connectivity problems, you can use:
-                domain="bytick"  # the default is "bybit"
+                # domain="bytick"  # the default is "bybit"
             )
             self.ws_usdt_perpetual.order_stream(self.handle_active_order)
             self.ws_usdt_perpetual.stop_order_stream(self.handle_conditional_order)
             self.ws_usdt_perpetual.position_stream(self.handle_positions)
+
+            # Connect with authentication
+            self.ws_mainnet_usdt_perpetual = usdt_perpetual.WebSocket(
+                test=False,
+                api_key=mainnet_config['apiKey'],
+                api_secret=mainnet_config['secret'],
+                # to pass a custom domain in case of connectivity problems, you can use:
+                # domain="bytick"  # the default is "bybit"
+            )
+            assert isinstance(symbols_id, list)
+            assert len(symbols_id) > 0
+            # Reference: https://bybit-exchange.github.io/docs/futuresV2/linear/#t-websocketkline
+            # INFO: Subscribe to 1 minute candle
+            if len(symbols_id) == 1:
+                self.ws_mainnet_usdt_perpetual.kline_stream(self.handle_klines, symbols_id[0], "1")
+            else:
+                self.ws_mainnet_usdt_perpetual.kline_stream(self.handle_klines, symbols_id, "1")
+
         self.ws_positions = []
         self.ws_active_orders = []
         self.ws_conditional_orders = []
+        self.ws_klines = collections.defaultdict(str)
 
         self.currency = currency
         self.retries = retries
@@ -315,6 +335,34 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
                 #     conditional_order['id'],
                 # ))
                 self.ws_conditional_orders.append(conditional_order)
+        except Exception:
+            traceback.print_exc()
+
+    def handle_klines(self, message):
+        '''
+        This routine gets triggered whenever there is a kline update.
+        '''
+        try:
+            # print("{} Line: {}: message:".format(
+            #     inspect.getframeinfo(inspect.currentframe()).function,
+            #     inspect.getframeinfo(inspect.currentframe()).lineno,
+            # ))
+            # pprint(message)
+            assert type(message['data']) == list
+            topic_responses = self.exchange.safe_value(message, 'topic')
+            data_responses = self.exchange.safe_value(message, 'data')
+
+            topic_responses_split = topic_responses.split(".")
+            assert len(topic_responses_split) == 3
+            symbol_id = topic_responses_split[2]
+            if len(data_responses) > 0:
+                # References: https://bybit-exchange.github.io/docs/futuresV2/linear/#t-websocketinstrumentinfo
+                # INFO: Data sent timestamp in seconds * 10^6
+                tstamp = int(data_responses[0]['timestamp']) / 1e6
+                ohlcv = \
+                    (float(data_responses[0]['open']), float(data_responses[0]['high']), float(data_responses[0]['low']),
+                     float(data_responses[0]['close']), float(data_responses[0]['volume']))
+                self.ws_klines[symbol_id] = (tstamp, ohlcv)
         except Exception:
             traceback.print_exc()
 

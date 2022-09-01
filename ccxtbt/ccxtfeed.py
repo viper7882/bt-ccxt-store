@@ -28,7 +28,7 @@ import pandas as pd
 import time
 
 from collections import deque
-from datetime import datetime
+from datetime import datetime, timedelta
 from pprint import pprint
 
 import backtrader as bt
@@ -62,7 +62,7 @@ class CCXTFeed(with_metaclass(MetaCCXTFeed, DataBase)):
         Perform backfilling at the start. The maximum possible historical data
         will be fetched in a single request.
 
-    Changes From Ed's pacakge
+    Changes From Ed's package
 
         - Added option to send some additional fetch_ohlcv_params. Some exchanges (e.g Bitmex)
           support sending some additional fetch parameters.
@@ -126,7 +126,7 @@ class CCXTFeed(with_metaclass(MetaCCXTFeed, DataBase)):
                     # INFO: Fix to address slow loading time after enter into LIVE state.
                     if len(self._data) == 0:
                         # INFO: Only call _fetch_ohlcv when self._data is fully consumed as it will cause execution
-                        #       inefficiency due to network latency. Furthermore it is extremely inefficiency to fetch
+                        #       inefficiency due to network latency. Furthermore, it is extremely inefficiency to fetch
                         #       an amount of bars but only load one bar at a given time.
                         self._fetch_ohlcv()
                     ret = self._load_ohlcv()
@@ -184,7 +184,7 @@ class CCXTFeed(with_metaclass(MetaCCXTFeed, DataBase)):
                 if self._ts_delta is None:
                     since = self._last_ts
                 else:
-                    since = self._last_ts + self._ts_delta
+                    since = self._last_ts - self._ts_delta
             else:
                 raise ValueError("Unable to determine the since value!!!")
 
@@ -246,9 +246,9 @@ class CCXTFeed(with_metaclass(MetaCCXTFeed, DataBase)):
         for ohlcv in ohlcv_list:
             tstamp = ohlcv[0]
 
-            if prev_tstamp is not None and self._ts_delta is None:
-                # INFO: Record down the TS delta so that it can be used to increment since TS
-                self._ts_delta = tstamp - prev_tstamp
+            # if prev_tstamp is not None and self._ts_delta is None:
+            #     # INFO: Record down the TS delta so that it can be used to increment TS
+            #     self._ts_delta = tstamp - prev_tstamp
 
             if tstamp > self._last_ts:
                 if self.p.debug:
@@ -262,22 +262,37 @@ class CCXTFeed(with_metaclass(MetaCCXTFeed, DataBase)):
     def _load_ticks(self):
         # start = timer()
 
-        order_book = self.store.fetch_order_book(symbol=self.p.dataname)
-        # nearest_ask = order_book['asks'][0][0]
-        nearest_bid = order_book['bids'][0][0]
-        nearest_bid_volume = order_book['bids'][0][1]
+        if self.store.is_ws_available:
+            (tstamp, ohlcv) = self.store.ws_klines[self.p.dataname]
 
-        # Convert isoformat to datetime
-        order_book_datetime = dateutil.parser.isoparse(order_book['datetime'])
+            # Convert timestamp to datetime
+            kline_dt = datetime.fromtimestamp(tstamp)
 
-        self.lines.datetime[0] = bt.date2num(order_book_datetime)
-        self.lines.open[0] = nearest_bid
-        self.lines.high[0] = nearest_bid
-        self.lines.low[0] = nearest_bid
-        self.lines.close[0] = nearest_bid
-
-        # INFO: Volume below is not an actual value provided by most exchange
-        self.lines.volume[0] = nearest_bid_volume
+            self.lines.datetime[0] = bt.date2num(kline_dt)
+            self.lines.open[0] = ohlcv[0]
+            self.lines.high[0] = ohlcv[1]
+            self.lines.low[0] = ohlcv[2]
+            self.lines.close[0] = ohlcv[3]
+            self.lines.volume[0] = ohlcv[4]
+        else:
+            order_book = self.store.fetch_order_book(symbol=self.p.dataname)
+            # nearest_ask = order_book['asks'][0][0]
+            nearest_bid = order_book['bids'][0][0]
+            nearest_ask_volume = order_book['asks'][0][1]
+            nearest_bid_volume = order_book['bids'][0][1]
+    
+            # Convert isoformat to datetime
+            order_book_datetime = dateutil.parser.isoparse(order_book['datetime'])
+    
+            self.lines.datetime[0] = bt.date2num(order_book_datetime)
+            self.lines.open[0] = nearest_bid
+            self.lines.high[0] = nearest_bid
+            self.lines.low[0] = nearest_bid
+            self.lines.close[0] = nearest_bid
+    
+            # INFO: Volume below is not an actual value provided by most exchange
+            # INFO: Consuming average volume is probably a better way to go
+            self.lines.volume[0] = (nearest_bid_volume + nearest_ask_volume) / 2
 
         return True
 
