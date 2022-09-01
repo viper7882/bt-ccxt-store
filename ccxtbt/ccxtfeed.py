@@ -173,7 +173,7 @@ class CCXTFeed(with_metaclass(MetaCCXTFeed, DataBase)):
                 if num_retries == max_retries - 1:
                     raise ValueError('Failed to fetch', timeframe, symbol_id, 'klines in', max_retries, 'attempts')
 
-    def _fetch_ohlcv(self, fromdate=None, todate=None, max_retries=5):
+    def _fetch_ohlcv(self, fromdate=None, todate=None, max_retries=300):
         """Fetch OHLCV data into self._data queue"""
         granularity = self.store.get_granularity(self._timeframe, self._compression)
 

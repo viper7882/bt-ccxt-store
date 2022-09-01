@@ -108,45 +108,35 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
         self.init(exchange, currency, config, mainnet_config, retries, symbols_id, debug, sandbox)
     
     def init(self, exchange, currency, config, mainnet_config, retries, symbols_id, debug=False, sandbox=False):
-        self.api_key = config['apiKey']
         self.exchange = getattr(ccxt, exchange)(config)
         self.mainnet_exchange = getattr(ccxt, exchange)(mainnet_config)
-        if sandbox:
+
+        # Alias
+        self.sandbox = sandbox
+        self.symbols_id = symbols_id
+
+        if self.sandbox:
             self.exchange.set_sandbox_mode(True)
+
+        self.config__api_key = None
+        self.config__api_secret = None
+        self.mainnet_config__api_key = None
+        self.mainnet_config__api_secret = None
 
         # INFO: Invoke websocket if available
         self.is_ws_available = False
         self.ws_usdt_perpetual = None
+        self.ws_mainnet_usdt_perpetual = None
+
+        # INFO: Support for Bybit below
         if exchange == 'bybit':
             self.is_ws_available = True
-            # Connect with authentication
-            self.ws_usdt_perpetual = usdt_perpetual.WebSocket(
-                test=sandbox,
-                api_key=config['apiKey'],
-                api_secret=config['secret'],
-                # to pass a custom domain in case of connectivity problems, you can use:
-                # domain="bytick"  # the default is "bybit"
-            )
-            self.ws_usdt_perpetual.order_stream(self.handle_active_order)
-            self.ws_usdt_perpetual.stop_order_stream(self.handle_conditional_order)
-            self.ws_usdt_perpetual.position_stream(self.handle_positions)
+            self.config__api_key = config['apiKey']
+            self.config__api_secret = config['secret']
+            self.mainnet_config__api_key = mainnet_config['apiKey']
+            self.mainnet_config__api_secret = mainnet_config['secret']
 
-            # Connect with authentication
-            self.ws_mainnet_usdt_perpetual = usdt_perpetual.WebSocket(
-                test=False,
-                api_key=mainnet_config['apiKey'],
-                api_secret=mainnet_config['secret'],
-                # to pass a custom domain in case of connectivity problems, you can use:
-                # domain="bytick"  # the default is "bybit"
-            )
-            assert isinstance(symbols_id, list)
-            assert len(symbols_id) > 0
-            # Reference: https://bybit-exchange.github.io/docs/futuresV2/linear/#t-websocketkline
-            # INFO: Subscribe to 1 minute candle
-            if len(symbols_id) == 1:
-                self.ws_mainnet_usdt_perpetual.kline_stream(self.handle_klines, symbols_id[0], "1")
-            else:
-                self.ws_mainnet_usdt_perpetual.kline_stream(self.handle_klines, symbols_id, "1")
+            self.establish_bybit_websocket()
 
         self.ws_positions = []
         self.ws_active_orders = []
@@ -171,6 +161,36 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
                 self._value = balance['total'][currency]
         except KeyError:
             self._value = 0
+
+    def establish_bybit_websocket(self):
+        # Connect with authentication
+        self.ws_usdt_perpetual = usdt_perpetual.WebSocket(
+            test=self.sandbox,
+            api_key=self.config__api_key,
+            api_secret=self.config__api_secret,
+            # to pass a custom domain in case of connectivity problems, you can use:
+            # domain="bytick"  # the default is "bybit"
+        )
+        self.ws_usdt_perpetual.order_stream(self.handle_active_order)
+        self.ws_usdt_perpetual.stop_order_stream(self.handle_conditional_order)
+        self.ws_usdt_perpetual.position_stream(self.handle_positions)
+
+        # Connect with authentication
+        self.ws_mainnet_usdt_perpetual = usdt_perpetual.WebSocket(
+            test=False,
+            api_key=self.mainnet_config__api_key,
+            api_secret=self.mainnet_config__api_secret,
+            # to pass a custom domain in case of connectivity problems, you can use:
+            # domain="bytick"  # the default is "bybit"
+        )
+        assert isinstance(self.symbols_id, list)
+        assert len(self.symbols_id) > 0
+        # Reference: https://bybit-exchange.github.io/docs/futuresV2/linear/#t-websocketkline
+        # INFO: Subscribe to 1 minute candle
+        if len(self.symbols_id) == 1:
+            self.ws_mainnet_usdt_perpetual.kline_stream(self.handle_klines, self.symbols_id[0], "1")
+        else:
+            self.ws_mainnet_usdt_perpetual.kline_stream(self.handle_klines, self.symbols_id, "1")
 
     def get_granularity(self, timeframe, compression):
         if not self.exchange.has['fetchOHLCV']:
@@ -365,6 +385,11 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
                 self.ws_klines[symbol_id] = (tstamp, ohlcv)
         except Exception:
             traceback.print_exc()
+
+    def run_pulse_check_for_ws(self):
+        if self.is_ws_available == True:
+            if self.ws_usdt_perpetual.is_connected() == False:
+                self.establish_bybit_websocket()
 
     def retry(method):
         @wraps(method)

@@ -394,6 +394,9 @@ class CCXTBroker(with_metaclass(MetaCCXTBroker, BrokerBase)):
             self.notify(order)
         return order
 
+    def run_pulse_check_for_ws(self):
+        return self.store.run_pulse_check_for_ws()
+
     def modify_order(self, order_id, symbol, *args):
         return self.store.edit_order(order_id, symbol, *args)
 
