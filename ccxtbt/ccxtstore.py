@@ -163,6 +163,10 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
             self._value = 0
 
     def establish_bybit_websocket(self):
+        self.establish_bybit_usdt_perpetual_websocket()
+        self.establish_bybit_mainnet_usdt_perpetual_websocket()
+
+    def establish_bybit_usdt_perpetual_websocket(self):
         # Connect with authentication
         self.ws_usdt_perpetual = usdt_perpetual.WebSocket(
             test=self.sandbox,
@@ -175,6 +179,7 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
         self.ws_usdt_perpetual.stop_order_stream(self.handle_conditional_order)
         self.ws_usdt_perpetual.position_stream(self.handle_positions)
 
+    def establish_bybit_mainnet_usdt_perpetual_websocket(self):
         # Connect with authentication
         self.ws_mainnet_usdt_perpetual = usdt_perpetual.WebSocket(
             test=False,
@@ -389,7 +394,9 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
     def run_pulse_check_for_ws(self):
         if self.is_ws_available == True:
             if self.ws_usdt_perpetual.is_connected() == False:
-                self.establish_bybit_websocket()
+                self.establish_bybit_usdt_perpetual_websocket()
+            if self.ws_mainnet_usdt_perpetual.is_connected() == False:
+                self.establish_bybit_mainnet_usdt_perpetual_websocket()
 
     def retry(method):
         @wraps(method)
