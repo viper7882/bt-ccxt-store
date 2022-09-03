@@ -82,9 +82,11 @@ def get_ha_bars(df, price_digits, symbol_tick_size):
                           CCXT_DATA_COLUMNS[LOW_COL],
                           CCXT_DATA_COLUMNS[CLOSE_COL]]
 
+    # INFO: The following formula has been reviewed side by side with TradingView using 1 minute chart, it is about 95%
+    #       identical with TradingView
     df_ha[columns_to_process] = \
-        df_ha[columns_to_process].apply(lambda x: round_to_nearest_decimal_points(x, price_digits, symbol_tick_size))
-
+        df_ha[columns_to_process].apply(lambda x: round_to_nearest_decimal_points(x, price_digits + 1,
+                                                                                  symbol_tick_size / 2))
     return df_ha
 
 
@@ -113,3 +115,35 @@ def legality_check_not_none_obj(obj, obj_name):
         if obj_name is None:
             obj_name = get_var_name(obj)
         raise ValueError("{}: {} must NOT be {}!!!".format(inspect.currentframe(), obj_name, obj))
+
+
+def dump_ohlcv(function, lineno, data_name, ohlcv_list):
+    assert isinstance(ohlcv_list, list)
+
+    print("{} Line: {}: DEBUG: len of ohlcv: {}".format(
+            function, lineno, len(ohlcv_list),
+        ))
+
+    for i, ohlcv in enumerate(ohlcv_list):
+        tstamp = ohlcv[0] / 1e3
+
+        # Convert timestamp to datetime in UTC timezone
+        kline_dt = datetime.datetime.utcfromtimestamp(tstamp)
+
+        kline_open = ohlcv[1]
+        kline_high = ohlcv[2]
+        kline_low = ohlcv[3]
+        kline_close = ohlcv[4]
+        kline_volume = ohlcv[5]
+
+        msg = "{} Line: {}: INFO: {}: [{}]: {}: ".format(
+            function, lineno, data_name, i + 1, kline_dt.isoformat().replace("T", " "),
+        )
+        msg += "{}: {}, ".format(CCXT_DATA_COLUMNS[OPEN_COL], kline_open)
+        msg += "{}: {}, ".format(CCXT_DATA_COLUMNS[HIGH_COL], kline_high)
+        msg += "{}: {}, ".format(CCXT_DATA_COLUMNS[LOW_COL], kline_low)
+        msg += "{}: {}, ".format(CCXT_DATA_COLUMNS[CLOSE_COL], kline_close)
+        msg += "{}: {}, ".format(CCXT_DATA_COLUMNS[VOLUME_COL], kline_volume)
+
+        # INFO: Strip ", " from the string
+        print(msg[:-2])
