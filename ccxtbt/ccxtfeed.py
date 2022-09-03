@@ -36,7 +36,7 @@ from backtrader.feed import DataBase
 from backtrader.utils.py3 import with_metaclass
 
 from .ccxtstore import CCXTStore
-from .utils import print_timestamp_checkpoint, CCXT_DATA_COLUMNS, get_ha_bars
+from .utils import print_timestamp_checkpoint, CCXT_DATA_COLUMNS, get_ha_bars, dump_ohlcv
 
 
 class MetaCCXTFeed(DataBase.__class__):
@@ -211,18 +211,38 @@ class CCXTFeed(with_metaclass(MetaCCXTFeed, DataBase)):
         # Filter off excessive data should there is any
         ohlcv_list = [entry for i, entry in enumerate(ohlcv_list) if ohlcv_list[i][0] < until]
 
+        # if self._name == "1m_Long_Candlestick":
+        #     print("{} Line: {}: {}: {}: BEFORE: ohlcv_list: ".format(
+        #         inspect.getframeinfo(inspect.currentframe()).function,
+        #         inspect.getframeinfo(inspect.currentframe()).lineno,
+        #         self.p.dataname,
+        #         self._name,
+        #     ))
+        #     dump_ohlcv(
+        #         inspect.getframeinfo(inspect.currentframe()).function,
+        #         inspect.getframeinfo(inspect.currentframe()).lineno,
+        #         self._name,
+        #         ohlcv_list,
+        #     )
+
         # Check to see if dropping the latest candle will help with
         # exchanges which return partial data
         if self.p.drop_newest:
             del ohlcv_list[-1]
 
-        # print("{} Line: {}: {}: {}: BEFORE: ohlcv_list[-1]: ".format(
-        #     inspect.getframeinfo(inspect.currentframe()).function,
-        #     inspect.getframeinfo(inspect.currentframe()).lineno,
-        #     self.p.dataname,
-        #     self._name,
-        # ))
-        # pprint(ohlcv_list[-1])
+        # if self._name == "1m_Long_Candlestick":
+        #     print("{} Line: {}: {}: {}: AFTER: ohlcv_list: ".format(
+        #         inspect.getframeinfo(inspect.currentframe()).function,
+        #         inspect.getframeinfo(inspect.currentframe()).lineno,
+        #         self.p.dataname,
+        #         self._name,
+        #     ))
+        #     dump_ohlcv(
+        #         inspect.getframeinfo(inspect.currentframe()).function,
+        #         inspect.getframeinfo(inspect.currentframe()).lineno,
+        #         self._name,
+        #         ohlcv_list,
+        #     )
 
         if self.p.convert_to_heikin_ashi:
             if len(ohlcv_list) > 0:
@@ -265,8 +285,8 @@ class CCXTFeed(with_metaclass(MetaCCXTFeed, DataBase)):
         if self.store.is_ws_available:
             (tstamp, ohlcv) = self.store.ws_klines[self.p.dataname]
 
-            # Convert timestamp to datetime
-            kline_dt = datetime.fromtimestamp(tstamp)
+            # Convert timestamp to datetime in UTC timezone
+            kline_dt = datetime.utcfromtimestamp(tstamp)
 
             self.lines.datetime[0] = bt.date2num(kline_dt)
             self.lines.open[0] = ohlcv[0]
