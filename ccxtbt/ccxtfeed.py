@@ -36,7 +36,8 @@ from backtrader.feed import DataBase
 from backtrader.utils.py3 import with_metaclass
 
 from .ccxtstore import CCXTStore
-from .utils import print_timestamp_checkpoint, CCXT_DATA_COLUMNS, get_ha_bars, dump_ohlcv
+from .specs import CCXT_DATA_COLUMNS
+from .utils import print_timestamp_checkpoint, get_ha_bars, dump_ohlcv
 
 
 class MetaCCXTFeed(DataBase.__class__):

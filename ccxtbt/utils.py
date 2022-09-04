@@ -1,19 +1,18 @@
 import inspect
 import datetime
+import math
+
+import numpy as np
+import pandas as pd
 
 from time import time as timer
 
-# Refer to https://docs.python.org/3/library/datetime.html#strftime-and-strptime-format-codes
-import pandas as pd
+from .specs import CCXT_DATA_COLUMNS, DATETIME_COL, OPEN_COL, HIGH_COL, LOW_COL, CLOSE_COL, VOLUME_COL, DATE_TIME_FORMAT_WITH_MS_PRECISION
 
-DEFAULT_DATE_FORMAT = "%Y-%m-%d"
-TIME_FORMAT_WITH_MS_PRECISION = "%H:%M:%S.%f"
-DATE_TIME_FORMAT_WITH_MS_PRECISION = DEFAULT_DATE_FORMAT + " " + TIME_FORMAT_WITH_MS_PRECISION
-CCXT_DATA_COLUMNS = ["datetime", "open", "high", "low", "close", "volume", "openinterest"]
-DATETIME_COL, OPEN_COL, HIGH_COL, LOW_COL, CLOSE_COL, VOLUME_COL, OPEN_INTEREST_COL = range(len(CCXT_DATA_COLUMNS))
 
 def print_timestamp_checkpoint(function, lineno, comment="Checkpoint timestamp", start=None):
     # Convert datetime to string
+    # Refer to https://docs.python.org/3/library/datetime.html#strftime-and-strptime-format-codes
     timestamp_str = get_strftime(datetime.datetime.now(), DATE_TIME_FORMAT_WITH_MS_PRECISION)
     if start:
         minutes, seconds, milliseconds = get_ms_time_diff(start)
@@ -90,33 +89,6 @@ def get_ha_bars(df, price_digits, symbol_tick_size):
     return df_ha
 
 
-# Credits: https://www.codegrepper.com/search.php?answer_removed=1&q=python%20round%20to%20the%20nearest
-def round_to_nearest_decimal_points(x, prec, base):
-    legality_check_not_none_obj(x, "x")
-    legality_check_not_none_obj(prec, "prec")
-    legality_check_not_none_obj(base, "base")
-    if type(x) == float or type(x) == int:
-        return round(base * round(float(x)/base), prec)
-    elif type(x) == pd.Series:
-        numbers = x.tolist()
-        new_numbers = []
-        for number in numbers:
-            new_numbers.append(round(base * round(float(number)/base), prec))
-
-        # Create series form a list
-        ret_value = pd.Series(new_numbers)
-        return ret_value
-    else:
-        raise Exception("Unsupported type: {}!!!".format(type(x)))
-
-
-def legality_check_not_none_obj(obj, obj_name):
-    if obj is None:
-        if obj_name is None:
-            obj_name = get_var_name(obj)
-        raise ValueError("{}: {} must NOT be {}!!!".format(inspect.currentframe(), obj_name, obj))
-
-
 def dump_ohlcv(function, lineno, data_name, ohlcv_list):
     assert isinstance(ohlcv_list, list)
 
@@ -147,3 +119,39 @@ def dump_ohlcv(function, lineno, data_name, ohlcv_list):
 
         # INFO: Strip ", " from the string
         print(msg[:-2])
+
+
+def round_to_nearest_decimal_points(x, prec, base):
+    '''
+    # Credits: https://www.codegrepper.com/search.php?answer_removed=1&q=python%20round%20to%20the%20nearest
+    '''
+    legality_check_not_none_obj(x, "x")
+    legality_check_not_none_obj(prec, "prec")
+    legality_check_not_none_obj(base, "base")
+    if type(x) == float or type(x) == int or type(x) == np.float64:
+        ret_number = round(base * round(float(x)/base), prec)
+        return ret_number
+    elif type(x) == pd.Series:
+        numbers = x.tolist()
+        new_numbers = []
+        for number in numbers:
+            if math.isnan(number) == False:
+                new_numbers.append(round(base * round(float(number)/base), prec))
+            else:
+                # INFO: For NaN, just remain as it is
+                new_numbers.append(number)
+
+        # Create series form a list
+        ret_value = pd.Series(new_numbers, dtype='float64')
+        return ret_value
+    else:
+        raise Exception("Unsupported type: {}!!!".format(type(x)))
+
+
+def legality_check_not_none_obj(obj, obj_name):
+    if obj is None:
+        if obj_name is None:
+            obj_name = get_var_name(obj)
+        raise Exception("{}: {} must NOT be {}!!!".format(inspect.currentframe(), obj_name, obj))
+
+
