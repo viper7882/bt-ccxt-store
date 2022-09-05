@@ -138,10 +138,10 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
 
             self.establish_bybit_websocket()
 
-        self.ws_positions = []
-        self.ws_active_orders = []
-        self.ws_conditional_orders = []
-        self.ws_klines = collections.defaultdict(str)
+        self.ws_positions = collections.defaultdict(list)
+        self.ws_active_orders = collections.defaultdict(list)
+        self.ws_conditional_orders = collections.defaultdict(list)
+        self.ws_klines = collections.defaultdict(tuple)
 
         self.currency = currency
         self.retries = retries
@@ -199,13 +199,13 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
 
     def get_granularity(self, timeframe, compression):
         if not self.exchange.has['fetchOHLCV']:
-            raise NotImplementedError("'%s' exchange doesn't support fetching OHLCV data" % \
+            raise NotImplementedError("'%s' exchange doesn't support fetching OHLCV data" %
                                       self.exchange.name)
 
         granularity = self._GRANULARITIES.get((timeframe, compression))
         if granularity is None:
             raise ValueError("backtrader CCXT module doesn't support fetching OHLCV "
-                             "data for time frame %s, compression %s" % \
+                             "data for time frame %s, compression %s" %
                              (bt.TimeFrame.getname(timeframe), compression))
 
         if self.exchange.timeframes and granularity not in self.exchange.timeframes:
@@ -236,7 +236,7 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
             symbol_type = None
             for rawPosition in responses:
                 symbol = self.exchange.safe_string(rawPosition, 'symbol')
-                if len(symbols) == 0:
+                if symbol not in symbols:
                     symbols.append(symbol)
                 market = self.get_market(symbol)
                 if symbol_type is None:
@@ -244,39 +244,41 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
                 results.append(self.exchange.parse_position(rawPosition, market))
             latest_changed_positions = self.exchange.filter_by_array(results, 'symbol', symbols, False)
 
-            if len(self.ws_positions) == 0:
-                # Exercise the longer time route
-                # Store the outdated positions first
-                self.ws_positions = self._fetch_opened_positions_from_exchange(symbols, params={'type': symbol_type})
+            for symbol_id in symbols:
+                if len(self.ws_positions[symbol_id]) == 0:
+                    # Exercise the longer time route
+                    # Store the outdated positions first
+                    self.ws_positions[symbol_id] = \
+                        self._fetch_opened_positions_from_exchange(symbols, params={'type': symbol_type})
 
-            # INFO: Identify ws_position to be changed
-            positions_to_be_changed = []
-            for i, _ in enumerate(self.ws_positions):
-                for latest_changed_position in latest_changed_positions:
-                    if self.ws_positions[i]['side'] == latest_changed_position['side']:
-                        positions_to_be_changed.append((i, latest_changed_position))
+                # INFO: Identify ws_position to be changed
+                positions_to_be_changed = []
+                for i, _ in enumerate(self.ws_positions[symbol_id]):
+                    for latest_changed_position in latest_changed_positions:
+                        if self.ws_positions[symbol_id][i]['side'] == latest_changed_position['side']:
+                            positions_to_be_changed.append((i, latest_changed_position))
 
-            # INFO: Update with the latest position from websocket
-            for position_to_be_changed_tuple in positions_to_be_changed:
-                index, latest_changed_position = position_to_be_changed_tuple
-                self.ws_positions[index] = latest_changed_position
+                # INFO: Update with the latest position from websocket
+                for position_to_be_changed_tuple in positions_to_be_changed:
+                    index, latest_changed_position = position_to_be_changed_tuple
+                    self.ws_positions[symbol_id][index] = latest_changed_position
 
-            # Legality Check
-            assert len(self.ws_positions) <= 2, \
-                "len(ws_positions): {} should not be greater than 2!!!".format(len(self.ws_positions))
+                # Legality Check
+                assert len(self.ws_positions[symbol_id]) <= 2, \
+                    "len(ws_positions): {} should not be greater than 2!!!".format(len(self.ws_positions[symbol_id]))
 
-            if symbol_type == "linear":
-                assert len(self.ws_positions) == 2, \
-                    "For {} symbol, len(ws_positions): {} does not equal to 2!!!".format(
-                        symbol_type, len(self.ws_positions)
-                    )
+                if symbol_type == "linear":
+                    assert len(self.ws_positions[symbol_id]) == 2, \
+                        "For {} symbol, len(ws_positions): {} does not equal to 2!!!".format(
+                            symbol_type, len(self.ws_positions[symbol_id])
+                        )
 
-            # Sort dictionary list by key
-            reverse = False
-            sort_by_key = 'side'
-            self.ws_positions = sorted(self.ws_positions,
-                                       key=lambda k: k[sort_by_key],
-                                       reverse=reverse)
+                # Sort dictionary list by key
+                reverse = False
+                sort_by_key = 'side'
+                self.ws_positions[symbol_id] = sorted(self.ws_positions[symbol_id],
+                                                      key=lambda k: k[sort_by_key],
+                                                      reverse=reverse)
         except Exception:
             traceback.print_exc()
 
@@ -289,7 +291,8 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
             # pprint(message)
             responses = message['data']
             assert type(responses) == list
-            active_orders_to_be_added = []
+            active_orders_to_be_added = collections.defaultdict(list)
+            symbols_id = []
             for order in responses:
                 market = self.get_market(order['symbol'])
                 result = self.exchange.safe_value(message, 'data')
@@ -298,6 +301,10 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
                 # INFO: Strip away "/" and ":USDT"
                 active_order['symbol'] = active_order['symbol'].replace("/", "")
                 active_order['symbol'] = active_order['symbol'].replace(":USDT", "")
+
+                symbol_id = active_order['symbol']
+                if symbol_id not in symbols_id:
+                    symbols_id.append(symbol_id)
 
                 # print("{} Line: {}: DEBUG: active_order:".format(
                 #     inspect.getframeinfo(inspect.currentframe()).function,
@@ -310,23 +317,25 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
                 #     inspect.getframeinfo(inspect.currentframe()).lineno,
                 #     active_order['id'],
                 # ))
-                active_orders_to_be_added.append(active_order)
+                active_orders_to_be_added[symbol_id].append(active_order)
 
-            active_order_ids_to_be_added = [active_order['id'] for active_order in active_orders_to_be_added]
+            for symbol_id in symbols_id:
+                active_order_ids_to_be_added = \
+                    [active_order['id'] for active_order in active_orders_to_be_added[symbol_id]]
 
-            # INFO: Look for existing order in the list
-            ws_active_orders_to_be_removed = []
-            for ws_active_order in self.ws_active_orders:
-                if ws_active_order['id'] in active_order_ids_to_be_added:
-                    ws_active_orders_to_be_removed.append(ws_active_order)
+                # INFO: Look for existing order in the list
+                ws_active_orders_to_be_removed = []
+                for ws_active_order in self.ws_active_orders[symbol_id]:
+                    if ws_active_order['id'] in active_order_ids_to_be_added[symbol_id]:
+                        ws_active_orders_to_be_removed.append(ws_active_order)
 
-            # INFO: Remove the existing ws active order
-            for ws_active_order in ws_active_orders_to_be_removed:
-                self.ws_active_orders.remove(ws_active_order)
+                # INFO: Remove the existing ws active order
+                for ws_active_order in ws_active_orders_to_be_removed:
+                    self.ws_active_orders[symbol_id].remove(ws_active_order)
 
-            # INFO: Add the latest active orders
-            for active_order in active_orders_to_be_added:
-                self.ws_active_orders.append(active_order)
+                # INFO: Add the latest active orders
+                for active_order in active_orders_to_be_added[symbol_id]:
+                    self.ws_active_orders[symbol_id].append(active_order)
         except Exception:
             traceback.print_exc()
 
@@ -348,6 +357,7 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
                 conditional_order['symbol'] = conditional_order['symbol'].replace("/", "")
                 conditional_order['symbol'] = conditional_order['symbol'].replace(":USDT", "")
 
+                symbol_id = conditional_order['symbol']
                 # print("{} Line: {}: DEBUG: conditional_order:".format(
                 #     inspect.getframeinfo(inspect.currentframe()).function,
                 #     inspect.getframeinfo(inspect.currentframe()).lineno,
@@ -359,7 +369,7 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
                 #     inspect.getframeinfo(inspect.currentframe()).lineno,
                 #     conditional_order['id'],
                 # ))
-                self.ws_conditional_orders.append(conditional_order)
+                self.ws_conditional_orders[symbol_id].append(conditional_order)
         except Exception:
             traceback.print_exc()
 
@@ -479,18 +489,18 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
         return self.mainnet_exchange.fetch_order_book(symbol, limit=limit, params=params)
 
     @retry
-    def _fetch_order_from_exchange(self, oid, symbol, params={}):
+    def _fetch_order_from_exchange(self, oid, symbol_id, params={}):
         order = None
         try:
             # INFO: Due to nature of order is processed async, the order could not be found immediately right after
             #       order is is opened. Hence, perform retry to confirm if that's the case.
-            order = self.exchange.fetch_order(oid, symbol, params)
+            order = self.exchange.fetch_order(oid, symbol_id, params)
         except OrderNotFound:
             # INFO: Ignore order not found error
             pass
         return order
 
-    def fetch_order(self, oid, symbol, params={}):
+    def fetch_order(self, oid, symbol_id, params={}):
         # print("{} Line: {}: is_ws_available: {}".format(
         #     inspect.getframeinfo(inspect.currentframe()).function,
         #     inspect.getframeinfo(inspect.currentframe()).lineno,
@@ -507,7 +517,7 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
                 #     oid,
                 # ))
 
-                for active_order in self.ws_active_orders:
+                for active_order in self.ws_active_orders[symbol_id]:
                     # print("{} Line: {}: Comparing active_order ID: {}".format(
                     #     inspect.getframeinfo(inspect.currentframe()).function,
                     #     inspect.getframeinfo(inspect.currentframe()).lineno,
@@ -517,18 +527,18 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
                     if oid == active_order['id']:
                         # Extract the order from the websocket
                         order = active_order
-                        # self.ws_active_orders.remove(active_order)
+                        # self.ws_active_orders[symbol_id].remove(active_order)
                         found_ws_order = True
                         break
             # Else if we are looking for Conditional Order
             else:
                 conditional_oid = params.get('stop_order_id', None)
                 if conditional_oid is not None:
-                    for conditional_order in self.ws_conditional_orders:
+                    for conditional_order in self.ws_conditional_orders[symbol_id]:
                         if conditional_oid == conditional_order['id']:
                             # Extract the order from the websocket
                             order = conditional_order
-                            # self.ws_conditional_orders.remove(conditional_order)
+                            # self.ws_conditional_orders[symbol_id].remove(conditional_order)
                             found_ws_order = True
                             break
 
@@ -549,9 +559,9 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
 
             if found_ws_order == False:
                 # Exercise the longer time route
-                order = self._fetch_order_from_exchange(oid, symbol, params)
+                order = self._fetch_order_from_exchange(oid, symbol_id, params)
         else:
-            order = self._fetch_order_from_exchange(oid, symbol, params)
+            order = self._fetch_order_from_exchange(oid, symbol_id, params)
         return order
 
     @retry
@@ -581,14 +591,16 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
 
     def fetch_opened_positions(self, symbols=None, params={}):
         if self.is_ws_available == True:
-            if len(self.ws_positions) > 0:
-                ret_positions = self.ws_positions
+            assert len(symbols) == 1
+            symbol_id = symbols[0]
+            if len(self.ws_positions[symbol_id]) > 0:
+                ret_positions = self.ws_positions[symbol_id]
             else:
                 # Exercise the longer time route
                 ret_positions = self._fetch_opened_positions_from_exchange(symbols, params)
 
                 # Cache the position as if websocket positions. This will prevent us to hit the exchange rate limit.
-                self.ws_positions = ret_positions
+                self.ws_positions[symbol_id] = ret_positions
         else:
             ret_positions = self._fetch_opened_positions_from_exchange(symbols, params)
         return ret_positions
