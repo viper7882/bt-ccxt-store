@@ -27,12 +27,12 @@ import json
 import datetime
 
 from backtrader import BrokerBase, OrderBase, Order
-from backtrader.position import Position
 from backtrader.utils.py3 import queue, with_metaclass
 from ccxt.base.errors import OrderNotFound
 from time import time as timer
 
 from .ccxtstore import CCXTStore
+from .enhanced_position_class import Enhanced_Position
 from .utils import print_timestamp_checkpoint
 
 
@@ -132,7 +132,7 @@ class CCXTBroker(with_metaclass(MetaCCXTBroker, BrokerBase)):
 
         self.currency = self.store.currency
 
-        self.positions = collections.defaultdict(Position)
+        self.positions = collections.defaultdict(Enhanced_Position)
 
         self.debug = debug
         self.indent = 4  # For pretty printing dictionaries
@@ -185,7 +185,7 @@ class CCXTBroker(with_metaclass(MetaCCXTBroker, BrokerBase)):
         self.notifs.put(order)
 
     def getposition(self, data, clone=True):
-        ret_value = Position(size=0.0, price=0.0)
+        ret_value = Enhanced_Position(size=0.0, price=0.0)
         for pos_data, pos in self.positions.items():
             if data._name == pos_data:
                 if clone:
