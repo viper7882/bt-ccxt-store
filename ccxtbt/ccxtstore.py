@@ -34,6 +34,7 @@ from pprint import pprint
 import backtrader
 import backtrader as bt
 import ccxt
+import websocket
 
 from backtrader.metabase import MetaParams
 from backtrader.utils.py3 import with_metaclass
@@ -190,12 +191,25 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
         )
         assert isinstance(self.symbols_id, list)
         assert len(self.symbols_id) > 0
-        # Reference: https://bybit-exchange.github.io/docs/futuresV2/linear/#t-websocketkline
-        # INFO: Subscribe to 1 minute candle
-        if len(self.symbols_id) == 1:
-            self.ws_mainnet_usdt_perpetual.kline_stream(self.handle_klines, self.symbols_id[0], "1")
-        else:
-            self.ws_mainnet_usdt_perpetual.kline_stream(self.handle_klines, self.symbols_id, "1")
+        delay = 1
+        while True:
+            try:
+                # Reference: https://bybit-exchange.github.io/docs/futuresV2/linear/#t-websocketkline
+                # INFO: Subscribe to 1 minute candle
+                if len(self.symbols_id) == 1:
+                    self.ws_mainnet_usdt_perpetual.kline_stream(self.handle_klines, self.symbols_id[0], "1")
+                else:
+                    self.ws_mainnet_usdt_perpetual.kline_stream(self.handle_klines, self.symbols_id, "1")
+                break
+            except websocket._exceptions.WebSocketTimeoutException:
+                '''
+                To address: WebSocket USDT Perp connection failed. Too many connection attempts. pybit will no longer 
+                try to reconnect.
+                '''
+                # INFO: Delay before retry
+                time.sleep(delay * 1000)
+                delay *= 2
+                pass
 
     def get_granularity(self, timeframe, compression):
         if not self.exchange.has['fetchOHLCV']:
@@ -326,7 +340,7 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
                 # INFO: Look for existing order in the list
                 ws_active_orders_to_be_removed = []
                 for ws_active_order in self.ws_active_orders[symbol_id]:
-                    if ws_active_order['id'] in active_order_ids_to_be_added[symbol_id]:
+                    if ws_active_order['id'] in active_order_ids_to_be_added:
                         ws_active_orders_to_be_removed.append(ws_active_order)
 
                 # INFO: Remove the existing ws active order
