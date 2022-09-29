@@ -263,14 +263,15 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
                     # Exercise the longer time route
                     # Store the outdated positions first
                     self.ws_positions[symbol_id] = \
-                        self._fetch_opened_positions_from_exchange(symbols, params={'type': symbol_type})
+                        self._fetch_opened_positions_from_exchange([symbol_id], params={'type': symbol_type})
 
                 # INFO: Identify ws_position to be changed
                 positions_to_be_changed = []
                 for i, _ in enumerate(self.ws_positions[symbol_id]):
                     for latest_changed_position in latest_changed_positions:
-                        if self.ws_positions[symbol_id][i]['side'] == latest_changed_position['side']:
-                            positions_to_be_changed.append((i, latest_changed_position))
+                        if latest_changed_position['symbol'] == symbol_id:
+                            if self.ws_positions[symbol_id][i]['side'] == latest_changed_position['side']:
+                                positions_to_be_changed.append((i, latest_changed_position))
 
                 # INFO: Update with the latest position from websocket
                 for position_to_be_changed_tuple in positions_to_be_changed:
@@ -601,22 +602,23 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
 
     @retry
     def _fetch_opened_positions_from_exchange(self, symbols=None, params={}):
+        assert len(symbols) == 1
         return self.exchange.fetch_positions(symbols=symbols, params=params)
 
     def fetch_opened_positions(self, symbols=None, params={}):
+        assert len(symbols) == 1
+        symbol_id = symbols[0]
         if self.is_ws_available == True:
-            assert len(symbols) == 1
-            symbol_id = symbols[0]
             if len(self.ws_positions[symbol_id]) > 0:
                 ret_positions = self.ws_positions[symbol_id]
             else:
                 # Exercise the longer time route
-                ret_positions = self._fetch_opened_positions_from_exchange(symbols, params)
+                ret_positions = self._fetch_opened_positions_from_exchange([symbol_id], params)
 
                 # Cache the position as if websocket positions. This will prevent us to hit the exchange rate limit.
                 self.ws_positions[symbol_id] = ret_positions
         else:
-            ret_positions = self._fetch_opened_positions_from_exchange(symbols, params)
+            ret_positions = self._fetch_opened_positions_from_exchange([symbol_id], params)
         return ret_positions
 
     @retry
