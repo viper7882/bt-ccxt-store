@@ -21,19 +21,23 @@
 from __future__ import (absolute_import, division, print_function,
                         unicode_literals)
 
+import copy
 import collections
 import inspect
 import json
 import datetime
 
+import backtrader
+
 from backtrader import BrokerBase, OrderBase, Order
 from backtrader.utils.py3 import queue, with_metaclass
 from ccxt.base.errors import OrderNotFound
 from time import time as timer
+from pprint import pprint
 
 from .ccxtstore import CCXTStore
 from .enhanced_position_class import Enhanced_Position
-from .utils import print_timestamp_checkpoint
+from .utils import print_timestamp_checkpoint, legality_check_not_none_obj, round_to_nearest_decimal_points
 
 
 class CCXTOrder(OrderBase):
@@ -46,6 +50,49 @@ class CCXTOrder(OrderBase):
         self.size = float(ccxt_order['amount'])
 
         super(CCXTOrder, self).__init__()
+
+    def __repr__(self):
+        return str(self)
+
+    def __str__(self):
+        items = list()
+        items.append('Data: {}'.format(self.data._name))
+
+        if type(self.ccxt_order).__name__ == CCXTOrder.__name__:
+            items.append('id: {}'.format(self.ccxt_order['ref']))
+        else:
+            items.append('id: {}'.format(self.ccxt_order['id']))
+        items.append('Type: {}'.format(backtrader.Order.OrdTypes[self.ordtype]))
+
+        items.append('Status: {}'.format(self.ccxt_order['status']))
+
+        if type(self.ccxt_order).__name__ == CCXTOrder.__name__:
+            if getattr(self.ccxt_order, 'executed'):
+                items.append('Created Price: {} x Size: {} @ {}'.format(
+                    self.ccxt_order['created']['price'],
+                    self.ccxt_order['created']['size'],
+                    backtrader.num2date(self.ccxt_order['created']['dt']).isoformat().replace("T", " "),
+                ))
+            if getattr(self.ccxt_order, 'executed'):
+                items.append('Executed Price: {} x Size: {} @ {}'.format(
+                    self.ccxt_order['executed']['price'],
+                    self.ccxt_order['executed']['size'],
+                    backtrader.num2date(self.ccxt_order['executed']['dt']).isoformat().replace("T", " "),
+                ))
+        else:
+            items.append('Price: {} x Size: {} @ {}'.format(
+                self.ccxt_order['price'],
+                self.size,
+                self.ccxt_order['datetime'].replace("T", " "),
+            ))
+        ret_value = str('\n'.join(items))
+        return ret_value
+
+    def clone(self):
+        # INFO: This is required so that the outcome will be reflected when calling order.executed.iterpending()
+        self.executed.markpending()
+        obj = copy.copy(self)
+        return obj
 
 
 class MetaCCXTBroker(BrokerBase.__class__):
@@ -182,18 +229,53 @@ class CCXTBroker(with_metaclass(MetaCCXTBroker, BrokerBase)):
             return None
 
     def notify(self, order):
-        self.notifs.put(order)
+        self.notifs.put(order.clone())
+
+        # if type(order).__name__ == CCXTOrder.__name__:
+        #     order_id = order.ccxt_order['info']['order_id']
+        # elif isinstance(order, dict):
+        #     if 'stop_order_id' in order.keys():
+        #         order_id = order['stop_order_id']
+        #     elif 'order_id' in order.keys():
+        #         order_id = order['order_id']
+        #     elif 'id' in order.keys():
+        #         order_id = order['id']
+        #
+        # # TODO: Debug Use
+        # msg = "{} Line: {}: DEBUG: order:".format(
+        #     inspect.getframeinfo(inspect.currentframe()).function,
+        #     inspect.getframeinfo(inspect.currentframe()).lineno,
+        # )
+        # print(msg)
+        # pprint(order)
+        pass
 
     def getposition(self, data, clone=True):
         ret_value = Enhanced_Position(size=0.0, price=0.0)
         for pos_data, pos in self.positions.items():
-            if data._name == pos_data:
+            if data._name == pos_data._name:
                 if clone:
                     ret_value = pos.clone()
                 else:
                     ret_value = pos
                 break
         return ret_value
+
+    def setposition(self, data, size, price):
+        '''Stores the position status (a ``Position`` instance) for the given ``data``'''
+        # INFO: Prohibit access to negative index data or else self.positions will be initialized to this data.
+        #       This has proven to be true in free running mode, hence gym step running mode must provide the same
+        #       guarantee.
+        assert data.lines.datetime.idx >= 0
+
+        # # TODO: Debug Use
+        # msg = "{} Line: {}: DEBUG: data._name: {}".format(
+        #     inspect.getframeinfo(inspect.currentframe()).function,
+        #     inspect.getframeinfo(inspect.currentframe()).lineno,
+        #     data._name,
+        # )
+        # print(msg)
+        self.positions[data].set(size, price)
 
     def get_pnl(self, datas=None):
         pnl_comm = 0.0
@@ -206,9 +288,7 @@ class CCXTBroker(with_metaclass(MetaCCXTBroker, BrokerBase)):
 
         for data in datas or self.positions:
             comminfo = self.getcommissioninfo(data)
-            # WARNING: For backtest, data is used
-            # WARNING: For live, data._name is used
-            position = self.positions[data._name]
+            position = self.positions[data]
 
             if tick_data is None:
                 close_price = data.close[0]
@@ -270,12 +350,10 @@ class CCXTBroker(with_metaclass(MetaCCXTBroker, BrokerBase)):
                 if self.debug:
                     print(json.dumps(ccxt_order, indent=self.indent))
 
-                # Check if the order is closed
+                # Check if the exchange order is closed
                 if ccxt_order[self.mappings['closed_order']['key']] == self.mappings['closed_order']['value']:
-                    pos = self.getposition(o_order.data, clone=False)
-                    pos.update(o_order.size, o_order.price)
                     o_order.completed()
-                    self.notify(o_order)
+                    self._execute(o_order, ago=0, price=o_order.price)
                     self.open_orders.remove(o_order)
                     self.get_balance()
 
@@ -339,11 +417,79 @@ class CCXTBroker(with_metaclass(MetaCCXTBroker, BrokerBase)):
                 # INFO: Retrieve order.price from _order['price'] is proven more reliable than ret_ord['price']
                 order.price = _order['price']
                 self.open_orders.append(order)
-
-                self.notify(order)
                 break
 
         return order
+
+    def _execute(self, order, ago, price):
+        # Legality Check
+        legality_check_not_none_obj(order, "order")
+        # ago = None is used a flag for pseudo execution
+        legality_check_not_none_obj(ago, "ago")
+        legality_check_not_none_obj(price, "price")
+
+        size = order.executed.remsize
+        if not order.isbuy():
+            size = -size
+
+        # Get comminfo object for the data
+        data = order.data
+        comminfo = self.getcommissioninfo(data)
+
+        # Adjust position with operation size
+        # Real execution with date
+        position = self.getposition(data, clone=False)
+        pprice_orig = position.price
+
+        # Do a real position update
+        psize, pprice, opened, closed = position.update(size, price, data.datetime.datetime())
+        psize = round_to_nearest_decimal_points(psize, comminfo.qty_digits, comminfo.qty_step)
+        pprice = round_to_nearest_decimal_points(pprice, comminfo.price_digits, comminfo.symbol_tick_size)
+        opened = round_to_nearest_decimal_points(opened, comminfo.qty_digits, comminfo.qty_step)
+        closed = round_to_nearest_decimal_points(closed, comminfo.qty_digits, comminfo.qty_step)
+
+        # split commission between closed and opened
+        if closed:
+            closedcomm = order.ccxt_order['fee']['cost']
+        else:
+            closedcomm = 0.0
+
+        if opened:
+            openedcomm = order.ccxt_order['fee']['cost']
+        else:
+            openedcomm = 0.0
+
+        closedvalue = comminfo.getvaluesize(-closed, pprice_orig)
+        openedvalue = comminfo.getvaluesize(opened, price)
+
+        # The internal broker calc should yield the same result
+        if closed:
+            pnl = comminfo.profitandloss(-closed, pprice_orig, price)
+        else:
+            pnl = 0.0
+
+        # Need to simulate a margin, but it plays no role, because it is
+        # controlled by a real broker. Let's set the price of the item
+        margin = order.data.close[0]
+
+        # Execute and notify the order
+        order.execute(data.datetime[ago],
+                      size, price,
+                      closed, closedvalue, closedcomm,
+                      opened, openedvalue, openedcomm,
+                      margin, pnl,
+                      psize, pprice)
+
+        # INFO: size and price could deviate from its original value due to floating point precision error. The
+        #       following codes are to provide remedy for that situation.
+        order.executed.size = \
+            round_to_nearest_decimal_points(order.executed.size, comminfo.qty_digits, comminfo.qty_step)
+        order.executed.price = \
+            round_to_nearest_decimal_points(order.executed.price, comminfo.price_digits,
+                                            comminfo.symbol_tick_size)
+
+        order.addcomminfo(comminfo)
+        self.notify(order)
 
     def buy(self, owner, data, size, price=None, plimit=None,
             exectype=None, valid=None, tradeid=0, oco=None,
@@ -378,6 +524,7 @@ class CCXTBroker(with_metaclass(MetaCCXTBroker, BrokerBase)):
         if self.debug:
             print(json.dumps(ccxt_order, indent=self.indent))
 
+        # Check if the exchange order is closed
         if ccxt_order[self.mappings['closed_order']['key']] == self.mappings['closed_order']['value']:
             return order
 
@@ -388,6 +535,7 @@ class CCXTBroker(with_metaclass(MetaCCXTBroker, BrokerBase)):
             print('Value Received: {}'.format(ccxt_order[self.mappings['canceled_order']['key']]))
             print('Value Expected: {}'.format(self.mappings['canceled_order']['value']))
 
+        # Check if the exchange order is cancelled
         if ccxt_order[self.mappings['canceled_order']['key']] == self.mappings['canceled_order']['value']:
             self.open_orders.remove(order)
             order.cancel()
