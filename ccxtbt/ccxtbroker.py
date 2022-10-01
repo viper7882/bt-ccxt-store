@@ -53,6 +53,7 @@ class CCXTOrder(OrderBase):
         self.ccxt_order = ccxt_order
         self.ordtype = self.Buy if ccxt_order['side'] == 'buy' else self.Sell
         self.size = float(ccxt_order['amount'])
+        self.price = float(ccxt_order['price']) if ccxt_order['price'] is not None else 0.0
 
     def __repr__(self):
         return str(self)
@@ -446,7 +447,7 @@ class CCXTBroker(with_metaclass(MetaCCXTBroker, BrokerBase)):
                 self.use_order_params = False
                 return None
 
-        if ret_ord is None:
+        if ret_ord is None or ret_ord['id'] is None:
             return None
 
         order = None
@@ -455,7 +456,16 @@ class CCXTBroker(with_metaclass(MetaCCXTBroker, BrokerBase)):
             try:
                 # INFO: Due to nature of order is processed async, the order could not be found immediately right after
                 #       order is is opened. Hence, perform retry to confirm if that's the case.
-                ccxt_order = self.store.fetch_order(ret_ord['id'], symbol_id)
+                if 'stop_order_id' in ret_ord['info'].keys():
+                    # Conditional Order
+                    params = dict(
+                        stop_order_id=ret_ord['id'],
+                    )
+                    ccxt_order = \
+                        self.store.fetch_order(oid=None, symbol_id=symbol_id, params=params)
+                else:
+                    # Active Order
+                    ccxt_order = self.store.fetch_order(oid=ret_ord['id'], symbol_id=symbol_id)
             except OrderNotFound:
                 pass
 
@@ -466,10 +476,12 @@ class CCXTBroker(with_metaclass(MetaCCXTBroker, BrokerBase)):
                 # INFO: Retrieve order.price from ccxt_order['price'] is proven more reliable than ret_ord['price']
                 order.price = ccxt_order['price']
 
-                # Mark order as submitted
-                order.submit()
-                order = self._add_comminfo(order)
-                self.notify(order)
+                # Check if the exchange order is NOT closed
+                if ccxt_order[self.mappings['closed_order']['key']] != self.mappings['closed_order']['value']:
+                    # Mark order as submitted
+                    order.submit()
+                    order = self._add_comminfo(order)
+                    self.notify(order)
                 self.open_orders.append(order)
                 break
 

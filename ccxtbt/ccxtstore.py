@@ -41,6 +41,8 @@ from backtrader.utils.py3 import with_metaclass
 from ccxt.base.errors import NetworkError, ExchangeError, OrderNotFound
 from pybit import usdt_perpetual
 
+from .utils import legality_check_not_none_obj
+
 
 class MetaSingleton(MetaParams):
     '''Metaclass to make a metaclassed class a singleton'''
@@ -521,6 +523,9 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
         #     inspect.getframeinfo(inspect.currentframe()).lineno,
         #     self.is_ws_available,
         # ))
+        conditional_oid = params.get('stop_order_id', None)
+        if oid is None:
+            legality_check_not_none_obj(conditional_oid, "conditional_oid")
 
         if self.is_ws_available == True:
             found_ws_order = False
@@ -547,15 +552,13 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
                         break
             # Else if we are looking for Conditional Order
             else:
-                conditional_oid = params.get('stop_order_id', None)
-                if conditional_oid is not None:
-                    for conditional_order in self.ws_conditional_orders[symbol_id]:
-                        if conditional_oid == conditional_order['id']:
-                            # Extract the order from the websocket
-                            order = conditional_order
-                            # self.ws_conditional_orders[symbol_id].remove(conditional_order)
-                            found_ws_order = True
-                            break
+                for conditional_order in self.ws_conditional_orders[symbol_id]:
+                    if conditional_oid == conditional_order['id']:
+                        # Extract the order from the websocket
+                        order = conditional_order
+                        # self.ws_conditional_orders[symbol_id].remove(conditional_order)
+                        found_ws_order = True
+                        break
 
             # print("")
             # if oid is not None:
@@ -573,10 +576,16 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
             #     ))
 
             if found_ws_order == False:
-                # Exercise the longer time route
-                order = self._fetch_order_from_exchange(oid, symbol_id, params)
+                if oid is not None:
+                    # Exercise the longer time route
+                    order = self._fetch_order_from_exchange(oid, symbol_id, params)
+                else:
+                    order = self._fetch_order_from_exchange(conditional_oid, symbol_id, params)
         else:
-            order = self._fetch_order_from_exchange(oid, symbol_id, params)
+            if oid is not None:
+                order = self._fetch_order_from_exchange(oid, symbol_id, params)
+            else:
+                order = self._fetch_order_from_exchange(conditional_oid, symbol_id, params)
         return order
 
     @retry
