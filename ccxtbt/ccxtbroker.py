@@ -27,6 +27,7 @@ import collections
 import datetime
 import inspect
 import json
+import time
 
 from backtrader import BrokerBase, OrderBase, Order
 from backtrader.utils.py3 import queue, with_metaclass
@@ -53,7 +54,7 @@ class CCXTOrder(OrderBase):
         self.ccxt_order = ccxt_order
         self.ordtype = self.Buy if ccxt_order['side'] == 'buy' else self.Sell
         self.size = float(ccxt_order['amount'])
-        self.price = float(ccxt_order['price']) if ccxt_order['price'] is not None else 0.0
+        self.price = float(ccxt_order['average']) if ccxt_order['average'] is not None else 0.0
 
     def __repr__(self):
         return str(self)
@@ -389,7 +390,7 @@ class CCXTBroker(with_metaclass(MetaCCXTBroker, BrokerBase)):
                     # INFO: Refresh the content of ccxt_order with the latest ccxt_order
                     o_order.set_ccxt_order(ccxt_order)
                     o_order.completed()
-                    self._execute(o_order, ago=0, price=o_order.price)
+                    self.execute(o_order, price=o_order.price)
                     self.open_orders.remove(o_order)
                     self.get_balance()
                 # Check if the exchange order is rejected
@@ -450,55 +451,72 @@ class CCXTBroker(with_metaclass(MetaCCXTBroker, BrokerBase)):
         if ret_ord is None or ret_ord['id'] is None:
             return None
 
-        order = None
+        if 'stop_order_id' in ret_ord['info'].keys():
+            oid = None
+            stop_order_id = ret_ord['id']
+        else:
+            oid = ret_ord['id']
+            stop_order_id = None
+        ccxt_order = self.fetch_ccxt_order(symbol_id, oid=oid, stop_order_id=stop_order_id)
+        legality_check_not_none_obj(ccxt_order, "ccxt_order")
+
+        # INFO: Exposed simulated so that we could proceed with order without running cerebro
+        order = CCXTOrder(owner, data, ccxt_order, exectype)
+
+        # Check if the exchange order is NOT closed
+        if ccxt_order[self.mappings['closed_order']['key']] != self.mappings['closed_order']['value']:
+            # Mark order as submitted
+            order.submit()
+            order = self.add_comminfo(order)
+            self.notify(order)
+        self.open_orders.append(order)
+        return order
+
+    def fetch_ccxt_order(self, symbol_id, oid=None, stop_order_id=None):
+        # Mutually exclusive legality check
+        if oid is None:
+            legality_check_not_none_obj(stop_order_id, "stop_order_id")
+
+        if stop_order_id is None:
+            legality_check_not_none_obj(oid, "oid")
+
+        # One of these must be valid
+        assert oid is not None or stop_order_id is not None
+
         ccxt_order = None
         for _ in range(self.max_retry):
             try:
                 # INFO: Due to nature of order is processed async, the order could not be found immediately right after
                 #       order is is opened. Hence, perform retry to confirm if that's the case.
-                if 'stop_order_id' in ret_ord['info'].keys():
+                if stop_order_id is not None:
                     # Conditional Order
                     params = dict(
-                        stop_order_id=ret_ord['id'],
+                        stop_order_id=stop_order_id,
                     )
                     ccxt_order = \
                         self.store.fetch_order(oid=None, symbol_id=symbol_id, params=params)
                 else:
                     # Active Order
-                    ccxt_order = self.store.fetch_order(oid=ret_ord['id'], symbol_id=symbol_id)
+                    ccxt_order = self.store.fetch_order(oid=oid, symbol_id=symbol_id)
+
+                if ccxt_order is not None:
+                    break
             except OrderNotFound:
                 pass
+            time.sleep(0.1)
+        return ccxt_order
 
-            if ccxt_order is not None:
-                # INFO: Exposed simulated so that we could proceed with order without running cerebro
-                order = CCXTOrder(owner, data, ccxt_order, exectype, simulated=simulated)
-
-                # INFO: Retrieve order.price from ccxt_order['price'] is proven more reliable than ret_ord['price']
-                order.price = ccxt_order['price']
-
-                # Check if the exchange order is NOT closed
-                if ccxt_order[self.mappings['closed_order']['key']] != self.mappings['closed_order']['value']:
-                    # Mark order as submitted
-                    order.submit()
-                    order = self._add_comminfo(order)
-                    self.notify(order)
-                self.open_orders.append(order)
-                break
-
-        return order
-
-    def _add_comminfo(self, order):
+    def add_comminfo(self, order):
         # Get comminfo object for the data
         data = order.data
         comminfo = self.getcommissioninfo(data)
         order.addcomminfo(comminfo)
         return order
 
-    def _execute(self, order, ago, price):
+    def execute(self, order, price, dt_in_float=None, skip_notification=False):
         # Legality Check
         legality_check_not_none_obj(order, "order")
         # ago = None is used a flag for pseudo execution
-        legality_check_not_none_obj(ago, "ago")
         legality_check_not_none_obj(price, "price")
 
         size = order.executed.remsize
@@ -543,8 +561,13 @@ class CCXTBroker(with_metaclass(MetaCCXTBroker, BrokerBase)):
         # controlled by a real broker. Let's set the price of the item
         margin = order.data.close[0]
 
+        if dt_in_float is None:
+            execute_dt = data.datetime[0]
+        else:
+            execute_dt = dt_in_float
+
         # Execute and notify the order
-        order.execute(data.datetime[ago],
+        order.execute(execute_dt,
                       size, price,
                       closed, closedvalue, closedcomm,
                       opened, openedvalue, openedcomm,
@@ -560,7 +583,8 @@ class CCXTBroker(with_metaclass(MetaCCXTBroker, BrokerBase)):
                                             comminfo.symbol_tick_size)
 
         order.addcomminfo(comminfo)
-        self.notify(order)
+        if skip_notification == False:
+            self.notify(order)
 
     def buy(self, owner, data, size, price=None, plimit=None,
             exectype=None, valid=None, tradeid=0, oco=None,
