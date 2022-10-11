@@ -229,7 +229,8 @@ class CCXTFeed(with_metaclass(MetaCCXTFeed, DataBase)):
         # Check to see if dropping the latest candle will help with
         # exchanges which return partial data
         if self.p.drop_newest:
-            del ohlcv_list[-1]
+            if len(ohlcv_list) > 0:
+                del ohlcv_list[-1]
 
         # if self._name == "1m_Long_Candlestick":
         #     print("{} Line: {}: {}: {}: AFTER: ohlcv_list: ".format(
