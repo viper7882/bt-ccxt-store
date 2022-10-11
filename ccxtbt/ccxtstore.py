@@ -111,29 +111,48 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
         self.init(exchange, currency, config, mainnet_config, retries, symbols_id, debug, sandbox)
     
     def init(self, exchange, currency, config, mainnet_config, retries, symbols_id, debug=False, sandbox=False):
-        self.exchange = getattr(ccxt, exchange)(config)
         self.mainnet_exchange = getattr(ccxt, exchange)(mainnet_config)
 
         # Alias
         self.sandbox = sandbox
         self.symbols_id = symbols_id
+        self.account_alias = config['account_alias']
+
+        # INFO: Support for multiple account
+        if hasattr(self, 'account') == False:
+            self.account = collections.defaultdict(backtrader.utils.AutoOrderedDict)
+
+        if 'exchange' not in self.account[self.account_alias].keys():
+            self.account[self.account_alias]['exchange'] = getattr(ccxt, exchange)(config)
 
         if self.sandbox:
-            self.exchange.set_sandbox_mode(True)
+            self.account[self.account_alias]['exchange'].set_sandbox_mode(True)
 
         self.config__api_key = None
         self.config__api_secret = None
         self.mainnet_config__api_key = None
         self.mainnet_config__api_secret = None
 
-        # INFO: Invoke websocket if available
-        self.is_ws_available = False
-        self.ws_usdt_perpetual = None
-        self.ws_mainnet_usdt_perpetual = None
+        # INFO: Support for multiple account
+        if hasattr(self, 'is_ws_available') == False:
+            # INFO: Invoke websocket if available
+            self.is_ws_available = False
+
+        # INFO: Support for multiple account
+        if hasattr(self, 'ws_mainnet_usdt_perpetual') == False:
+            # INFO: Retain mainnet as mainnet websocket connection should be shared
+            self.ws_mainnet_usdt_perpetual = None
+
+        # INFO: Support for multiple account while preserving their websocket connection
+        if 'ws_usdt_perpetual' not in self.account[self.account_alias].keys():
+            self.account[self.account_alias]['ws_usdt_perpetual'] = None
 
         # INFO: Support for Bybit below
-        if exchange == 'bybit':
-            self.is_ws_available = True
+        if str(self.account[self.account_alias]['exchange']).lower() == 'bybit':
+            # INFO: Support for multiple account
+            if hasattr(self, 'is_ws_available') == False:
+                self.is_ws_available = True
+
             self.config__api_key = config['apiKey']
             self.config__api_secret = config['secret']
             self.mainnet_config__api_key = mainnet_config['apiKey']
@@ -141,15 +160,21 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
 
             self.establish_bybit_websocket()
 
-        self.ws_positions = collections.defaultdict(list)
-        self.ws_active_orders = collections.defaultdict(list)
-        self.ws_conditional_orders = collections.defaultdict(list)
-        self.ws_klines = collections.defaultdict(tuple)
+        # INFO: Support for multiple account
+        if hasattr(self, 'ws_klines') == False:
+            # INFO: Retain mainnet as mainnet websocket connection should be shared
+            self.ws_klines = collections.defaultdict(tuple)
+
+        # INFO: Support for multiple account while preserving their websocket connection
+        if 'ws_positions' not in self.account[self.account_alias].keys():
+            self.account[self.account_alias]['ws_active_orders'] = collections.defaultdict(list)
+            self.account[self.account_alias]['ws_conditional_orders'] = collections.defaultdict(list)
+            self.account[self.account_alias]['ws_positions'] = collections.defaultdict(list)
 
         self.currency = currency
         self.retries = retries
         self.debug = debug
-        balance = self.exchange.fetch_balance() if 'secret' in config else 0
+        balance = self.account[self.account_alias]['exchange'].fetch_balance() if 'secret' in config else 0
         try:
             if balance == 0 or not balance['free'][currency]:
                 self._cash = 0
@@ -170,53 +195,81 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
         self.establish_bybit_mainnet_usdt_perpetual_websocket()
 
     def establish_bybit_usdt_perpetual_websocket(self):
-        # Connect with authentication
-        self.ws_usdt_perpetual = usdt_perpetual.WebSocket(
-            test=self.sandbox,
-            api_key=self.config__api_key,
-            api_secret=self.config__api_secret,
-            # to pass a custom domain in case of connectivity problems, you can use:
-            # domain="bytick"  # the default is "bybit"
-        )
-        self.ws_usdt_perpetual.order_stream(self.handle_active_order)
-        self.ws_usdt_perpetual.stop_order_stream(self.handle_conditional_order)
-        self.ws_usdt_perpetual.position_stream(self.handle_positions)
+        proceed_with_connection = False
+
+        if self.account[self.account_alias]['ws_usdt_perpetual'] is None:
+            proceed_with_connection = True
+        else:
+            # Validate assumption made
+            assert self.account[self.account_alias]['ws_usdt_perpetual'] is not None
+
+            if self.account[self.account_alias]['ws_usdt_perpetual'].is_connected() == False:
+                proceed_with_connection = True
+
+        if proceed_with_connection == True:
+            # INFO: Support for multiple account while preserving their websocket connection
+            self.account[self.account_alias]['ws_usdt_perpetual'] = \
+                usdt_perpetual.WebSocket(
+                    test=self.sandbox,
+                    api_key=self.config__api_key,
+                    api_secret=self.config__api_secret,
+                    # to pass a custom domain in case of connectivity problems, you can use:
+                    # domain="bytick"  # the default is "bybit"
+                )
+            self.account[self.account_alias]['ws_usdt_perpetual'].order_stream(self.handle_active_order)
+            self.account[self.account_alias]['ws_usdt_perpetual'].stop_order_stream(self.handle_conditional_order)
+            self.account[self.account_alias]['ws_usdt_perpetual'].position_stream(self.handle_positions)
 
     def establish_bybit_mainnet_usdt_perpetual_websocket(self):
-        # Connect with authentication
-        self.ws_mainnet_usdt_perpetual = usdt_perpetual.WebSocket(
-            test=False,
-            api_key=self.mainnet_config__api_key,
-            api_secret=self.mainnet_config__api_secret,
-            # to pass a custom domain in case of connectivity problems, you can use:
-            # domain="bytick"  # the default is "bybit"
-        )
-        assert isinstance(self.symbols_id, list)
-        assert len(self.symbols_id) > 0
-        delay = 1
-        while True:
-            try:
-                # Reference: https://bybit-exchange.github.io/docs/futuresV2/linear/#t-websocketkline
-                # INFO: Subscribe to 1 minute candle
-                if len(self.symbols_id) == 1:
-                    self.ws_mainnet_usdt_perpetual.kline_stream(self.handle_klines, self.symbols_id[0], "1")
-                else:
-                    self.ws_mainnet_usdt_perpetual.kline_stream(self.handle_klines, self.symbols_id, "1")
-                break
-            except websocket._exceptions.WebSocketTimeoutException:
-                '''
-                To address: WebSocket USDT Perp connection failed. Too many connection attempts. pybit will no longer 
-                try to reconnect.
-                '''
-                # INFO: Delay before retry
-                time.sleep(delay * 1000)
-                delay *= 2
-                pass
+        proceed_with_connection = False
+
+        if self.ws_mainnet_usdt_perpetual is None:
+            proceed_with_connection = True
+        else:
+            # Validate assumption made
+            assert self.ws_mainnet_usdt_perpetual is not None
+
+            if self.ws_mainnet_usdt_perpetual.is_connected() == False:
+                proceed_with_connection = True
+
+        if proceed_with_connection == True:
+            # Connect with authentication
+            self.ws_mainnet_usdt_perpetual = usdt_perpetual.WebSocket(
+                test=False,
+                api_key=self.mainnet_config__api_key,
+                api_secret=self.mainnet_config__api_secret,
+                # to pass a custom domain in case of connectivity problems, you can use:
+                # domain="bytick"  # the default is "bybit"
+            )
+            assert isinstance(self.symbols_id, list)
+            assert len(self.symbols_id) > 0
+            delay = 1
+            while True:
+                try:
+                    # Reference: https://bybit-exchange.github.io/docs/futuresV2/linear/#t-websocketkline
+                    # INFO: Subscribe to 1 minute candle
+                    if len(self.symbols_id) == 1:
+                        self.ws_mainnet_usdt_perpetual.kline_stream(self.handle_klines, self.symbols_id[0], "1")
+                    else:
+                        self.ws_mainnet_usdt_perpetual.kline_stream(self.handle_klines, self.symbols_id, "1")
+                    break
+                except websocket._exceptions.WebSocketTimeoutException:
+                    '''
+                    To address: WebSocket USDT Perp connection failed. Too many connection attempts. pybit will no 
+                    longer try to reconnect.
+                    '''
+                    # INFO: Delay before retry
+                    time.sleep(delay * 1000)
+                    delay *= 2
+                    pass
+
+    def get_account_alias(self):
+        return self.account_alias
 
     def get_granularity(self, timeframe, compression):
-        if not self.exchange.has['fetchOHLCV']:
+        if not self.account[self.account_alias]['exchange'].has['fetchOHLCV']:
             raise NotImplementedError("'%s' exchange doesn't support fetching OHLCV data" %
-                                      self.exchange.name)
+                                      self.account[self.account_alias]['exchange'].name)
 
         granularity = self._GRANULARITIES.get((timeframe, compression))
         if granularity is None:
@@ -224,9 +277,10 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
                              "data for time frame %s, compression %s" %
                              (bt.TimeFrame.getname(timeframe), compression))
 
-        if self.exchange.timeframes and granularity not in self.exchange.timeframes:
+        if self.account[self.account_alias]['exchange'].timeframes and \
+                granularity not in self.account[self.account_alias]['exchange'].timeframes:
             raise ValueError("'%s' exchange doesn't support fetching OHLCV data for "
-                             "%s time frame" % (self.exchange.name, granularity))
+                             "%s time frame" % (self.account[self.account_alias]['exchange'].name, granularity))
 
         return granularity
 
@@ -242,7 +296,7 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
             # ))
             # pprint(message)
             assert type(message['data']) == list
-            responses = self.exchange.safe_value(message, 'data')
+            responses = self.account[self.account_alias]['exchange'].safe_value(message, 'data')
 
             '''
             Ported the following codes from CCXT Bybit Exchange
@@ -251,51 +305,54 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
             symbols = []
             symbol_type = None
             for rawPosition in responses:
-                symbol = self.exchange.safe_string(rawPosition, 'symbol')
+                symbol = self.account[self.account_alias]['exchange'].safe_string(rawPosition, 'symbol')
                 if symbol not in symbols:
                     symbols.append(symbol)
                 market = self.get_market(symbol)
                 if symbol_type is None:
                     symbol_type = market['type']
-                results.append(self.exchange.parse_position(rawPosition, market))
-            latest_changed_positions = self.exchange.filter_by_array(results, 'symbol', symbols, False)
+                results.append(self.account[self.account_alias]['exchange'].parse_position(rawPosition, market))
+            latest_changed_positions = self.account[self.account_alias]['exchange'].filter_by_array(results, 'symbol', symbols, False)
 
             for symbol_id in symbols:
-                if len(self.ws_positions[symbol_id]) == 0:
+                if len(self.account[self.account_alias]['ws_positions'][symbol_id]) == 0:
                     # Exercise the longer time route
                     # Store the outdated positions first
-                    self.ws_positions[symbol_id] = \
+                    self.account[self.account_alias]['ws_positions'][symbol_id] = \
                         self._fetch_opened_positions_from_exchange([symbol_id], params={'type': symbol_type})
 
                 # INFO: Identify ws_position to be changed
                 positions_to_be_changed = []
-                for i, _ in enumerate(self.ws_positions[symbol_id]):
+                for i, _ in enumerate(self.account[self.account_alias]['ws_positions'][symbol_id]):
                     for latest_changed_position in latest_changed_positions:
                         if latest_changed_position['symbol'] == symbol_id:
-                            if self.ws_positions[symbol_id][i]['side'] == latest_changed_position['side']:
+                            if self.account[self.account_alias]['ws_positions'][symbol_id][i]['side'] == \
+                                    latest_changed_position['side']:
                                 positions_to_be_changed.append((i, latest_changed_position))
 
                 # INFO: Update with the latest position from websocket
                 for position_to_be_changed_tuple in positions_to_be_changed:
                     index, latest_changed_position = position_to_be_changed_tuple
-                    self.ws_positions[symbol_id][index] = latest_changed_position
+                    self.account[self.account_alias]['ws_positions'][symbol_id][index] = latest_changed_position
 
                 # Legality Check
-                assert len(self.ws_positions[symbol_id]) <= 2, \
-                    "len(ws_positions): {} should not be greater than 2!!!".format(len(self.ws_positions[symbol_id]))
+                assert len(self.account[self.account_alias]['ws_positions'][symbol_id]) <= 2, \
+                    "len(ws_positions): {} should not be greater than 2!!!".format(
+                        len(self.account[self.account_alias]['ws_positions'][symbol_id]))
 
                 if symbol_type == "linear":
-                    assert len(self.ws_positions[symbol_id]) == 2, \
+                    assert len(self.account[self.account_alias]['ws_positions'][symbol_id]) == 2, \
                         "For {} symbol, len(ws_positions): {} does not equal to 2!!!".format(
-                            symbol_type, len(self.ws_positions[symbol_id])
+                            symbol_type, len(self.account[self.account_alias]['ws_positions'][symbol_id])
                         )
 
                 # Sort dictionary list by key
                 reverse = False
                 sort_by_key = 'side'
-                self.ws_positions[symbol_id] = sorted(self.ws_positions[symbol_id],
-                                                      key=lambda k: k[sort_by_key],
-                                                      reverse=reverse)
+                self.account[self.account_alias]['ws_positions'][symbol_id] = \
+                    sorted(self.account[self.account_alias]['ws_positions'][symbol_id],
+                           key=lambda k: k[sort_by_key],
+                           reverse=reverse)
         except Exception:
             traceback.print_exc()
 
@@ -312,8 +369,8 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
             symbols_id = []
             for order in responses:
                 market = self.get_market(order['symbol'])
-                result = self.exchange.safe_value(message, 'data')
-                active_order = self.exchange.parse_order(result[0], market)
+                result = self.account[self.account_alias]['exchange'].safe_value(message, 'data')
+                active_order = self.account[self.account_alias]['exchange'].parse_order(result[0], market)
 
                 # INFO: Strip away "/" and ":USDT"
                 active_order['symbol'] = active_order['symbol'].replace("/", "")
@@ -342,17 +399,17 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
 
                 # INFO: Look for existing order in the list
                 ws_active_orders_to_be_removed = []
-                for ws_active_order in self.ws_active_orders[symbol_id]:
+                for ws_active_order in self.account[self.account_alias]['ws_active_orders'][symbol_id]:
                     if ws_active_order['id'] in active_order_ids_to_be_added:
                         ws_active_orders_to_be_removed.append(ws_active_order)
 
                 # INFO: Remove the existing ws active order
                 for ws_active_order in ws_active_orders_to_be_removed:
-                    self.ws_active_orders[symbol_id].remove(ws_active_order)
+                    self.account[self.account_alias]['ws_active_orders'][symbol_id].remove(ws_active_order)
 
                 # INFO: Add the latest active orders
                 for active_order in active_orders_to_be_added[symbol_id]:
-                    self.ws_active_orders[symbol_id].append(active_order)
+                    self.account[self.account_alias]['ws_active_orders'][symbol_id].append(active_order)
         except Exception:
             traceback.print_exc()
 
@@ -367,8 +424,8 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
             assert type(responses) == list
             for order in responses:
                 market = self.get_market(order['symbol'])
-                result = self.exchange.safe_value(message, 'data')
-                conditional_order = self.exchange.parse_order(result[0], market)
+                result = self.account[self.account_alias]['exchange'].safe_value(message, 'data')
+                conditional_order = self.account[self.account_alias]['exchange'].parse_order(result[0], market)
 
                 # INFO: Strip away "/" and ":USDT"
                 conditional_order['symbol'] = conditional_order['symbol'].replace("/", "")
@@ -386,7 +443,7 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
                 #     inspect.getframeinfo(inspect.currentframe()).lineno,
                 #     conditional_order['id'],
                 # ))
-                self.ws_conditional_orders[symbol_id].append(conditional_order)
+                self.account[self.account_alias]['ws_conditional_orders'][symbol_id].append(conditional_order)
         except Exception:
             traceback.print_exc()
 
@@ -401,8 +458,8 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
             # ))
             # pprint(message)
             assert type(message['data']) == list
-            topic_responses = self.exchange.safe_value(message, 'topic')
-            data_responses = self.exchange.safe_value(message, 'data')
+            topic_responses = self.account[self.account_alias]['exchange'].safe_value(message, 'topic')
+            data_responses = self.account[self.account_alias]['exchange'].safe_value(message, 'data')
 
             topic_responses_split = topic_responses.split(".")
             assert len(topic_responses_split) == 3
@@ -412,18 +469,17 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
                 # INFO: Data sent timestamp in seconds * 10^6
                 tstamp = int(data_responses[0]['timestamp']) / 1e6
                 ohlcv = \
-                    (float(data_responses[0]['open']), float(data_responses[0]['high']), float(data_responses[0]['low']),
-                     float(data_responses[0]['close']), float(data_responses[0]['volume']))
+                    (float(data_responses[0]['open']), float(data_responses[0]['high']),
+                     float(data_responses[0]['low']), float(data_responses[0]['close']),
+                     float(data_responses[0]['volume']))
                 self.ws_klines[symbol_id] = (tstamp, ohlcv)
         except Exception:
             traceback.print_exc()
 
     def run_pulse_check_for_ws(self):
         if self.is_ws_available == True:
-            if self.ws_usdt_perpetual.is_connected() == False:
-                self.establish_bybit_usdt_perpetual_websocket()
-            if self.ws_mainnet_usdt_perpetual.is_connected() == False:
-                self.establish_bybit_mainnet_usdt_perpetual_websocket()
+            self.establish_bybit_usdt_perpetual_websocket()
+            self.establish_bybit_mainnet_usdt_perpetual_websocket()
 
     def retry(method):
         @wraps(method)
@@ -431,7 +487,7 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
             for i in range(self.retries):
                 if self.debug:
                     print('{} - {} - Attempt {}'.format(datetime.now(), method.__name__, i))
-                time.sleep(self.exchange.rateLimit / 1000)
+                time.sleep(self.account[self.account_alias]['exchange'].rateLimit / 1000)
                 try:
                     return method(self, *args, **kwargs)
                 except (NetworkError, ExchangeError):
@@ -442,17 +498,17 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
 
     @retry
     def get_market(self, symbol):
-        market = self.exchange.market(symbol)
+        market = self.account[self.account_alias]['exchange'].market(symbol)
         return market
 
     @retry
     def get_wallet_balance(self, currency, params=None):
-        balance = self.exchange.fetch_balance(params)
+        balance = self.account[self.account_alias]['exchange'].fetch_balance(params)
         return balance
 
     @retry
     def get_balance(self):
-        balance = self.exchange.fetch_balance()
+        balance = self.account[self.account_alias]['exchange'].fetch_balance()
 
         cash = balance['free'][self.currency]
         value = balance['total'][self.currency]
@@ -466,30 +522,30 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
     @retry
     def create_order(self, symbol, order_type, side, amount, price, params):
         # returns the order
-        return self.exchange.create_order(symbol=symbol, type=order_type, side=side,
-                                          amount=amount, price=price, params=params)
+        return self.account[self.account_alias]['exchange'].create_order(
+            symbol=symbol, type=order_type, side=side, amount=amount, price=price, params=params)
 
     @retry
     def edit_order(self, order_id, symbol, type, side, amount=None, price=None, trigger_price=None, params={}):
         # returns the order
-        return self.exchange.edit_order(order_id, symbol, type, side, amount=amount, price=price, 
-                                        trigger_price=trigger_price, params=params)
+        return self.account[self.account_alias]['exchange'].edit_order(
+            order_id, symbol, type, side, amount=amount, price=price, trigger_price=trigger_price, params=params)
 
     @retry
     def cancel_order(self, order_id, symbol):
-        return self.exchange.cancel_order(order_id, symbol)
+        return self.account[self.account_alias]['exchange'].cancel_order(order_id, symbol)
 
     @retry
     def fetch_trades(self, symbol):
-        return self.exchange.fetch_trades(symbol)
+        return self.account[self.account_alias]['exchange'].fetch_trades(symbol)
 
     @retry
     def parse_timeframe(self, timeframe):
-        return self.exchange.parse_timeframe(timeframe)
+        return self.account[self.account_alias]['exchange'].parse_timeframe(timeframe)
 
     @retry
     def filter_by_since_limit(self, array, since=None, limit=None, key='timestamp', tail=False):
-        return self.exchange.filter_by_since_limit(array, since, limit, key, tail)
+        return self.account[self.account_alias]['exchange'].filter_by_since_limit(array, since, limit, key, tail)
 
     @retry
     def fetch_ohlcv(self, symbol, timeframe, since, limit, params={}):
@@ -511,7 +567,7 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
         try:
             # INFO: Due to nature of order is processed async, the order could not be found immediately right after
             #       order is is opened. Hence, perform retry to confirm if that's the case.
-            order = self.exchange.fetch_order(oid, symbol_id, params)
+            order = self.account[self.account_alias]['exchange'].fetch_order(oid, symbol_id, params)
         except OrderNotFound:
             # INFO: Ignore order not found error
             pass
@@ -537,7 +593,7 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
                 #     oid,
                 # ))
 
-                for active_order in self.ws_active_orders[symbol_id]:
+                for active_order in self.account[self.account_alias]['ws_active_orders'][symbol_id]:
                     # print("{} Line: {}: Comparing active_order ID: {}".format(
                     #     inspect.getframeinfo(inspect.currentframe()).function,
                     #     inspect.getframeinfo(inspect.currentframe()).lineno,
@@ -547,16 +603,16 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
                     if oid == active_order['id']:
                         # Extract the order from the websocket
                         order = active_order
-                        # self.ws_active_orders[symbol_id].remove(active_order)
+                        # self.account[self.account_alias]['ws_active_orders'][symbol_id].remove(active_order)
                         found_ws_order = True
                         break
             # Else if we are looking for Conditional Order
             else:
-                for conditional_order in self.ws_conditional_orders[symbol_id]:
+                for conditional_order in self.account[self.account_alias]['ws_conditional_orders'][symbol_id]:
                     if conditional_oid == conditional_order['id']:
                         # Extract the order from the websocket
                         order = conditional_order
-                        # self.ws_conditional_orders[symbol_id].remove(conditional_order)
+                        # self.account[self.account_alias]['ws_conditional_orders'][symbol_id].remove(conditional_order)
                         found_ws_order = True
                         break
 
@@ -591,41 +647,47 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
     @retry
     def fetch_orders(self, symbol=None, since=None, limit=None, params={}):
         if symbol is None:
-            return self.exchange.fetch_orders(since=since, limit=limit, params=params)
+            return self.account[self.account_alias]['exchange'].fetch_orders(
+                since=since, limit=limit, params=params)
         else:
-            return self.exchange.fetch_orders(symbol=symbol, since=since, limit=limit, params=params)
+            return self.account[self.account_alias]['exchange'].fetch_orders(
+                symbol=symbol, since=since, limit=limit, params=params)
 
     @retry
     def fetch_opened_orders(self, symbol=None, since=None, limit=None, params={}):
         if symbol is None:
-            return self.exchange.fetch_open_orders(since=since, limit=limit, params=params)
+            return self.account[self.account_alias]['exchange'].fetch_open_orders(
+                since=since, limit=limit, params=params)
         else:
-            return self.exchange.fetch_open_orders(symbol=symbol, since=since, limit=limit, params=params)
+            return self.account[self.account_alias]['exchange'].fetch_open_orders(
+                symbol=symbol, since=since, limit=limit, params=params)
 
     @retry
     def fetch_closed_orders(self, symbol=None, since=None, limit=None, params={}):
         if symbol is None:
-            return self.exchange.fetch_closed_orders(since=since, limit=limit, params=params)
+            return self.account[self.account_alias]['exchange'].fetch_closed_orders(
+                since=since, limit=limit, params=params)
         else:
-            return self.exchange.fetch_closed_orders(symbol=symbol, since=since, limit=limit, params=params)
+            return self.account[self.account_alias]['exchange'].fetch_closed_orders(
+                symbol=symbol, since=since, limit=limit, params=params)
 
     @retry
     def _fetch_opened_positions_from_exchange(self, symbols=None, params={}):
         assert len(symbols) == 1
-        return self.exchange.fetch_positions(symbols=symbols, params=params)
+        return self.account[self.account_alias]['exchange'].fetch_positions(symbols=symbols, params=params)
 
     def fetch_opened_positions(self, symbols=None, params={}):
         assert len(symbols) == 1
         symbol_id = symbols[0]
         if self.is_ws_available == True:
-            if len(self.ws_positions[symbol_id]) > 0:
-                ret_positions = self.ws_positions[symbol_id]
+            if len(self.account[self.account_alias]['ws_positions'][symbol_id]) > 0:
+                ret_positions = self.account[self.account_alias]['ws_positions'][symbol_id]
             else:
                 # Exercise the longer time route
                 ret_positions = self._fetch_opened_positions_from_exchange([symbol_id], params)
 
                 # Cache the position as if websocket positions. This will prevent us to hit the exchange rate limit.
-                self.ws_positions[symbol_id] = ret_positions
+                self.account[self.account_alias]['ws_positions'][symbol_id] = ret_positions
         else:
             ret_positions = self._fetch_opened_positions_from_exchange([symbol_id], params)
         return ret_positions
@@ -648,4 +710,4 @@ class CCXTStore(with_metaclass(MetaSingleton, object)):
 
         print(dir(ccxt.hitbtc()))
         '''
-        return getattr(self.exchange, endpoint)(params)
+        return getattr(self.account[self.account_alias]['exchange'], endpoint)(params)
