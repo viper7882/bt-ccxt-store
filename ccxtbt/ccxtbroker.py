@@ -211,7 +211,11 @@ class CCXTBroker(with_metaclass(MetaCCXTBroker, BrokerBase)):
         self.startingvalue = self.store._value
 
         self.use_order_params = True
-        self.max_retry = 5
+        # INFO: 30 seconds of retry
+        self.max_retry = 30 * 10
+
+    def get_account_alias(self):
+        return self.store.get_account_alias()
 
     def get_balance(self):
         self.store.get_balance()
@@ -316,7 +320,7 @@ class CCXTBroker(with_metaclass(MetaCCXTBroker, BrokerBase)):
 
         for data in datas or self.positions:
             comminfo = self.getcommissioninfo(data)
-            position = self.positions[data]
+            position = self.getposition(data)
 
             if tick_data is None:
                 close_price = data.close[0]
@@ -502,8 +506,8 @@ class CCXTBroker(with_metaclass(MetaCCXTBroker, BrokerBase)):
                 if ccxt_order is not None:
                     break
             except OrderNotFound:
+                time.sleep(0.1)
                 pass
-            time.sleep(0.1)
         return ccxt_order
 
     def add_comminfo(self, order):
