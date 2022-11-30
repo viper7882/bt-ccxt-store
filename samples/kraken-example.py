@@ -19,20 +19,20 @@ class TestStrategy(bt.Strategy):
         # NOTE: If you try to get the wallet balance from a wallet you have
         # never funded, a KeyError will be raised! Change LTC below as approriate
         if self.live_data:
-            cash, value = self.broker.get_wallet_balance('LTC')
+            cash, value = self.broker_or_exchange.get_wallet_balance('LTC')
         else:
             # Avoid checking the balance during a backfill. Otherwise, it will
             # Slow things down.
             cash = 'NA'
 
-        for data in self.datas:
+        for datafeed in self.datafeeds:
 
             print('{} - {} | Cash {} | O: {} H: {} L: {} C: {} V:{} SMA:{}'.format(data.datetime.datetime(),
-                data._name, cash, data.open[0], data.high[0], data.low[0], data.close[0], data.volume[0],
+                datafeed._name, cash, data.open[0], data.high[0], data.low[0], data.close[0], data.volume[0],
                 self.sma[0]))
 
-    def notify_data(self, data, status, *args, **kwargs):
-        dn = data._name
+    def datafeed_notification(self, data, status, *args, **kwargs):
+        dn = datafeed._name
         dt = datetime.now()
         msg= 'Data Status: {}'.format(data._getstatusname(status))
         print(dt,dn,msg)
@@ -50,7 +50,7 @@ cerebro = bt.Cerebro(quicknotify=True)
 
 
 # Add the strategy
-cerebro.addstrategy(TestStrategy)
+cerebro.add_strategy(TestStrategy)
 
 # Create our store
 config = {'apiKey': apikey,
@@ -68,12 +68,12 @@ store = CCXTStore(exchange='kraken', currency='LTC', config=config, retries=5, d
 # ----------------------------------------------
 # Broker mappings have been added since some exchanges expect different values
 # to the defaults. Case in point, Kraken vs Bitmex. NOTE: Broker mappings are not
-# required if the broker uses the same values as the defaults in CCXTBroker.
+# required if the broker uses the same values as the defaults in BT_CCXT_Exchange.
 broker_mapping = {
     'order_types': {
         bt.Order.Market: 'market',
         bt.Order.Limit: 'limit',
-        bt.Order.Stop: 'stop-loss', #stop-loss for kraken, stop for bitmex
+        bt.Order.StopMarket: 'stop-loss', #stop-loss for kraken, stop for bitmex
         bt.Order.StopLimit: 'stop limit'
     },
     'mappings':{
@@ -87,8 +87,8 @@ broker_mapping = {
             }
     }
 
-broker = store.getbroker(broker_mapping=broker_mapping)
-cerebro.setbroker(broker)
+broker = store.get_broker_or_exchange(broker_mapping=broker_mapping)
+cerebro.set_broker_or_exchange(broker)
 
 # Get our data
 # Drop newest will prevent us from loading partial data from incomplete candles
@@ -98,7 +98,7 @@ data = store.getdata(dataname='LTC/USD', name="LTCUSD",
                          compression=1, ohlcv_limit=50, drop_newest=True) #, historical=True)
 
 # Add the feed
-cerebro.adddata(data)
+cerebro.add_datafeed(data)
 
 # Run the strategy
 cerebro.run()

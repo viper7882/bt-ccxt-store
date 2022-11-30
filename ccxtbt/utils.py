@@ -7,7 +7,8 @@ import pandas as pd
 
 from time import time as timer
 
-from .specs import CCXT_DATA_COLUMNS, DATETIME_COL, OPEN_COL, HIGH_COL, LOW_COL, CLOSE_COL, VOLUME_COL, DATE_TIME_FORMAT_WITH_MS_PRECISION
+from .bt_ccxt__specifications import CCXT_DATA_COLUMNS, OPEN_COL, HIGH_COL, LOW_COL, CLOSE_COL, VOLUME_COL, \
+    DATE_TIME_FORMAT_WITH_MS_PRECISION
 
 
 def print_timestamp_checkpoint(function, lineno, comment="Checkpoint timestamp", start=None):
@@ -109,7 +110,7 @@ def dump_ohlcv(function, lineno, data_name, ohlcv_list):
         kline_volume = ohlcv[5]
 
         msg = "{} Line: {}: INFO: {}: [{}]: {}: ".format(
-            function, lineno, data_name, i + 1, kline_dt.isoformat().replace("T", " "),
+            function, lineno, data_name, i + 1, kline_dt.isoformat().replace("T", " ")[:-3],
         )
         msg += "{}: {}, ".format(CCXT_DATA_COLUMNS[OPEN_COL], kline_open)
         msg += "{}: {}, ".format(CCXT_DATA_COLUMNS[HIGH_COL], kline_high)
@@ -119,6 +120,13 @@ def dump_ohlcv(function, lineno, data_name, ohlcv_list):
 
         # INFO: Strip ", " from the string
         print(msg[:-2])
+
+
+def legality_check_not_none_obj(obj, obj_name):
+    if obj is None:
+        if obj_name is None:
+            obj_name = get_var_name(obj)
+        raise Exception("{}: {} must NOT be {}!!!".format(inspect.currentframe(), obj_name, obj))
 
 
 def round_to_nearest_decimal_points(x, prec, base):
@@ -148,10 +156,63 @@ def round_to_nearest_decimal_points(x, prec, base):
         raise Exception("Unsupported type: {}!!!".format(type(x)))
 
 
-def legality_check_not_none_obj(obj, obj_name):
-    if obj is None:
-        if obj_name is None:
-            obj_name = get_var_name(obj)
-        raise Exception("{}: {} must NOT be {}!!!".format(inspect.currentframe(), obj_name, obj))
+def get_var_name(variable):
+    '''
+    Credits: https://www.codespeedy.com/get-a-variable-name-as-a-string-in-python/
+    '''
+    var_name = None
+    for name in globals():
+        if eval(name) == variable:
+            if eval(name) is not None:
+                var_name = name
+                break
+            else:
+                var_name = "None"
+    return var_name
 
 
+def dump_obj(obj, name = "obj"):
+    '''
+    Credits: https://stackoverflow.com/questions/192109/is-there-a-built-in-function-to-print-all-the-current-properties-and-values-of-a?rq=1
+    Credits: https://stackoverflow.com/questions/21542753/dir-without-built-in-methods
+    '''
+    # INFO: Exclude built-in methods
+    attribute_list = [attr for attr in dir(obj) if not attr.startswith('__')]
+    for attribute in attribute_list:
+        print("{}.{} = {}".format(name, attribute, getattr(obj, attribute)))
+
+
+def truncate(f, n):
+    '''
+    # Credits: https://stackoverflow.com/questions/29246455/python-setting-decimal-place-range-without-rounding
+    '''
+    return math.floor(f * 10 ** n) / 10 ** n
+
+
+def get_time_diff(start):
+    prog_time_diff = timer() - start
+    hours, rem = divmod(prog_time_diff, 3600)
+    minutes, seconds = divmod(rem, 60)
+    minutes = int(minutes)
+    return hours, minutes, seconds
+
+
+def get_ccxt_order_id(order):
+    ccxt_order_id = None
+    if isinstance(order, dict):
+        if 'id' in order.keys():
+            ccxt_order_id = order['id']
+        elif 'stop_order_id' in order.keys():
+            ccxt_order_id = order['stop_order_id']
+        elif 'order_id' in order.keys():
+            ccxt_order_id = order['order_id']
+    else:
+        # assert type(order).__name__ == BT_CCXT_Order.__name__
+        if 'id' in order.ccxt_order.keys():
+            ccxt_order_id = order.ccxt_order['id']
+        elif 'stop_order_id' in order.ccxt_order['info'].keys():
+            ccxt_order_id = order.ccxt_order['info']['stop_order_id']
+        elif 'order_id' in order.ccxt_order['info'].keys():
+            ccxt_order_id = order.ccxt_order['info']['order_id']
+    legality_check_not_none_obj(ccxt_order_id, "ccxt_order_id")
+    return ccxt_order_id

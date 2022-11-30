@@ -31,13 +31,13 @@ class TestStrategy(bt.Strategy):
             self.order = self.sell(size=2.0, exectype=Order.StopLimit, price=7.485, stopPrice=7.485)
             self.sold = True
 
-        for data in self.datas:
+        for datafeed in self.datafeeds:
 
             print('{} - {} | O: {} H: {} L: {} C: {} V:{}'.format(data.datetime.datetime(),
-                                                                                   data._name, data.open[0], data.high[0], data.low[0], data.close[0], data.volume[0]))
+                                                                                   datafeed._name, data.open[0], data.high[0], data.low[0], data.close[0], data.volume[0]))
 
-    def notify_data(self, data, status, *args, **kwargs):
-        dn = data._name
+    def datafeed_notification(self, data, status, *args, **kwargs):
+        dn = datafeed._name
         dt = datetime.now()
         msg= 'Data Status: {}, Order Status: {}'.format(data._getstatusname(status), status)
         print(dt,dn,msg)
@@ -55,10 +55,10 @@ with open(abs_file_path, 'r') as f:
 
 cerebro = bt.Cerebro(quicknotify=True)
 
-cerebro.broker.setcash(10.0)
+cerebro.broker_or_exchange.setcash(10.0)
 
 # Add the strategy
-cerebro.addstrategy(TestStrategy)
+cerebro.add_strategy(TestStrategy)
 
 # Create our store
 config = {'apiKey': params["binance"]["apikey"],
@@ -74,12 +74,12 @@ store = CCXTStore(exchange='binance', currency='BNB', config=config, retries=5, 
 # ----------------------------------------------
 # Broker mappings have been added since some exchanges expect different values
 # to the defaults. Case in point, Kraken vs Bitmex. NOTE: Broker mappings are not
-# required if the broker uses the same values as the defaults in CCXTBroker.
+# required if the broker uses the same values as the defaults in BT_CCXT_Exchange.
 broker_mapping = {
     'order_types': {
         bt.Order.Market: 'market',
         bt.Order.Limit: 'limit',
-        bt.Order.Stop: 'stop_loss', #stop-loss for kraken, stop for bitmex
+        bt.Order.StopMarket: 'stop_loss', #stop-loss for kraken, stop for bitmex
         bt.Order.StopLimit: 'TAKE_PROFIT_LIMIT'
     },
     'mappings':{
@@ -93,8 +93,8 @@ broker_mapping = {
     }
 }
 
-broker = store.getbroker(broker_mapping=broker_mapping)
-cerebro.setbroker(broker)
+broker = store.get_broker_or_exchange(broker_mapping=broker_mapping)
+cerebro.set_broker_or_exchange(broker)
 
 # Get our data
 # Drop newest will prevent us from loading partial data from incomplete candles
@@ -104,7 +104,7 @@ data = store.getdata(dataname='BNB/USDT', name="BNBUSDT",
                      compression=1, ohlcv_limit=50, drop_newest=True) #, historical=True)
 
 # Add the feed
-cerebro.adddata(data)
+cerebro.add_datafeed(data)
 
 # Run the strategy
 cerebro.run()

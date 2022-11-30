@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 from backtrader import Strategy, Cerebro, TimeFrame
 
-from ccxtbt import CCXTFeed, CCXTStore
+from ccxtbt import BT_CCXT_Feed, CCXTStore
 
 
 class TestFeedInitialFetchBalance(unittest.TestCase):
@@ -14,7 +14,7 @@ class TestFeedInitialFetchBalance(unittest.TestCase):
     while obviously fetching the balance of ones account does need authentication.
     Usually the CCXTStore fetches the balance when it is initialized which is not a problem during live trading
     operation.
-    But the store is also initialized when the CCXTFeed is created and used during unit testing and backtesting.
+    But the store is also initialized when the BT_CCXT_Feed is created and used during unit testing and backtesting.
     For this case it is beneficial to turn off the initial fetching of the balance as it is not really needed and
     it avoids needing to have api keys.
     This makes it possible for users that don't have a Binance api key to run backtesting and unit tests with real
@@ -67,17 +67,17 @@ class TestStrategy(Strategy):
         self.next_runs = 0
 
     def next(self, dt=None):
-        dt = dt or self.datas[0].datetime.datetime(0)
-        print('%s closing price: %s' % (dt.isoformat(), self.datas[0].close[0]))
+        dt = dt or self.datafeeds[0].datetime.datetime(0)
+        print('%s closing price: %s' % (dt.isoformat(), self.datafeeds[0].close[0]))
         self.next_runs += 1
 
 
 def backtesting(config):
     cerebro = Cerebro()
 
-    cerebro.addstrategy(TestStrategy)
+    cerebro.add_strategy(TestStrategy)
 
-    cerebro.adddata(CCXTFeed(exchange='binance',
+    cerebro.add_datafeed(BT_CCXT_Feed(exchange='binance',
                              dataname='BNB/USDT',
                              timeframe=TimeFrame.Minutes,
                              fromdate=datetime(2019, 1, 1, 0, 0),

@@ -25,32 +25,30 @@ from __future__ import (absolute_import, division, print_function,
 import dateutil.parser
 import inspect
 import pandas as pd
-import time
 
 from collections import deque
-from datetime import datetime, timedelta
-from pprint import pprint
+from datetime import datetime
 
 import backtrader as bt
 from backtrader.feed import DataBase
 from backtrader.utils.py3 import with_metaclass
 
-from .ccxtstore import CCXTStore
-from .specs import CCXT_DATA_COLUMNS
-from .utils import print_timestamp_checkpoint, get_ha_bars, dump_ohlcv
+from .bt_ccxt__specifications import CCXT_DATA_COLUMNS
+from .bt_ccxt_instrument__classes import BT_CCXT_Instrument
+from .utils import get_ha_bars
 
 
 class MetaCCXTFeed(DataBase.__class__):
     def __init__(cls, name, bases, dct):
         '''Class has already been created ... register'''
         # Initialize the class
-        super(MetaCCXTFeed, cls).__init__(name, bases, dct)
+        super().__init__(name, bases, dct)
 
-        # Register with the store
-        CCXTStore.DataCls = cls
+        # Register with account_or_store
+        BT_CCXT_Instrument.Datafeed_Cls = cls
 
 
-class CCXTFeed(with_metaclass(MetaCCXTFeed, DataBase)):
+class BT_CCXT_Feed(with_metaclass(MetaCCXTFeed, DataBase)):
     """
     CryptoCurrency eXchange Trading Library Data Feed.
     Params:
@@ -84,42 +82,57 @@ class CCXTFeed(with_metaclass(MetaCCXTFeed, DataBase)):
         ('debug', False)
     )
 
-    _store = CCXTStore
+    _instrument = BT_CCXT_Instrument
 
     # States for the Finite State Machine in _load
-    _ST_LIVE, _ST_HISTORBACK, _ST_OVER = range(3)
+    _LIVE_STATE, _HISTORY_BACK_STATE, _OVER_STATE = range(3)
 
     # def __init__(self, exchange, symbol, ohlcv_limit=None, config={}, retries=5):
     def __init__(self, **kwargs):
-        # self.store = CCXTStore(exchange, config, retries)
-        self.store = self._store(**kwargs)
+        super().__init__()
+
         self._data = deque()  # data queue for price data
         self._last_ts = 0  # last processed timestamp for ohlcv
         self._ts_delta = None  # timestamp delta for ohlcv
+        self._name = None  # name of datafeed
 
         # Legality Check
         if self.p.convert_to_heikin_ashi:
             assert self.p.symbol_tick_size is not None
             assert self.p.price_digits is not None
 
+    def __repr__(self):
+        return str(self)
+
+    def __str__(self):
+        items = list()
+        items.append('--- BT_CCXT_Feed Begin ---')
+        items.append('- Name: {}'.format(self._name))
+        items.append('--- BT_CCXT_Feed End ---')
+        ret_value = str('\n'.join(items))
+        return ret_value
+
+    def set__parent(self, owner):
+        self.instrument = owner
+
     def start(self, ):
         DataBase.start(self)
 
         if self.p.fromdate:
-            self._state = self._ST_HISTORBACK
+            self._state = self._HISTORY_BACK_STATE
             self.put_notification(self.DELAYED)
             self._fetch_ohlcv(self.p.fromdate)
 
         else:
-            self._state = self._ST_LIVE
+            self._state = self._LIVE_STATE
             self.put_notification(self.LIVE)
 
     def _load(self):
-        if self._state == self._ST_OVER:
+        if self._state == self._OVER_STATE:
             return False
 
         while True:
-            if self._state == self._ST_LIVE:
+            if self._state == self._LIVE_STATE:
                 if self._timeframe == bt.TimeFrame.Ticks:
                     ret_value = self._load_ticks()
                     return ret_value
@@ -140,7 +153,7 @@ class CCXTFeed(with_metaclass(MetaCCXTFeed, DataBase)):
                         ))
                     return ret
 
-            elif self._state == self._ST_HISTORBACK:
+            elif self._state == self._HISTORY_BACK_STATE:
                 ret = self._load_ohlcv()
                 if ret:
                     if self.p.debug:
@@ -155,16 +168,16 @@ class CCXTFeed(with_metaclass(MetaCCXTFeed, DataBase)):
                     # End of historical data
                     if self.p.historical:  # only historical
                         self.put_notification(self.DISCONNECTED)
-                        self._state = self._ST_OVER
+                        self._state = self._OVER_STATE
                         return False  # end of historical
                     else:
-                        self._state = self._ST_LIVE
+                        self._state = self._LIVE_STATE
                         self.put_notification(self.LIVE)
 
     def retry_fetch_ohlcv(self, symbol_id, timeframe, fetch_since, limit, max_retries):
         for num_retries in range(max_retries):
             try:
-                ohlcv = self.store.fetch_ohlcv(
+                ohlcv = self.instrument.fetch_ohlcv(
                     symbol=symbol_id,
                     timeframe=timeframe,
                     since=fetch_since,
@@ -176,7 +189,7 @@ class CCXTFeed(with_metaclass(MetaCCXTFeed, DataBase)):
 
     def _fetch_ohlcv(self, fromdate=None, todate=None, max_retries=300):
         """Fetch OHLCV data into self._data queue"""
-        granularity = self.store.get_granularity(self._timeframe, self._compression)
+        granularity = self.instrument.get_granularity(self._timeframe, self._compression)
 
         if fromdate:
             since = int((fromdate - datetime(1970, 1, 1)).total_seconds() * 1000)
@@ -196,7 +209,7 @@ class CCXTFeed(with_metaclass(MetaCCXTFeed, DataBase)):
 
         limit = self.p.ohlcv_limit
 
-        timeframe_duration_in_seconds = self.store.parse_timeframe(granularity)
+        timeframe_duration_in_seconds = self.instrument.parse_timeframe(granularity)
         timeframe_duration_in_ms = timeframe_duration_in_seconds * 1000
         time_delta = limit * timeframe_duration_in_ms
         all_ohlcv = []
@@ -208,43 +221,15 @@ class CCXTFeed(with_metaclass(MetaCCXTFeed, DataBase)):
             fetch_since = (ohlcv[-1][0] + 1) if len(ohlcv) else (fetch_since + time_delta)
             all_ohlcv = all_ohlcv + ohlcv
 
-        ohlcv_list = self.store.filter_by_since_limit(all_ohlcv, since, limit=None, key=0)
+        ohlcv_list = self.instrument.filter_by_since_limit(all_ohlcv, since, limit=None, key=0)
         # Filter off excessive data should there is any
         ohlcv_list = [entry for i, entry in enumerate(ohlcv_list) if ohlcv_list[i][0] < until]
-
-        # if self._name == "1m_Long_Candlestick":
-        #     print("{} Line: {}: {}: {}: BEFORE: ohlcv_list: ".format(
-        #         inspect.getframeinfo(inspect.currentframe()).function,
-        #         inspect.getframeinfo(inspect.currentframe()).lineno,
-        #         self.p.dataname,
-        #         self._name,
-        #     ))
-        #     dump_ohlcv(
-        #         inspect.getframeinfo(inspect.currentframe()).function,
-        #         inspect.getframeinfo(inspect.currentframe()).lineno,
-        #         self._name,
-        #         ohlcv_list,
-        #     )
 
         # Check to see if dropping the latest candle will help with
         # exchanges which return partial data
         if self.p.drop_newest:
             if len(ohlcv_list) > 0:
                 del ohlcv_list[-1]
-
-        # if self._name == "1m_Long_Candlestick":
-        #     print("{} Line: {}: {}: {}: AFTER: ohlcv_list: ".format(
-        #         inspect.getframeinfo(inspect.currentframe()).function,
-        #         inspect.getframeinfo(inspect.currentframe()).lineno,
-        #         self.p.dataname,
-        #         self._name,
-        #     ))
-        #     dump_ohlcv(
-        #         inspect.getframeinfo(inspect.currentframe()).function,
-        #         inspect.getframeinfo(inspect.currentframe()).lineno,
-        #         self._name,
-        #         ohlcv_list,
-        #     )
 
         if self.p.convert_to_heikin_ashi:
             if len(ohlcv_list) > 0:
@@ -284,8 +269,8 @@ class CCXTFeed(with_metaclass(MetaCCXTFeed, DataBase)):
     def _load_ticks(self):
         # start = timer()
 
-        if self.store.is_ws_available:
-            (tstamp, ohlcv) = self.store.ws_klines[self.p.dataname]
+        if self.instrument.is_ws_available():
+            (tstamp, ohlcv) = self.instrument.get_ws_klines(self.p.dataname)
 
             # Convert timestamp to datetime in UTC timezone
             kline_dt = datetime.utcfromtimestamp(tstamp)
@@ -297,21 +282,21 @@ class CCXTFeed(with_metaclass(MetaCCXTFeed, DataBase)):
             self.lines.close[0] = ohlcv[3]
             self.lines.volume[0] = ohlcv[4]
         else:
-            order_book = self.store.fetch_order_book(symbol=self.p.dataname)
+            order_book = self.instrument.fetch_order_book(symbol=self.p.dataname)
             # nearest_ask = order_book['asks'][0][0]
             nearest_bid = order_book['bids'][0][0]
             nearest_ask_volume = order_book['asks'][0][1]
             nearest_bid_volume = order_book['bids'][0][1]
-    
+
             # Convert isoformat to datetime
             order_book_datetime = dateutil.parser.isoparse(order_book['datetime'])
-    
+
             self.lines.datetime[0] = bt.date2num(order_book_datetime)
             self.lines.open[0] = nearest_bid
             self.lines.high[0] = nearest_bid
             self.lines.low[0] = nearest_bid
             self.lines.close[0] = nearest_bid
-    
+
             # INFO: Volume below is not an actual value provided by most exchange
             # INFO: Consuming average volume is probably a better way to go
             self.lines.volume[0] = (nearest_bid_volume + nearest_ask_volume) / 2
@@ -337,8 +322,8 @@ class CCXTFeed(with_metaclass(MetaCCXTFeed, DataBase)):
 
         return True
 
-    def haslivedata(self):
-        return self._state == self._ST_LIVE and self._data
+    def has_live_data(self):
+        return self._state == self._LIVE_STATE and self._data
 
-    def islive(self):
+    def is_live(self):
         return not self.p.historical

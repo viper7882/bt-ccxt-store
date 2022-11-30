@@ -22,7 +22,7 @@ class CustomStrategy(bt.Strategy):
     def __init__(self):
         self.status = "DISCONNECTED"
 
-    def notify_data(self, data, status, *args, **kwargs):
+    def datafeed_notification(self, data, status, *args, **kwargs):
         self.status = data._getstatusname(status)
         if status == data.LIVE:
             self.log("LIVE DATA - Ready to trade")
@@ -73,7 +73,7 @@ def main():
         'order_types': {
             bt.Order.Market: 'market',
             bt.Order.Limit: 'limit',
-            bt.Order.Stop: 'stop-loss',  # stop-loss for kraken, stop for bitmex
+            bt.Order.StopMarket: 'stop-loss',  # stop-loss for kraken, stop for bitmex
             bt.Order.StopLimit: 'stop limit'
         },
         'mappings': {
@@ -88,8 +88,8 @@ def main():
         }
     }
 
-    broker = store.getbroker(broker_mapping=broker_mapping)
-    cerebro.setbroker(broker)
+    broker = store.get_broker_or_exchange(broker_mapping=broker_mapping)
+    cerebro.set_broker_or_exchange(broker)
 
     # Default value
     timeframe = None
@@ -128,8 +128,8 @@ def main():
         # historical=True,
     )
 
-    cerebro.adddata(data)
-    cerebro.addstrategy(CustomStrategy)
+    cerebro.add_datafeed(data)
+    cerebro.add_strategy(CustomStrategy)
     cerebro.run()
 
 if __name__ == "__main__":
