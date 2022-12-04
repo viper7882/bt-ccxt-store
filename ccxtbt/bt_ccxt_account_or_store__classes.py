@@ -31,6 +31,7 @@ import inspect
 import json
 import math
 import time
+import threading
 import traceback
 import websocket
 
@@ -39,6 +40,7 @@ from ccxt.base.errors import NetworkError, ExchangeError, OrderNotFound
 from functools import wraps
 from pybit import usdt_perpetual
 from pprint import pprint
+from time import time as timer
 
 from .bt_ccxt__specifications import CASH_DIGITS
 from .bt_ccxt_order__classes import BT_CCXT_Order
@@ -152,10 +154,9 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         self.notifs = queue.Queue()  # holds orders which are notified
         self.open_orders = list()
         self.indent = 4  # For pretty printing dictionaries
-        self.use_order_params = True
 
-        # INFO: 15 seconds of retry
-        self.max_retry = 15 * 10
+        # INFO: 30 seconds of retry
+        self.max_retry = 30 * 10
 
         # INFO: Track the partially_filled_earlier status
         self.partially_filled_earlier = None
@@ -309,7 +310,15 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
 
     def next(self):
         if self.debug:
-            print('Broker next() called')
+            # # TODO: Debug use
+            # if len(self.open_orders) > 0:
+            #     frameinfo = inspect.getframeinfo(inspect.currentframe())
+            #     msg = "{} Line: {}: DEBUG: len(self.open_orders): {}".format(
+            #         frameinfo.function, frameinfo.lineno,
+            #         len(self.open_orders),
+            #     )
+            #     print(msg)
+            pass
 
         for order in self.open_orders:
             oID = order.ccxt_order['id']
@@ -317,7 +326,21 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
             # Print debug before fetching so we know which order is giving an
             # issue if it crashes
             if self.debug:
-                print('Fetching Order ID: {}'.format(oID))
+                # # TODO: Debug use
+                # frameinfo = inspect.getframeinfo(inspect.currentframe())
+                # msg = "{} Line: {}: DEBUG: ".format(
+                #     frameinfo.function, frameinfo.lineno,
+                # )
+                # msg += "order.ccxt_order:"
+                # print(msg)
+                # print(json.dumps(order.ccxt_order, indent=self.indent))
+                # msg += "order.executed:"
+                # print(msg)
+                # dump_obj(order.executed, "order.executed")
+                # msg += "order.created:"
+                # print(msg)
+                # dump_obj(order.created, "order.created")
+                pass
 
             if self.partially_filled_earlier is not None:
                 # INFO: Carry forward partially_filled_earlier status to the next order
@@ -325,182 +348,210 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
 
             # Get the order
             if order.ordering_type == backtrader.Order.ACTIVE_ORDERING_TYPE:
-                ccxt_order = self.fetch_order(oID, order.datafeed.p.dataname)
+                if self.debug:
+                    # # TODO: Debug use
+                    # frameinfo = inspect.getframeinfo(inspect.currentframe())
+                    # msg = "{} Line: {}: DEBUG: ordering_type == backtrader.Order.ACTIVE_ORDERING_TYPE, ".format(
+                    #     frameinfo.function, frameinfo.lineno,
+                    # )
+                    # msg += "oid: {}".format(oID)
+                    # print(msg)
+                    pass
+
+                new_ccxt_order = self.fetch_ccxt_order(order.symbol_id, oid=oID)
             else:
                 # Validate assumption made
                 assert order.ordering_type == backtrader.Order.CONDITIONAL_ORDERING_TYPE
 
-                fetch_order__dict = dict(
-                    stop_order_id=oID,
-                )
-                ccxt_order = self.fetch_order(None, order.datafeed.p.dataname, params=fetch_order__dict)
+                if self.debug:
+                    # # TODO: Debug use
+                    # frameinfo = inspect.getframeinfo(inspect.currentframe())
+                    # msg = "{} Line: {}: DEBUG: ordering_type == backtrader.Order.CONDITIONAL_ORDERING_TYPE, ".format(
+                    #     frameinfo.function, frameinfo.lineno,
+                    # )
+                    # msg += "stop_order_id: {}".format(oID)
+                    # print(msg)
+                    pass
 
-            if ccxt_order is not None:
-                '''
-                next Line: 397: DEBUG: ccxt_order:
-                {
-                    "info": {
-                        "order_id": "b788dac1-8ebd-4bdb-9a5e-265ffee07b7d",
-                        "order_link_id": "",
-                        "symbol": "ETHUSDT",
-                        "side": "Buy",
-                        "order_type": "Market",
-                        "price": 1272.6,
-                        "qty": 0.61,
-                        "leaves_qty": 0,
-                        "last_exec_price": 1212,
-                        "cum_exec_qty": 0.61,
-                        "cum_exec_value": 739.31995,
-                        "cum_exec_fee": 0.443592,
-                        "time_in_force": "ImmediateOrCancel",
-                        "create_type": "CreateByUser",
-                        "cancel_type": "UNKNOWN",
-                        "order_status": "Filled",
-                        "take_profit": 0,
-                        "stop_loss": 0,
-                        "trailing_stop": 0,
-                        "create_time": "2022-11-27T13:48:13.684754416Z",
-                        "update_time": "2022-11-27T13:48:13.687587957Z",
-                        "reduce_only": false,
-                        "close_on_trigger": false,
-                        "position_idx": "1"
-                    },
-                    "id": "b788dac1-8ebd-4bdb-9a5e-265ffee07b7d",
-                    "clientOrderId": null,
-                    "timestamp": 1669556893684,
-                    "datetime": "2022-11-27T13:48:13.684Z",
-                    "lastTradeTimestamp": 1669556893687,
+                new_ccxt_order = self.fetch_ccxt_order(order.symbol_id, stop_order_id=oID)
+
+            if new_ccxt_order is None:
+                if self.debug:
+                    # # TODO: Debug use
+                    # frameinfo = inspect.getframeinfo(inspect.currentframe())
+                    # msg = "{} Line: {}: DEBUG: new_ccxt_order is None, skipping....".format(
+                    #     frameinfo.function, frameinfo.lineno,
+                    # )
+                    # print(msg)
+                    pass
+
+                continue
+
+            '''
+            next Line: 397: DEBUG: ccxt_order:
+            {
+                "info": {
+                    "order_id": "b788dac1-8ebd-4bdb-9a5e-265ffee07b7d",
+                    "order_link_id": "",
                     "symbol": "ETHUSDT",
-                    "type": "market",
-                    "timeInForce": "IOC",
-                    "postOnly": false,
-                    "side": "buy",
+                    "side": "Buy",
+                    "order_type": "Market",
                     "price": 1272.6,
-                    "stopPrice": null,
-                    "amount": 0.61,
-                    "cost": 739.31995,
-                    "average": 1211.9999180327868,
-                    "filled": 0.61,
-                    "remaining": 0.0,
-                    "status": "closed",
-                    "fee": {
+                    "qty": 0.61,
+                    "leaves_qty": 0,
+                    "last_exec_price": 1212,
+                    "cum_exec_qty": 0.61,
+                    "cum_exec_value": 739.31995,
+                    "cum_exec_fee": 0.443592,
+                    "time_in_force": "ImmediateOrCancel",
+                    "create_type": "CreateByUser",
+                    "cancel_type": "UNKNOWN",
+                    "order_status": "Filled",
+                    "take_profit": 0,
+                    "stop_loss": 0,
+                    "trailing_stop": 0,
+                    "create_time": "2022-11-27T13:48:13.684754416Z",
+                    "update_time": "2022-11-27T13:48:13.687587957Z",
+                    "reduce_only": false,
+                    "close_on_trigger": false,
+                    "position_idx": "1"
+                },
+                "id": "b788dac1-8ebd-4bdb-9a5e-265ffee07b7d",
+                "clientOrderId": null,
+                "timestamp": 1669556893684,
+                "datetime": "2022-11-27T13:48:13.684Z",
+                "lastTradeTimestamp": 1669556893687,
+                "symbol": "ETHUSDT",
+                "type": "market",
+                "timeInForce": "IOC",
+                "postOnly": false,
+                "side": "buy",
+                "price": 1272.6,
+                "stopPrice": null,
+                "amount": 0.61,
+                "cost": 739.31995,
+                "average": 1211.9999180327868,
+                "filled": 0.61,
+                "remaining": 0.0,
+                "status": "closed",
+                "fee": {
+                    "cost": 0.443592,
+                    "currency": "USDT"
+                },
+                "trades": [],
+                "fees": [
+                    {
                         "cost": 0.443592,
                         "currency": "USDT"
-                    },
-                    "trades": [],
-                    "fees": [
-                        {
-                            "cost": 0.443592,
-                            "currency": "USDT"
-                        }
-                    ]
-                }
-                '''
-                # Check for new fills
-                if 'trades' in ccxt_order and ccxt_order['trades'] is not None:
-                    for fill in ccxt_order['trades']:
-                        if fill not in order.executed_fills:
-                            # INFO: Execute according to the OrderExecutionBit
-                            dt = fill['datetime']
-                            size = fill['amount']
-                            price = fill['price']
-                            closed = 0.0
-                            closed_value = 0.0
-                            closed_commission = 0.0
-                            opened = 0.0
-                            opened_value = 0.0
-                            opened_commission = 0.0
-                            margin = 0.0
-                            profit_and_loss_amount = 0.0
-                            spread_in_ticks = 0.0
-                            position_size = 0.0
-                            position_average_price = 0.0
-                            order.execute(dt, size, price,
-                                          closed, closed_value, closed_commission,
-                                          opened, opened_value, opened_commission,
-                                          margin, profit_and_loss_amount, spread_in_ticks,
-                                          position_size, position_average_price)
-                            order.executed_fills.append(fill['id'])
+                    }
+                ]
+            }
+            '''
+            # Check for new fills
+            if 'trades' in new_ccxt_order and new_ccxt_order['trades'] is not None:
+                for fill in new_ccxt_order['trades']:
+                    if fill not in order.executed_fills:
+                        # INFO: Execute according to the OrderExecutionBit
+                        dt = fill['datetime']
+                        size = fill['amount']
+                        price = fill['price']
+                        closed = 0.0
+                        closed_value = 0.0
+                        closed_commission = 0.0
+                        opened = 0.0
+                        opened_value = 0.0
+                        opened_commission = 0.0
+                        margin = 0.0
+                        profit_and_loss_amount = 0.0
+                        spread_in_ticks = 0.0
+                        position_size = 0.0
+                        position_average_price = 0.0
+                        order.execute(dt, size, price,
+                                      closed, closed_value, closed_commission,
+                                      opened, opened_value, opened_commission,
+                                      margin, profit_and_loss_amount, spread_in_ticks,
+                                      position_size, position_average_price)
+                        order.executed_fills.append(fill['id'])
 
-                # TODO: Debug use
-                if self.debug:
-                    frameinfo = inspect.getframeinfo(inspect.currentframe())
-                    msg = "{} Line: {}: DEBUG: ccxt_order:".format(
-                        frameinfo.function, frameinfo.lineno,
-                    )
-                    print(msg)
-                    print(json.dumps(ccxt_order, indent=self.indent))
+            # TODO: Debug use
+            if self.debug:
+                frameinfo = inspect.getframeinfo(inspect.currentframe())
+                msg = "{} Line: {}: DEBUG: new_ccxt_order:".format(
+                    frameinfo.function, frameinfo.lineno,
+                )
+                print(msg)
+                print(json.dumps(new_ccxt_order, indent=self.indent))
 
-                # Check if the exchange order is opened
-                if ccxt_order[self.parent.mappings['opened_order']['key']] == \
-                        self.parent.mappings['opened_order']['value']:
-                    if order.status != backtrader.Order.Accepted:
-                        # INFO: Reset partially_filled_earlier status
-                        self.partially_filled_earlier = None
+            # Check if the exchange order is opened
+            if new_ccxt_order[self.parent.mappings['opened_order']['key']] == \
+                    self.parent.mappings['opened_order']['value']:
+                if order.status != backtrader.Order.Accepted:
+                    # INFO: Reset partially_filled_earlier status
+                    self.partially_filled_earlier = None
 
-                        # INFO: Refresh the content of ccxt_order with the latest ccxt_order
-                        order.extract_from_ccxt_order(ccxt_order)
-                        order.accept()
-                        self.notify(order)
-                # Check if the exchange order is partially filled
-                elif ccxt_order[self.parent.mappings['partially_filled_order']['key']] == \
-                        self.parent.mappings['partially_filled_order']['value']:
-                    if order.status != backtrader.Order.Partial:
-                        # INFO: Refresh the content of ccxt_order with the latest ccxt_order
-                        order.extract_from_ccxt_order(ccxt_order)
-                        order.partial()
-
-                        # INFO: Only notify but NOT execute as it wouldn't create any impact to the trade.update
-                        # self.execute(order, order.price)
-                        self.notify(order)
-
-                        # INFO: Carry forward partially_filled_earlier status to the next order
-                        self.partially_filled_earlier = order.partially_filled_earlier
-                # Check if the exchange order is closed
-                elif ccxt_order[self.parent.mappings['closed_order']['key']] == \
-                        self.parent.mappings['closed_order']['value']:
                     # INFO: Refresh the content of ccxt_order with the latest ccxt_order
-                    order.extract_from_ccxt_order(ccxt_order)
-                    order.completed()
-                    self.execute(order, order.price)
-                    self.open_orders.remove(order)
-                    self.get_balance()
-                # Check if the exchange order is rejected
-                elif ccxt_order[self.parent.mappings['rejected_order']['key']] == \
-                        self.parent.mappings['rejected_order']['value']:
-                    # INFO: Refresh the content of ccxt_order with the latest ccxt_order
-                    order.extract_from_ccxt_order(ccxt_order)
-                    order.reject()
+                    order.extract_from_ccxt_order(new_ccxt_order)
+                    order.accept()
                     self.notify(order)
-                    self.open_orders.remove(order)
-                # Manage case when an order is being Canceled or Expired from the Exchange
-                #  from https://github.com/juancols/bt-ccxt-store/
-                elif ccxt_order[self.parent.mappings['canceled_order']['key']] == \
-                        self.parent.mappings['canceled_order']['value']:
+            # Check if the exchange order is partially filled
+            elif new_ccxt_order[self.parent.mappings['partially_filled_order']['key']] == \
+                    self.parent.mappings['partially_filled_order']['value']:
+                if order.status != backtrader.Order.Partial:
                     # INFO: Refresh the content of ccxt_order with the latest ccxt_order
-                    order.extract_from_ccxt_order(ccxt_order)
-                    order.cancel()
+                    order.extract_from_ccxt_order(new_ccxt_order)
+                    order.partial()
+
+                    # INFO: Only notify but NOT execute as it wouldn't create any impact to the trade.update
+                    # self.execute(order, order.price)
                     self.notify(order)
-                    self.open_orders.remove(order)
-                elif ccxt_order[self.parent.mappings['expired_order']['key']] == \
-                        self.parent.mappings['expired_order']['value']:
-                    # INFO: Refresh the content of ccxt_order with the latest ccxt_order
-                    order.extract_from_ccxt_order(ccxt_order)
-                    order.expire()
-                    self.notify(order)
-                    self.open_orders.remove(order)
-                else:
-                    msg = "{} Line: {}: {}: WARNING: ".format(
-                        inspect.getframeinfo(inspect.currentframe()).function,
-                        inspect.getframeinfo(inspect.currentframe()).lineno,
-                        datetime.datetime.now().isoformat().replace("T", " ")[:-3],
-                    )
-                    sub_msg = "ccxt_order id: {}, status: {} is not processed".format(
-                        ccxt_order['id'],
-                        ccxt_order[self.parent.mappings['opened_order']['key']],
-                    )
-                    print(msg + sub_msg)
-                    pass
+
+                    # INFO: Carry forward partially_filled_earlier status to the next order
+                    self.partially_filled_earlier = order.partially_filled_earlier
+            # Check if the exchange order is closed
+            elif new_ccxt_order[self.parent.mappings['closed_order']['key']] == \
+                    self.parent.mappings['closed_order']['value']:
+                # INFO: Refresh the content of ccxt_order with the latest ccxt_order
+                order.extract_from_ccxt_order(new_ccxt_order)
+                order.completed()
+                self.execute(order, order.price)
+                self.open_orders.remove(order)
+                self.get_balance()
+            # Check if the exchange order is rejected
+            elif new_ccxt_order[self.parent.mappings['rejected_order']['key']] == \
+                    self.parent.mappings['rejected_order']['value']:
+                # INFO: Refresh the content of ccxt_order with the latest ccxt_order
+                order.extract_from_ccxt_order(new_ccxt_order)
+                order.reject()
+                self.notify(order)
+                self.open_orders.remove(order)
+            # Manage case when an order is being Canceled or Expired from the Exchange
+            #  from https://github.com/juancols/bt-ccxt-store/
+            elif new_ccxt_order[self.parent.mappings['canceled_order']['key']] == \
+                    self.parent.mappings['canceled_order']['value']:
+                # INFO: Refresh the content of ccxt_order with the latest ccxt_order
+                order.extract_from_ccxt_order(new_ccxt_order)
+                order.cancel()
+                self.notify(order)
+                self.open_orders.remove(order)
+            elif new_ccxt_order[self.parent.mappings['expired_order']['key']] == \
+                    self.parent.mappings['expired_order']['value']:
+                # INFO: Refresh the content of ccxt_order with the latest ccxt_order
+                order.extract_from_ccxt_order(new_ccxt_order)
+                order.expire()
+                self.notify(order)
+                self.open_orders.remove(order)
+            else:
+                msg = "{} Line: {}: {}: WARNING: ".format(
+                    inspect.getframeinfo(inspect.currentframe()).function,
+                    inspect.getframeinfo(inspect.currentframe()).lineno,
+                    datetime.datetime.now().isoformat().replace("T", " ")[:-3],
+                )
+                sub_msg = "new_ccxt_order ID: {}, status: {} is not processed".format(
+                    new_ccxt_order['id'],
+                    new_ccxt_order[self.parent.mappings['opened_order']['key']],
+                )
+                print(msg + sub_msg)
+                pass
 
     def _submit(self, owner, datafeed, execution_type, side, amount, price, position_type, ordering_type, order_intent,
                 simulated, params):
@@ -530,34 +581,97 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
 
         # Extract CCXT specific params if passed to the order
         order_params = params['params'] if 'params' in params else params
-        if not self.use_order_params:
-            ret_ord = \
-                self.create_order(symbol=symbol_id, order_type=execution_type_name, side=side, amount=amount,
-                                  price=price, params={})
-        else:
-            try:
-                # all params are exchange specific: https://github.com/ccxt/ccxt/wiki/Manual#custom-order-params
-                order_params['created'] = created  # Add timestamp of order creation for backtesting
-                ret_ord = \
-                    self.create_order(symbol=symbol_id, order_type=execution_type_name, side=side, amount=amount,
-                                      price=price, params=order_params)
-            except:
-                # save some API calls after failure
-                self.use_order_params = False
-                return None
+        start = timer()
+        # all params are exchange specific: https://github.com/ccxt/ccxt/wiki/Manual#custom-order-params
+        order_params['created'] = created  # Add timestamp of order creation for backtesting
+
+        if self.debug:
+            # TODO: Debug use
+            frameinfo = inspect.getframeinfo(inspect.currentframe())
+            msg = "{} Line: {}: DEBUG: ".format(
+                frameinfo.function, frameinfo.lineno,
+            )
+            msg += "symbol_id: {}, ".format(symbol_id)
+            msg += "execution_type_name: {}, ".format(execution_type_name)
+            msg += "side: {}, ".format(side)
+            msg += "price: {}, ".format(price)
+            msg += "amount: {}, ".format(amount)
+            msg += "order_params:"
+            print(msg)
+            pprint(order_params)
+            pass
+
+        ret_ord = \
+            self.create_order(symbol=symbol_id, order_type=execution_type_name, side=side, amount=amount,
+                              price=price, params=order_params)
 
         if ret_ord is None or ret_ord['id'] is None:
             return None
 
+        # INFO: Based on experience in Testnet, it is better to wait momentarily as the server will require time to
+        #       process the order, inclusive of providing websocket response.
+        time.sleep(0.1)
+
         if 'stop_order_id' in ret_ord['info'].keys():
             oid = None
             stop_order_id = ret_ord['id']
+            order_type_name = 'Conditional'
         else:
             oid = ret_ord['id']
             stop_order_id = None
+            order_type_name = 'Active'
 
+        # TODO: Debug use
+        if self.debug:
+            # # TODO: Debug use
+            # frameinfo = inspect.getframeinfo(inspect.currentframe())
+            # msg = "{} Line: {}: DEBUG: {}: {}: {} Order: ".format(
+            #     frameinfo.function, frameinfo.lineno,
+            #     threading.current_thread().name,
+            #     datetime.datetime.now().isoformat().replace("T", " ")[:-3],
+            #     order_type_name,
+            # )
+            # if oid is not None:
+            #     msg += "oid: {}".format(oid)
+            # else:
+            #     # Validate assumption made
+            #     legality_check_not_none_obj(stop_order_id, "stop_order_id")
+            #
+            #     msg += "stop_order_id: {}".format(stop_order_id)
+            # print(msg)
+            pass
+
+        start = timer()
         ccxt_order = self.fetch_ccxt_order(symbol_id, oid=oid, stop_order_id=stop_order_id)
+        if self.debug:
+            _, minutes, seconds = get_time_diff(start)
+            frameinfo = inspect.getframeinfo(inspect.currentframe())
+            print("{} Line: {}: {}: {} Order, fetch_ccxt_order Took {}m:{:.2f}s".format(
+                frameinfo.function, frameinfo.lineno,
+                datetime.datetime.now().isoformat().replace("T", " ")[:-3],
+                order_type_name,
+                int(minutes), seconds)
+            )
+
         legality_check_not_none_obj(ccxt_order, "ccxt_order")
+
+        # TODO: Debug use
+        if self.debug:
+            exchange_order_intent = self.get_exchange_order_intent(ccxt_order)
+            frameinfo = inspect.getframeinfo(inspect.currentframe())
+            msg = "{} Line: {}: DEBUG: {}: ".format(
+                frameinfo.function, frameinfo.lineno,
+                datetime.datetime.now().isoformat().replace("T", " ")[:-3],
+            )
+            if exchange_order_intent is not None:
+                msg += "[{}] ".format(backtrader.Order.Order_Intents[exchange_order_intent])
+            msg += "{} Order, oid: \'{}\' vs stop_order_id: \'{}\', submitted ccxt_order:".format(
+                order_type_name,
+                oid,
+                stop_order_id,
+            )
+            print(msg)
+            print(json.dumps(ccxt_order, indent=self.indent))
 
         # INFO: Exposed simulated so that we could proceed with order without running cerebro
         order = BT_CCXT_Order(owner, datafeed, ccxt_order, execution_type, symbol_id, position_type, ordering_type, 
@@ -572,6 +686,19 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         self.open_orders.append(order)
         return order
 
+    def get_exchange_order_intent(self, ccxt_order):
+        exchange_order_intent = None
+        # WARNING: The following code could be Bybit-specific
+        if 'reduce_only' in ccxt_order['info'].keys():
+            if bool(ccxt_order['info']['reduce_only']) == False:
+                exchange_order_intent = backtrader.Order.Entry_Order
+            else:
+                # Validate assumption made
+                assert bool(ccxt_order['info']['reduce_only']) == True
+
+                exchange_order_intent = backtrader.Order.Exit_Order
+        return exchange_order_intent
+
     def fetch_ccxt_order(self, symbol_id, oid=None, stop_order_id=None):
         # Mutually exclusive legality check
         if oid is None:
@@ -583,11 +710,12 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         # One of these must be valid
         assert oid is not None or stop_order_id is not None
 
+        start = timer()
         ccxt_order = None
+        # INFO: Due to nature of order is processed async, the order could not be found immediately right after
+        #       order is opened. Hence, perform retry to confirm if that's the case.
         for retry_no in range(self.max_retry):
             try:
-                # INFO: Due to nature of order is processed async, the order could not be found immediately right after
-                #       order is opened. Hence, perform retry to confirm if that's the case.
                 if stop_order_id is not None:
                     # Conditional Order
                     params = dict(
@@ -603,12 +731,50 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                     if stop_order_id is not None:
                         order_type_name = 'Conditional'
                     else:
+                        legality_check_not_none_obj(oid, "oid")
                         order_type_name = 'Active'
+
+                    if self.debug:
+                        exchange_order_intent = self.get_exchange_order_intent(ccxt_order)
+                        # TODO: Debug use
+                        frameinfo = inspect.getframeinfo(inspect.currentframe())
+                        msg = "{} Line: {}: DEBUG: {}: For ".format(
+                            frameinfo.function, frameinfo.lineno,
+                            datetime.datetime.now().isoformat().replace("T", " ")[:-3],
+                        )
+                        if exchange_order_intent is not None:
+                            msg += "[{}] ".format(backtrader.Order.Order_Intents[exchange_order_intent])
+                        msg += "{} Order, oid: \'{}\' vs stop_order_id: \'{}\'".format(
+                            order_type_name,
+                            oid,
+                            stop_order_id,
+                        )
+                        print(msg)
+
+                        frameinfo = inspect.getframeinfo(inspect.currentframe())
+                        msg = "{} Line: {}: DEBUG: {}: Found \'{}\' ".format(
+                            frameinfo.function, frameinfo.lineno,
+                            datetime.datetime.now().isoformat().replace("T", " ")[:-3],
+                            oid if oid is not None else stop_order_id,
+                        )
+                        if exchange_order_intent is not None:
+                            msg += "[{}] ".format(backtrader.Order.Order_Intents[exchange_order_intent])
+                        msg += "{} Order during retry#{}/{}".format(
+                            order_type_name,
+                            retry_no + 1,
+                            self.max_retry,
+                        )
+                        print(msg)
                     break
             except OrderNotFound:
                 time.sleep(0.1)
                 pass
 
+        if self.debug:
+            _, minutes, seconds = get_time_diff(start)
+            print("{} Line: {}: Took {}m:{:.2f}s".format(inspect.getframeinfo(inspect.currentframe()).function,
+                                                         inspect.getframeinfo(inspect.currentframe()).lineno,
+                                                         int(minutes), seconds))
         return ccxt_order
 
     def add__commission_info(self, order):
@@ -646,13 +812,31 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
             legality_check_not_none_obj(order.ordering_type, "order.ordering_type")
 
             if order.ordering_type == backtrader.Order.ACTIVE_ORDERING_TYPE:
+                if self.debug:
+                    # TODO: Debug use
+                    frameinfo = inspect.getframeinfo(inspect.currentframe())
+                    msg = "{} Line: {}: DEBUG: ordering_type == backtrader.Order.ACTIVE_ORDERING_TYPE, ".format(
+                        frameinfo.function, frameinfo.lineno,
+                    )
+                    msg += "ccxt_order_id: {}".format(ccxt_order_id)
+                    print(msg)
+
                 order.ccxt_order = self.fetch_ccxt_order(order.symbol_id, oid=ccxt_order_id)
             else:
                 # Validate assumption made
                 assert order.ordering_type == backtrader.Order.CONDITIONAL_ORDERING_TYPE
 
+                if self.debug:
+                    # TODO: Debug use
+                    frameinfo = inspect.getframeinfo(inspect.currentframe())
+                    msg = "{} Line: {}: DEBUG: ordering_type == backtrader.Order.CONDITIONAL_ORDERING_TYPE, ".format(
+                        frameinfo.function, frameinfo.lineno,
+                    )
+                    msg += "ccxt_order_id: {}".format(ccxt_order_id)
+                    print(msg)
+
                 order.ccxt_order = \
-                    self.fetch_ccxt_order(order.symbol_id, oid=None, stop_order_id=ccxt_order_id)
+                    self.fetch_ccxt_order(order.symbol_id, stop_order_id=ccxt_order_id)
 
         # Legality Check
         legality_check_not_none_obj(order.ccxt_order, "order.ccxt_order")
@@ -761,16 +945,56 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                                                     commission_info.symbol_tick_size)
 
                 # Legality Check
-                assert abs(order.executed.filled_size) == order.ccxt_order['filled'], \
-                    "abs(order.executed.filled_size): {:.{}f} != Exchange's filled: {:.{}f}!!!".format(
-                        abs(order.executed.filled_size), commission_info.qty_digits,
-                        order.ccxt_order['filled'], commission_info.qty_digits,
+                throws_out_error = False
+                sub_error_msg = None
+                if order.ccxt_order['filled'] is not None:
+                    if abs(order.executed.filled_size) != order.filled:
+                        sub_error_msg = " abs(order.executed.filled_size): {:.{}f} != " \
+                                     "Exchange's filled: {:.{}f}!!!".format(
+                            abs(order.executed.filled_size), commission_info.qty_digits,
+                            order.filled, commission_info.qty_digits,
+                        )
+                        throws_out_error = True
+                else:
+                    if abs(order.executed.filled_size) != order.size:
+                        sub_error_msg = " abs(order.executed.filled_size): {:.{}f} != " \
+                                     "Exchange's size: {:.{}f}!!!".format(
+                            abs(order.executed.filled_size), commission_info.qty_digits,
+                            order.size, commission_info.qty_digits,
+                        )
+                        throws_out_error = True
+
+                if order.ccxt_order['remaining'] is not None:
+                    if abs(order.executed.remaining_size) != order.remaining:
+                        sub_error_msg = " abs(order.executed.remaining_size): {:.{}f} != " \
+                                     "Exchange's remaining: {:.{}f}!!!".format(
+                            abs(order.executed.remaining_size), commission_info.qty_digits,
+                            order.remaining, commission_info.qty_digits,
+                        )
+                        throws_out_error = True
+                else:
+                    if abs(order.executed.remaining_size) != order.remaining:
+                        sub_error_msg = " abs(order.executed.remaining_size): {:.{}f} != " \
+                                     "Exchange's remaining: {:.{}f}!!!".format(
+                            abs(order.executed.remaining_size), commission_info.qty_digits,
+                            order.remaining, commission_info.qty_digits,
+                        )
+                        throws_out_error = True
+
+                if throws_out_error == True:
+                    legality_check_not_none_obj(sub_error_msg, "sub_error_msg")
+                    frameinfo = inspect.getframeinfo(inspect.currentframe())
+                    msg = "{} Line: {}: ERROR: ".format(
+                        frameinfo.function, frameinfo.lineno,
                     )
-                assert abs(order.executed.remaining_size) == order.ccxt_order['remaining'] , \
-                    "abs(order.executed.remaining_size): {:.{}f} != Exchange's remaining: {:.{}f}!!!".format(
-                        abs(order.executed.remaining_size), commission_info.qty_digits,
-                        order.ccxt_order['remaining'], commission_info.qty_digits,
+                    msg += "order.ccxt_order:"
+                    print(msg)
+                    print(json.dumps(order.ccxt_order, indent=self.indent))
+
+                    error_msg = "{}:".format(
+                        inspect.currentframe(),
                     )
+                    raise ValueError(error_msg + sub_error_msg)
 
                 order.add_commission_info(commission_info)
                 if skip_notification == False:
@@ -1081,6 +1305,9 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
     def get_account_alias(self):
         return self.account_alias
 
+    def get_open_orders(self):
+        return self.open_orders
+
     def get_granularity(self, timeframe, compression):
         if not self.exchange.has['fetchOHLCV']:
             raise NotImplementedError("'%s' exchange doesn't support fetching OHLCV datafeed" %
@@ -1105,11 +1332,18 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         appear in the message.
         '''
         try:
-            # print("{} Line: {}: message:".format(
-            #     inspect.getframeinfo(inspect.currentframe()).function,
-            #     inspect.getframeinfo(inspect.currentframe()).lineno,
-            # ))
-            # pprint(message)
+            if self.debug:
+                # # TODO: Debug use
+                # frameinfo = inspect.getframeinfo(inspect.currentframe())
+                # print("{} Line: {}: {}: {}: {}: message:".format(
+                #     frameinfo.function, frameinfo.lineno,
+                #     threading.current_thread().name,
+                #     datetime.datetime.now().isoformat().replace("T", " ")[:-3],
+                #     self.account_alias,
+                # ))
+                # pprint(message)
+                pass
+
             assert type(message['data']) == list
             responses = self.exchange.safe_value(message, 'data')
 
@@ -1173,11 +1407,17 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
 
     def handle_active_order(self, message):
         try:
-            # print("{} Line: {}: message:".format(
-            #     inspect.getframeinfo(inspect.currentframe()).function,
-            #     inspect.getframeinfo(inspect.currentframe()).lineno,
-            # ))
-            # pprint(message)
+            if self.debug:
+                # # TODO: Debug use
+                # frameinfo = inspect.getframeinfo(inspect.currentframe())
+                # print("{} Line: {}: {}: {}: message:".format(
+                #     frameinfo.function, frameinfo.lineno,
+                #     datetime.datetime.now().isoformat().replace("T", " ")[:-3],
+                #     self.account_alias,
+                # ))
+                # pprint(message)
+                pass
+
             responses = message['data']
             assert type(responses) == list
             active_orders_to_be_added = collections.defaultdict(list)
@@ -1197,6 +1437,17 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
 
                 active_orders_to_be_added[symbol_id].append(active_order)
 
+                if self.debug:
+                    # TODO: Debug use
+                    frameinfo = inspect.getframeinfo(inspect.currentframe())
+                    msg = "{} Line: {}: DEBUG: {}: {}: ".format(
+                        frameinfo.function, frameinfo.lineno,
+                        datetime.datetime.now().isoformat().replace("T", " ")[:-3],
+                        self.account_alias,
+                    )
+                    msg += "appended active_order['id']: {} into active_orders_to_be_added".format(active_order['id'])
+                    print(msg)
+
             for symbol_id in symbols_id:
                 active_order_ids_to_be_added = \
                     [active_order['id'] for active_order in active_orders_to_be_added[symbol_id]]
@@ -1209,21 +1460,51 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
 
                 # INFO: Remove the existing ws active order
                 for ws_active_order in ws_active_orders_to_be_removed:
+                    if self.debug:
+                        # TODO: Debug use
+                        frameinfo = inspect.getframeinfo(inspect.currentframe())
+                        msg = "{} Line: {}: WARNING: {}: {}: ".format(
+                            frameinfo.function, frameinfo.lineno,
+                            datetime.datetime.now().isoformat().replace("T", " ")[:-3],
+                            self.account_alias,
+                        )
+                        msg += "removing ws_active_order['id']: {} from ws_active_orders".format(
+                            ws_active_order['id'])
+                        print(msg)
+
                     self.ws_active_orders[symbol_id].remove(ws_active_order)
 
                 # INFO: Add the latest active orders
                 for active_order in active_orders_to_be_added[symbol_id]:
                     self.ws_active_orders[symbol_id].append(active_order)
+
+                    if self.debug:
+                        # TODO: Debug use
+                        frameinfo = inspect.getframeinfo(inspect.currentframe())
+                        msg = "{} Line: {}: DEBUG: {}: {}: ".format(
+                            frameinfo.function, frameinfo.lineno,
+                            datetime.datetime.now().isoformat().replace("T", " ")[:-3],
+                            self.account_alias,
+                        )
+                        msg += "appended active_order['id']: {} into ws_active_orders".format(active_order['id'])
+                        print(msg)
+
         except Exception:
             traceback.print_exc()
 
     def handle_conditional_order(self, message):
         try:
-            # print("{} Line: {}: message:".format(
-            #     inspect.getframeinfo(inspect.currentframe()).function,
-            #     inspect.getframeinfo(inspect.currentframe()).lineno,
-            # ))
-            # pprint(message)
+            if self.debug:
+                # # TODO: Debug use
+                # frameinfo = inspect.getframeinfo(inspect.currentframe())
+                # print("{} Line: {}: {}: {}: message:".format(
+                #     frameinfo.function, frameinfo.lineno,
+                #     datetime.datetime.now().isoformat().replace("T", " ")[:-3],
+                #     self.account_alias,
+                # ))
+                # pprint(message)
+                pass
+
             responses = message['data']
             assert type(responses) == list
             conditional_orders_to_be_added = collections.defaultdict(list)
@@ -1241,6 +1522,20 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                 if symbol_id not in symbols_id:
                     symbols_id.append(symbol_id)
 
+                conditional_orders_to_be_added[symbol_id].append(conditional_order)
+
+                if self.debug:
+                    # TODO: Debug use
+                    frameinfo = inspect.getframeinfo(inspect.currentframe())
+                    msg = "{} Line: {}: DEBUG: {}: {}: ".format(
+                        frameinfo.function, frameinfo.lineno,
+                        datetime.datetime.now().isoformat().replace("T", " ")[:-3],
+                        self.account_alias,
+                    )
+                    msg += "appended conditional_order['id']: {} into conditional_orders_to_be_added".format(
+                        conditional_order['id'])
+                    print(msg)
+
             for symbol_id in symbols_id:
                 conditional_order_ids_to_be_added = \
                     [conditional_order['id'] for conditional_order in conditional_orders_to_be_added[symbol_id]]
@@ -1253,11 +1548,36 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
 
                 # INFO: Remove the existing ws conditional order
                 for ws_conditional_order in ws_conditional_orders_to_be_removed:
+                    if self.debug:
+                        # TODO: Debug use
+                        frameinfo = inspect.getframeinfo(inspect.currentframe())
+                        msg = "{} Line: {}: WARNING: {}: {}: ".format(
+                            frameinfo.function, frameinfo.lineno,
+                            datetime.datetime.now().isoformat().replace("T", " ")[:-3],
+                            self.account_alias,
+                        )
+                        msg += "removing ws_conditional_order['id']: {} from ws_conditional_orders".format(
+                            ws_conditional_order['id'])
+                        print(msg)
+
                     self.ws_conditional_orders[symbol_id].remove(ws_conditional_order)
 
                 # INFO: Add the latest conditional orders
                 for conditional_order in conditional_orders_to_be_added[symbol_id]:
                     self.ws_conditional_orders[symbol_id].append(conditional_order)
+
+                    if self.debug:
+                        # TODO: Debug use
+                        frameinfo = inspect.getframeinfo(inspect.currentframe())
+                        msg = "{} Line: {}: DEBUG: {}: {}: ".format(
+                            frameinfo.function, frameinfo.lineno,
+                            datetime.datetime.now().isoformat().replace("T", " ")[:-3],
+                            self.account_alias,
+                        )
+                        msg += "appended conditional_order['id']: {} into ws_conditional_orders".format(
+                            conditional_order['id'])
+                        print(msg)
+
         except Exception:
             traceback.print_exc()
 
@@ -1266,11 +1586,17 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         This routine gets triggered whenever there is a kline update.
         '''
         try:
-            # print("{} Line: {}: message:".format(
-            #     inspect.getframeinfo(inspect.currentframe()).function,
-            #     inspect.getframeinfo(inspect.currentframe()).lineno,
-            # ))
-            # pprint(message)
+            if self.debug:
+                # # TODO: Debug use
+                # frameinfo = inspect.getframeinfo(inspect.currentframe())
+                # print("{} Line: {}: {}: {}: message:".format(
+                #     frameinfo.function, frameinfo.lineno,
+                #     datetime.datetime.now().isoformat().replace("T", " ")[:-3],
+                #     self.account_alias,
+                # ))
+                # pprint(message)
+                pass
+
             assert type(message['data']) == list
             topic_responses = self.exchange.safe_value(message, 'topic')
             data_responses = self.exchange.safe_value(message, 'data')
@@ -1295,11 +1621,17 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         This routine gets triggered whenever there is instrument info update.
         '''
         try:
-            # print("{} Line: {}: message:".format(
-            #     inspect.getframeinfo(inspect.currentframe()).function,
-            #     inspect.getframeinfo(inspect.currentframe()).lineno,
-            # ))
-            # pprint(message)
+            if self.debug:
+                # # TODO: Debug use
+                # frameinfo = inspect.getframeinfo(inspect.currentframe())
+                # print("{} Line: {}: {}: {}: message:".format(
+                #     frameinfo.function, frameinfo.lineno,
+                #     datetime.datetime.now().isoformat().replace("T", " ")[:-3],
+                #     self.account_alias,
+                # ))
+                # pprint(message)
+                pass
+
             assert type(message['data']) == dict
             responses = self.exchange.safe_value(message, 'data')
             if len(responses) > 0:
@@ -1330,7 +1662,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                     if i == self.retries - 1:
                         raise
 
-                    if isinstance(e, ccxt.base.errors.ExchangeError):
+                    if isinstance(e, ExchangeError):
                         # INFO: Extract the exchange name from the exception
                         json_error = e.args[0].replace(str(self.exchange).lower() + " ", "")
                         exchange_error_dict = json.loads(json_error)
@@ -1340,19 +1672,30 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                                 'ret_msg' = 'current position is zero, cannot fix reduce-only order qty'
                                 '''
                                 break
+                            elif exchange_error_dict['ret_code'] == 130074:
+                                '''
+                                'ret_msg' = 'expect Rising, but trigger_price[12705000] <= current[12706500]'
+                                '''
+                                break
 
                             # INFO: Print out warning regarding the response received from ExchangeError
-                            msg = "{} Line: {}: WARNING: {}: {}/{}: ".format(
-                                inspect.getframeinfo(inspect.currentframe()).function,
-                                inspect.getframeinfo(inspect.currentframe()).lineno,
+                            frameinfo = inspect.getframeinfo(inspect.currentframe())
+                            msg = "{} Line: {}: INFO: {}: {}/{}: ".format(
+                                frameinfo.function, frameinfo.lineno,
                                 datetime.datetime.now().isoformat().replace("T", " ")[:-3],
                                 i + 1, self.retries,
                             )
-                            sub_msg = "{}: ret_msg: {}".format(
+                            sub_msg = "{}: ret_code: {}, ret_msg: {}{}".format(
                                 str(self.exchange).lower(),
+                                exchange_error_dict['ret_code'],
                                 exchange_error_dict['ret_msg'],
+                                " " * 3,
                             )
-                            print(msg + sub_msg)
+
+                            # Credits: https://stackoverflow.com/questions/3419984/print-to-the-same-line-and-not-a-new-line
+                            # INFO: Print on the same line without newline, customized accordingly to cater for latest need
+                            print("\r" + msg + sub_msg, end="")
+
                     pass
 
         return retry_method
@@ -1460,43 +1803,203 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
             pass
         return order
 
-    def fetch_order(self, oid, symbol_id, params={}):
+    def _snail_path_to_fetch_order_from_exchange(self, oid, symbol_id, params):
+        # INFO: Optional Params
         conditional_oid = params.get('stop_order_id', None)
+
+        order = None
+
+        # If we are looking for Conditional Order
+        if conditional_oid is not None:
+            # Exercise the longer time route @ Conditional Order
+            order = self._fetch_order_from_exchange(conditional_oid, symbol_id, params)
+
+            if order is None:
+                # Exercise the longer time route @ Active Order
+                order = self._fetch_order_from_exchange(conditional_oid, symbol_id)
+
+        # If we are looking for Active Order
+        else:
+            # Validate assumption made
+            legality_check_not_none_obj(oid, "oid")
+
+            # Exercise the longer time route @ Active Order
+            order = self._fetch_order_from_exchange(oid, symbol_id)
+        return order
+
+    def fetch_order(self, oid, symbol_id, params={}):
+        # INFO: Optional Params
+        conditional_oid = params.get('stop_order_id', None)
+
+        # INFO: Enforce mutually exclusive rule
+        search_order_id = None
+        order_type_name = None
         if oid is None:
             legality_check_not_none_obj(conditional_oid, "conditional_oid")
+            search_order_id = conditional_oid
+            order_type_name = 'Conditional'
+        elif conditional_oid is None:
+            legality_check_not_none_obj(oid, "oid")
+            search_order_id = oid
+            order_type_name = 'Active'
+        legality_check_not_none_obj(search_order_id, "search_order_id")
+        legality_check_not_none_obj(order_type_name, "order_type_name")
+
+        if self.debug:
+            # # TODO: Debug use
+            # frameinfo = inspect.getframeinfo(inspect.currentframe())
+            # msg = "{} Line: {}: DEBUG: {}: ".format(
+            #     frameinfo.function, frameinfo.lineno,
+            #     threading.current_thread().name,
+            # )
+            # msg += "oid: {}, ".format(oid)
+            # msg += "conditional_oid: {}, ".format(conditional_oid)
+            #
+            # # INFO: Strip ", " from the string
+            # print(msg[:-2])
+            pass
+
+        found_order_in_ws = False
+        search_into_ws_conditional_order = False
+        search_into_ws_active_order = False
 
         if self.is_ws_available == True:
-            found_ws_order = False
+            # If we are looking for Conditional Order
+            if conditional_oid is not None:
+                search_into_ws_conditional_order = True
+                search_into_ws_active_order = True
             # If we are looking for Active Order
-            if oid is not None:
-                for active_order in self.ws_active_orders[symbol_id]:
-                    if oid == active_order['id']:
-                        # Extract the order from the websocket
-                        order = active_order
-                        # self.ws_active_orders[symbol_id].remove(active_order)
-                        found_ws_order = True
-                        break
-            # Else if we are looking for Conditional Order
             else:
-                for conditional_order in self.ws_conditional_orders[symbol_id]:
-                    if conditional_oid == conditional_order['id']:
+                legality_check_not_none_obj(oid, "oid")
+                search_into_ws_active_order = True
+
+            if self.debug:
+                # # TODO: Debug use
+                # frameinfo = inspect.getframeinfo(inspect.currentframe())
+                # msg = "{} Line: {}: DEBUG: {}: ".format(
+                #     frameinfo.function, frameinfo.lineno,
+                #     threading.current_thread().name,
+                # )
+                # msg += "search_into_ws_conditional_order: {}, ".format(search_into_ws_conditional_order)
+                # msg += "search_into_ws_active_order: {}, ".format(search_into_ws_active_order)
+                #
+                # # INFO: Strip ", " from the string
+                # print(msg[:-2])
+                pass
+
+            if search_into_ws_conditional_order == True:
+                if self.debug:
+                    # TODO: Debug use
+                    frameinfo = inspect.getframeinfo(inspect.currentframe())
+                    msg = "{} Line: {}: DEBUG: {}: ".format(
+                        frameinfo.function, frameinfo.lineno,
+                        datetime.datetime.now().isoformat().replace("T", " ")[:-3],
+                    )
+                    msg += "len(self.ws_conditional_orders[{}]): {}".format(
+                        symbol_id,
+                        len(self.ws_conditional_orders[symbol_id]),
+                    )
+                    print(msg)
+                    pass
+
+                for i, conditional_order in enumerate(self.ws_conditional_orders[symbol_id]):
+                    if self.debug:
+                        # TODO: Debug use
+                        frameinfo = inspect.getframeinfo(inspect.currentframe())
+                        msg = "{} Line: {}: DEBUG: {}: ".format(
+                            frameinfo.function, frameinfo.lineno,
+                            datetime.datetime.now().isoformat().replace("T", " ")[:-3],
+                        )
+                        msg += "{}/{}: detected conditional_order['id']: {}".format(
+                            i + 1,
+                            len(self.ws_conditional_orders[symbol_id]),
+                            conditional_order['id'],
+                        )
+                        print(msg)
+
+                    if search_order_id == conditional_order['id']:
                         # Extract the order from the websocket
                         order = conditional_order
-                        # self.ws_conditional_orders[symbol_id].remove(conditional_order)
-                        found_ws_order = True
+                        found_order_in_ws = True
                         break
 
-            if found_ws_order == False:
-                if oid is not None:
-                    # Exercise the longer time route
-                    order = self._fetch_order_from_exchange(oid, symbol_id, params)
-                else:
-                    order = self._fetch_order_from_exchange(conditional_oid, symbol_id, params)
+            if found_order_in_ws == False:
+                if search_into_ws_active_order == True:
+                    if self.debug:
+                        # TODO: Debug use
+                        frameinfo = inspect.getframeinfo(inspect.currentframe())
+                        msg = "{} Line: {}: DEBUG: {}: ".format(
+                            frameinfo.function, frameinfo.lineno,
+                            datetime.datetime.now().isoformat().replace("T", " ")[:-3],
+                        )
+                        msg += "len(self.ws_active_orders[{}]): {}".format(
+                            symbol_id,
+                            len(self.ws_active_orders[symbol_id]),
+                        )
+                        print(msg)
+
+                    for i, active_order in enumerate(self.ws_active_orders[symbol_id]):
+                        if self.debug:
+                            # TODO: Debug use
+                            frameinfo = inspect.getframeinfo(inspect.currentframe())
+                            msg = "{} Line: {}: DEBUG: {}: ".format(
+                                frameinfo.function, frameinfo.lineno,
+                                datetime.datetime.now().isoformat().replace("T", " ")[:-3],
+                            )
+                            msg += "{}/{}: detected active_order['id']: {}".format(
+                                i + 1,
+                                len(self.ws_active_orders[symbol_id]),
+                                active_order['id'],
+                            )
+                            print(msg)
+
+                        if search_order_id == active_order['id']:
+                            # Extract the order from the websocket
+                            order = active_order
+                            found_order_in_ws = True
+                            break
+
+            if found_order_in_ws == False:
+                order = self._snail_path_to_fetch_order_from_exchange(oid, symbol_id, params)
         else:
-            if oid is not None:
-                order = self._fetch_order_from_exchange(oid, symbol_id, params)
-            else:
-                order = self._fetch_order_from_exchange(conditional_oid, symbol_id, params)
+            order = self._snail_path_to_fetch_order_from_exchange(oid, symbol_id, params)
+
+        if self.debug:
+            # # TODO: Debug use
+            # if order is None:
+            #     msg_type_str = "WARNING"
+            #     found_str = "None"
+            # else:
+            #     msg_type_str = "INFO"
+            #     found_str = "found"
+            #
+            # frameinfo = inspect.getframeinfo(inspect.currentframe())
+            # msg = "{} Line: {}: {}: {}: {}: {} Order: {} is {}, ".format(
+            #     frameinfo.function, frameinfo.lineno,
+            #     msg_type_str,
+            #     threading.current_thread().name,
+            #     datetime.datetime.now().isoformat().replace("T", " ")[:-3],
+            #     order_type_name,
+            #     search_order_id,
+            #     found_str,
+            # )
+            # msg += "is_ws_available: {}, ".format(self.is_ws_available)
+            # msg += "found_order_in_ws: {}, ".format(found_order_in_ws)
+            #
+            # # # If we are looking for Conditional Order
+            # # if conditional_oid is not None:
+            # #     msg += "searched_ws_conditional_order: {}, ".format(searched_ws_conditional_order)
+            # #     msg += "tried_conditional_order_search_in_exchange: {}, ".format(
+            # #         tried_conditional_order_search_in_exchange)
+            # #
+            # # msg += "searched_ws_active_order: {}, ".format(searched_ws_active_order)
+            # # msg += "tried_active_order_search_in_exchange: {}, ".format(tried_active_order_search_in_exchange)
+            #
+            # msg += "params:"
+            # print(msg)
+            # pprint(params)
+            pass
+
         return order
 
     @retry

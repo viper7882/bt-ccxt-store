@@ -21,12 +21,13 @@
 from __future__ import (absolute_import, division, print_function,
                         unicode_literals)
 
-import threading
-from pprint import pprint
-
 import backtrader
 import collections
+import datetime
 import inspect
+import threading
+
+from pprint import pprint
 
 from .bt_ccxt_account_or_store__classes import BT_CCXT_Account_or_Store
 from .bt_ccxt_expansion__classes import Enhanced_Position
@@ -74,12 +75,7 @@ class BT_CCXT_Instrument(backtrader.with_metaclass(Meta_Instrument, object)):
         return str(self)
 
     def __str__(self):
-        items = list()
-        items.append('--- BT_CCXT_Instrument Begin ---')
-        items.append('- Symbol ID: {}'.format(self.symbol_id))
-        items.append('--- BT_CCXT_Instrument End ---')
-        ret_value = str('\n'.join(items))
-        return ret_value
+        return self.symbol_id
 
     def set__parent(self, owner):
         self.parent = owner
@@ -118,22 +114,8 @@ class BT_CCXT_Instrument(backtrader.with_metaclass(Meta_Instrument, object)):
     def get_ws_active_orders(self, symbol_id):
         return self.parent.ws_active_orders[symbol_id]
 
-    def remove_ws_active_order(self, symbol_id, ws_active_order):
-        self.parent.ws_active_orders[symbol_id].remove(ws_active_order)
-
-        # INFO: Double check if the entry has been removed properly
-        ws_active_orders = self.get_ws_active_orders(symbol_id)
-        assert ws_active_order not in ws_active_orders
-
     def get_ws_conditional_orders(self, symbol_id):
         return self.parent.ws_conditional_orders[symbol_id]
-
-    def remove_ws_conditional_order(self, symbol_id, ws_conditional_order):
-        self.parent.ws_conditional_orders[symbol_id].remove(ws_conditional_order)
-
-        # INFO: Double check if the entry has been removed properly
-        ws_conditional_orders = self.get_ws_conditional_orders(symbol_id)
-        assert ws_conditional_order not in ws_conditional_orders
 
     def fetch_order_book(self, symbol):
         return self.parent.fetch_order_book(symbol)
@@ -371,3 +353,9 @@ class BT_CCXT_Instrument(backtrader.with_metaclass(Meta_Instrument, object)):
 
         pnl_in_percentage = pnl_comm * 100.0 / (normalized_initial_margin or 1.0)
         return pnl_comm, pnl_in_percentage, normalized_initial_margin
+
+    def get_account_alias(self):
+        return self.parent.get_account_alias()
+
+    def get_open_orders(self):
+        return self.parent.get_open_orders()

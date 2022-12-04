@@ -110,6 +110,12 @@ class BT_CCXT_Order(backtrader.OrderBase):
 
     def extract_from_ccxt_order(self, ccxt_order):
         self.ccxt_order = ccxt_order
+
+        if type(self.ccxt_order).__name__ == BT_CCXT_Order.__name__:
+            self.ccxt_id = ccxt_order['ref']
+        else:
+            self.ccxt_id = ccxt_order['id']
+
         self.order_type = self.Buy if ccxt_order['side'] == 'buy' else self.Sell
 
         self.size = float(ccxt_order['amount'])
@@ -122,10 +128,27 @@ class BT_CCXT_Order(backtrader.OrderBase):
             # WARNING: The following code might cause assertion error during execute.
             self.price = 0.0
 
-        if type(self.ccxt_order).__name__ == BT_CCXT_Order.__name__:
-            self.ref = ccxt_order['ref']
+        if self.price == 0.0:
+            # WARNING: The following code could be Bybit-specific
+            if ccxt_order['stopPrice'] is not None:
+                # INFO: For market order, the completed price is captured in stopPrice a.k.a. trigger_price
+                self.price = float(ccxt_order['stopPrice'])
+
+        if ccxt_order['filled'] is not None:
+            self.filled = float(ccxt_order['filled'])
         else:
-            self.ref = ccxt_order['id']
+            self.filled = 0.0
+
+        if ccxt_order['remaining'] is not None:
+            self.remaining = float(ccxt_order['remaining'])
+        else:
+            self.remaining = 0.0
+
+        # WARNING: The following code could be Bybit-specific
+        if 'order_status' in ccxt_order['info'].keys():
+            if ccxt_order['info']['order_status'] is not None:
+                if ccxt_order['info']['order_status'].lower() == "triggered":
+                    self.triggered = True
 
     def __repr__(self):
         return str(self)
@@ -133,7 +156,7 @@ class BT_CCXT_Order(backtrader.OrderBase):
     def __str__(self):
         tojoin = list()
         tojoin.append('Datafeed: {}'.format(self.datafeed._name))
-        tojoin.append('ID: {}'.format(self.ref))
+        tojoin.append('ID: {}'.format(self.ccxt_id))
         tojoin.append('Order Type Name: {}'.format(self.order_type_name()))
         tojoin.append('Ordering Type Name: {}'.format(self.ordering_type_name()))
         tojoin.append('Order Intent Name: {}'.format(self.order_intent_name()))

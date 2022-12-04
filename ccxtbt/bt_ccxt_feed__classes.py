@@ -105,12 +105,7 @@ class BT_CCXT_Feed(with_metaclass(MetaCCXTFeed, DataBase)):
         return str(self)
 
     def __str__(self):
-        items = list()
-        items.append('--- BT_CCXT_Feed Begin ---')
-        items.append('- Name: {}'.format(self._name))
-        items.append('--- BT_CCXT_Feed End ---')
-        ret_value = str('\n'.join(items))
-        return ret_value
+        return self._name
 
     def set__parent(self, owner):
         self.instrument = owner
