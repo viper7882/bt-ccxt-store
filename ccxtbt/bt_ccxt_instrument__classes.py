@@ -123,8 +123,8 @@ class BT_CCXT_Instrument(backtrader.with_metaclass(Meta_Instrument, object)):
     def get_commission_info(self):
         return self.parent.get_commission_info()
 
-    def fetch_order(self, oid, symbol, params={}):
-        return self.parent.fetch_order(oid, symbol, params)
+    def fetch_order(self, order_id, symbol, params={}):
+        return self.parent.fetch_order(order_id, symbol, params)
 
     def get_orders(self, **kwarg):
         return self.parent.get_orders(**kwarg)
@@ -163,8 +163,8 @@ class BT_CCXT_Instrument(backtrader.with_metaclass(Meta_Instrument, object)):
         return self.parent.modify_order(order_id, symbol, type, side, amount=amount, price=price, 
                                         trigger_price=trigger_price, params=params)
 
-    def fetch_ccxt_order(self, symbol_id, oid=None, stop_order_id=None):
-        return self.parent.fetch_ccxt_order(symbol_id=symbol_id, oid=oid, stop_order_id=stop_order_id)
+    def fetch_ccxt_order(self, symbol_id, order_id=None, stop_order_id=None):
+        return self.parent.fetch_ccxt_order(symbol_id=symbol_id, order_id=order_id, stop_order_id=stop_order_id)
 
     def set__payload(self, payload):
         self.payload = payload

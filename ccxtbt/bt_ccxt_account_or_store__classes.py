@@ -249,7 +249,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         return self.commission_info[None]
 
     def get_balance(self):
-        self.get_balance()
+        self._get_balance()
         self.cash = self._cash
         self.value = self._value
         return self.cash, self.value
@@ -268,7 +268,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
 
     def get_cash(self, force=False):
         if force == True:
-            self.get_balance()
+            self._get_balance()
         self._cash = truncate(self._cash, CASH_DIGITS)
         self.cash = self._cash
         return self.cash
@@ -354,11 +354,11 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                     # msg = "{} Line: {}: DEBUG: ordering_type == backtrader.Order.ACTIVE_ORDERING_TYPE, ".format(
                     #     frameinfo.function, frameinfo.lineno,
                     # )
-                    # msg += "oid: {}".format(oID)
+                    # msg += "order_id: {}".format(oID)
                     # print(msg)
                     pass
 
-                new_ccxt_order = self.fetch_ccxt_order(order.symbol_id, oid=oID)
+                new_ccxt_order = self.fetch_ccxt_order(order.symbol_id, order_id=oID)
             else:
                 # Validate assumption made
                 assert order.ordering_type == backtrader.Order.CONDITIONAL_ORDERING_TYPE
@@ -515,7 +515,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                 order.completed()
                 self.execute(order, order.price)
                 self.open_orders.remove(order)
-                self.get_balance()
+                self._get_balance()
             # Check if the exchange order is rejected
             elif new_ccxt_order[self.parent.mappings['rejected_order']['key']] == \
                     self.parent.mappings['rejected_order']['value']:
@@ -613,11 +613,11 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         time.sleep(0.1)
 
         if 'stop_order_id' in ret_ord['info'].keys():
-            oid = None
+            order_id = None
             stop_order_id = ret_ord['id']
             order_type_name = 'Conditional'
         else:
-            oid = ret_ord['id']
+            order_id = ret_ord['id']
             stop_order_id = None
             order_type_name = 'Active'
 
@@ -631,8 +631,8 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
             #     datetime.datetime.now().isoformat().replace("T", " ")[:-3],
             #     order_type_name,
             # )
-            # if oid is not None:
-            #     msg += "oid: {}".format(oid)
+            # if order_id is not None:
+            #     msg += "order_id: {}".format(order_id)
             # else:
             #     # Validate assumption made
             #     legality_check_not_none_obj(stop_order_id, "stop_order_id")
@@ -642,7 +642,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
             pass
 
         start = timer()
-        ccxt_order = self.fetch_ccxt_order(symbol_id, oid=oid, stop_order_id=stop_order_id)
+        ccxt_order = self.fetch_ccxt_order(symbol_id, order_id=order_id, stop_order_id=stop_order_id)
         if self.debug:
             _, minutes, seconds = get_time_diff(start)
             frameinfo = inspect.getframeinfo(inspect.currentframe())
@@ -665,9 +665,9 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
             )
             if exchange_order_intent is not None:
                 msg += "[{}] ".format(backtrader.Order.Order_Intents[exchange_order_intent])
-            msg += "{} Order, oid: \'{}\' vs stop_order_id: \'{}\', submitted ccxt_order:".format(
+            msg += "{} Order, order_id: \'{}\' vs stop_order_id: \'{}\', submitted ccxt_order:".format(
                 order_type_name,
-                oid,
+                order_id,
                 stop_order_id,
             )
             print(msg)
@@ -699,16 +699,16 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                 exchange_order_intent = backtrader.Order.Exit_Order
         return exchange_order_intent
 
-    def fetch_ccxt_order(self, symbol_id, oid=None, stop_order_id=None):
+    def fetch_ccxt_order(self, symbol_id, order_id=None, stop_order_id=None):
         # Mutually exclusive legality check
-        if oid is None:
+        if order_id is None:
             legality_check_not_none_obj(stop_order_id, "stop_order_id")
 
         if stop_order_id is None:
-            legality_check_not_none_obj(oid, "oid")
+            legality_check_not_none_obj(order_id, "order_id")
 
         # One of these must be valid
-        assert oid is not None or stop_order_id is not None
+        assert order_id is not None or stop_order_id is not None
 
         start = timer()
         ccxt_order = None
@@ -722,16 +722,16 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                         stop_order_id=stop_order_id,
                     )
                     ccxt_order = \
-                        self.fetch_order(oid=None, symbol_id=symbol_id, params=params)
+                        self.fetch_order(order_id=None, symbol_id=symbol_id, params=params)
                 else:
                     # Active Order
-                    ccxt_order = self.fetch_order(oid=oid, symbol_id=symbol_id)
+                    ccxt_order = self.fetch_order(order_id=order_id, symbol_id=symbol_id)
 
                 if ccxt_order is not None:
                     if stop_order_id is not None:
                         order_type_name = 'Conditional'
                     else:
-                        legality_check_not_none_obj(oid, "oid")
+                        legality_check_not_none_obj(order_id, "order_id")
                         order_type_name = 'Active'
 
                     if self.debug:
@@ -744,9 +744,9 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                         )
                         if exchange_order_intent is not None:
                             msg += "[{}] ".format(backtrader.Order.Order_Intents[exchange_order_intent])
-                        msg += "{} Order, oid: \'{}\' vs stop_order_id: \'{}\'".format(
+                        msg += "{} Order, order_id: \'{}\' vs stop_order_id: \'{}\'".format(
                             order_type_name,
-                            oid,
+                            order_id,
                             stop_order_id,
                         )
                         print(msg)
@@ -755,7 +755,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                         msg = "{} Line: {}: DEBUG: {}: Found \'{}\' ".format(
                             frameinfo.function, frameinfo.lineno,
                             datetime.datetime.now().isoformat().replace("T", " ")[:-3],
-                            oid if oid is not None else stop_order_id,
+                            order_id if order_id is not None else stop_order_id,
                         )
                         if exchange_order_intent is not None:
                             msg += "[{}] ".format(backtrader.Order.Order_Intents[exchange_order_intent])
@@ -821,7 +821,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                     msg += "ccxt_order_id: {}".format(ccxt_order_id)
                     print(msg)
 
-                order.ccxt_order = self.fetch_ccxt_order(order.symbol_id, oid=ccxt_order_id)
+                order.ccxt_order = self.fetch_ccxt_order(order.symbol_id, order_id=ccxt_order_id)
             else:
                 # Validate assumption made
                 assert order.ordering_type == backtrader.Order.CONDITIONAL_ORDERING_TYPE
@@ -858,6 +858,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         # Real execution with date
         for ccxt_instrument in self.ccxt_instruments:
             if ccxt_instrument.symbol_id == order.symbol_id:
+                original_position = ccxt_instrument.get_position(order.position_type, clone=True)
                 position = ccxt_instrument.get_position(order.position_type, clone=False)
                 pprice_orig = position.price
 
@@ -919,7 +920,8 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                 if flag_as_error == True:
                     ccxt_order_id = get_ccxt_order_id(order)
                     raise ValueError(
-                        "{}: order id: {}: Both {:.{}f} x opened:{:.{}f}/closed:{:.{}f} of must be positive!!!".format(
+                        "{}: order id: \'{}\': Both {:.{}f} x opened:{:.{}f}/closed:{:.{}f} of "
+                        "must be positive!!!".format(
                             inspect.currentframe(),
                             ccxt_order_id,
                             price, commission_info.price_digits,
@@ -1001,22 +1003,71 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                     self.notify(order)
 
                 # Legality Check
+                throws_out_error = False
+                sub_error_msg = None
                 if order.symbol_id.endswith("USDT"):
                     if order.position_type == backtrader.Position.LONG_POSITION:
-                        assert position_size >= 0.0, \
-                            "For {} position, size: {:.{}f} must be zero or positive!!!".format(
-                                backtrader.Position.Position_Types[order.position_type],
-                                position_size, commission_info.qty_digits,
-                            )
+                        if position_size < 0.0:
+                            sub_error_msg = \
+                                "For {} position, size: {:.{}f} must be zero or positive!!!".format(
+                                    backtrader.Position.Position_Types[order.position_type],
+                                    position_size, commission_info.qty_digits,
+                                )
+                            throws_out_error = True
                     else:
                         # Validate assumption made
                         assert order.position_type == backtrader.Position.SHORT_POSITION
 
-                        assert position_size <= 0.0, \
-                            "For {} position, size: {:.{}f} must be zero or negative!!!".format(
-                                backtrader.Position.Position_Types[order.position_type],
-                                position_size, commission_info.qty_digits,
+                        if position_size > 0.0:
+                            sub_error_msg = \
+                                "For {} position, size: {:.{}f} must be zero or negative!!!".format(
+                                    backtrader.Position.Position_Types[order.position_type],
+                                    position_size, commission_info.qty_digits,
+                                )
+                            throws_out_error = True
+
+                    if throws_out_error == True:
+                        legality_check_not_none_obj(sub_error_msg, "sub_error_msg")
+                        frameinfo = inspect.getframeinfo(inspect.currentframe())
+                        msg = "{} Line: {}: ERROR: ".format(
+                            frameinfo.function, frameinfo.lineno,
+                        )
+                        sub_msg = "order.ccxt_order:"
+                        print(msg + sub_msg)
+                        print(json.dumps(order.ccxt_order, indent=self.indent))
+
+                        msg = "{} Line: {}: INFO: ".format(
+                            frameinfo.function, frameinfo.lineno,
+                        )
+                        sub_msg = "pre-position:"
+                        print(msg + sub_msg)
+                        pprint(original_position)
+
+                        msg = "{} Line: {}: DEBUG: ".format(
+                            frameinfo.function, frameinfo.lineno,
+                        )
+                        sub_msg = "post-position:"
+                        print(msg + sub_msg)
+                        pprint(position)
+
+                        msg = "{} Line: {}: INFO: ".format(
+                            frameinfo.function, frameinfo.lineno,
+                        )
+                        ccxt_order_id = get_ccxt_order_id(order)
+                        sub_msg = \
+                            "order id: \'{}\': price: {:.{}f} x opened:{:.{}f}/closed:{:.{}f}, size: {:.{}f}".format(
+                                ccxt_order_id,
+                                price, commission_info.price_digits,
+                                opened, commission_info.qty_digits,
+                                closed, commission_info.qty_digits,
+                                size, commission_info.qty_digits,
                             )
+                        print(msg + sub_msg)
+
+                        error_msg = "{}:".format(
+                            inspect.currentframe(),
+                        )
+                        raise ValueError(error_msg + sub_error_msg)
                 else:
                     raise NotImplementedError("symbol_id: {} is yet to be supported!!!".format(order.symbol_id))
 
@@ -1306,7 +1357,11 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         return self.account_alias
 
     def get_open_orders(self):
-        return self.open_orders
+        # INFO: In order to prevent manipulation from caller
+        cloned_open_orders = []
+        for open_order in self.open_orders:
+            cloned_open_orders.append(copy.copy(open_order))
+        return cloned_open_orders
 
     def get_granularity(self, timeframe, compression):
         if not self.exchange.has['fetchOHLCV']:
@@ -1677,6 +1732,11 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                                 'ret_msg' = 'expect Rising, but trigger_price[12705000] <= current[12706500]'
                                 '''
                                 break
+                            elif exchange_error_dict['ret_code'] == 130010:
+                                '''
+                                'ret_msg' = 'order not exists or too late to repalce'
+                                '''
+                                break
 
                             # INFO: Print out warning regarding the response received from ExchangeError
                             frameinfo = inspect.getframeinfo(inspect.currentframe())
@@ -1711,14 +1771,14 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         return balance
 
     @retry
-    def get_balance(self):
+    def _get_balance(self):
         balance = self.exchange.fetch_balance()
 
         cash = balance['free'][self.wallet_currency]
         value = balance['total'][self.wallet_currency]
         # Fix if None is returned
-        self._cash = cash if cash else 0
-        self._value = value if value else 0
+        self._cash = cash if cash else 0.0
+        self._value = value if value else 0.0
 
     def get_position(self):
         return self._value
@@ -1792,18 +1852,18 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         return ret_value
 
     @retry
-    def _fetch_order_from_exchange(self, oid, symbol_id, params={}):
+    def _fetch_order_from_exchange(self, order_id, symbol_id, params={}):
         order = None
         try:
             # INFO: Due to nature of order is processed async, the order could not be found immediately right after
-            #       order is is opened. Hence, perform retry to confirm if that's the case.
-            order = self.exchange.fetch_order(oid, symbol_id, params)
+            #       order is opened. Hence, perform retry to confirm if that's the case.
+            order = self.exchange.fetch_order(order_id, symbol_id, params)
         except OrderNotFound:
             # INFO: Ignore order not found error
             pass
         return order
 
-    def _snail_path_to_fetch_order_from_exchange(self, oid, symbol_id, params):
+    def _snail_path_to_fetch_order_from_exchange(self, order_id, symbol_id, params):
         # INFO: Optional Params
         conditional_oid = params.get('stop_order_id', None)
 
@@ -1817,30 +1877,31 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
             if order is None:
                 # Exercise the longer time route @ Active Order
                 order = self._fetch_order_from_exchange(conditional_oid, symbol_id)
-
         # If we are looking for Active Order
         else:
             # Validate assumption made
-            legality_check_not_none_obj(oid, "oid")
+            legality_check_not_none_obj(order_id, "order_id")
 
             # Exercise the longer time route @ Active Order
-            order = self._fetch_order_from_exchange(oid, symbol_id)
+            order = self._fetch_order_from_exchange(order_id, symbol_id)
+
+        # INFO: It is OK to have order is None here
         return order
 
-    def fetch_order(self, oid, symbol_id, params={}):
+    def fetch_order(self, order_id, symbol_id, params={}):
         # INFO: Optional Params
         conditional_oid = params.get('stop_order_id', None)
 
         # INFO: Enforce mutually exclusive rule
         search_order_id = None
         order_type_name = None
-        if oid is None:
+        if order_id is None:
             legality_check_not_none_obj(conditional_oid, "conditional_oid")
             search_order_id = conditional_oid
             order_type_name = 'Conditional'
         elif conditional_oid is None:
-            legality_check_not_none_obj(oid, "oid")
-            search_order_id = oid
+            legality_check_not_none_obj(order_id, "order_id")
+            search_order_id = order_id
             order_type_name = 'Active'
         legality_check_not_none_obj(search_order_id, "search_order_id")
         legality_check_not_none_obj(order_type_name, "order_type_name")
@@ -1852,7 +1913,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
             #     frameinfo.function, frameinfo.lineno,
             #     threading.current_thread().name,
             # )
-            # msg += "oid: {}, ".format(oid)
+            # msg += "order_id: {}, ".format(order_id)
             # msg += "conditional_oid: {}, ".format(conditional_oid)
             #
             # # INFO: Strip ", " from the string
@@ -1862,6 +1923,9 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         found_order_in_ws = False
         search_into_ws_conditional_order = False
         search_into_ws_active_order = False
+        order = None
+        searched__conditional_order_ids = []
+        searched__active_order_ids = []
 
         if self.is_ws_available == True:
             # If we are looking for Conditional Order
@@ -1870,7 +1934,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                 search_into_ws_active_order = True
             # If we are looking for Active Order
             else:
-                legality_check_not_none_obj(oid, "oid")
+                legality_check_not_none_obj(order_id, "order_id")
                 search_into_ws_active_order = True
 
             if self.debug:
@@ -1903,6 +1967,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                     pass
 
                 for i, conditional_order in enumerate(self.ws_conditional_orders[symbol_id]):
+                    searched__conditional_order_ids.append(conditional_order['id'])
                     if self.debug:
                         # TODO: Debug use
                         frameinfo = inspect.getframeinfo(inspect.currentframe())
@@ -1939,6 +2004,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                         print(msg)
 
                     for i, active_order in enumerate(self.ws_active_orders[symbol_id]):
+                        searched__active_order_ids.append(active_order['id'])
                         if self.debug:
                             # TODO: Debug use
                             frameinfo = inspect.getframeinfo(inspect.currentframe())
@@ -1960,46 +2026,42 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                             break
 
             if found_order_in_ws == False:
-                order = self._snail_path_to_fetch_order_from_exchange(oid, symbol_id, params)
+                frameinfo = inspect.getframeinfo(inspect.currentframe())
+
+                # # TODO: Debug use
+                # msg = "{} Line: {}: DEBUG: {}: ".format(
+                #     frameinfo.function, frameinfo.lineno,
+                #     datetime.datetime.now().isoformat().replace("T", " ")[:-3],
+                # )
+                # sub_msg = "searched__conditional_order_ids:"
+                # print(msg + sub_msg)
+                # pprint(searched__conditional_order_ids)
+                # sub_msg = "searched__active_order_ids:"
+                # print(msg + sub_msg)
+                # pprint(searched__active_order_ids)
+
+                msg = "{} Line: {}: WARNING: {}: ".format(
+                    frameinfo.function, frameinfo.lineno,
+                    datetime.datetime.now().isoformat().replace("T", " ")[:-3],
+                )
+                sub_msg = "order id: \'{}\' not found in websocket. Trying to search using HTTP instead...".format(
+                    search_order_id,
+                )
+                print(msg + sub_msg)
+                order = self._snail_path_to_fetch_order_from_exchange(order_id, symbol_id, params)
         else:
-            order = self._snail_path_to_fetch_order_from_exchange(oid, symbol_id, params)
+            frameinfo = inspect.getframeinfo(inspect.currentframe())
+            msg = "{} Line: {}: WARNING: {}: ".format(
+                frameinfo.function, frameinfo.lineno,
+                datetime.datetime.now().isoformat().replace("T", " ")[:-3],
+            )
+            sub_msg = "websocket is not available, searching order id: \'{}\' using HTTP...".format(
+                search_order_id,
+            )
+            print(msg + sub_msg)
+            order = self._snail_path_to_fetch_order_from_exchange(order_id, symbol_id, params)
 
-        if self.debug:
-            # # TODO: Debug use
-            # if order is None:
-            #     msg_type_str = "WARNING"
-            #     found_str = "None"
-            # else:
-            #     msg_type_str = "INFO"
-            #     found_str = "found"
-            #
-            # frameinfo = inspect.getframeinfo(inspect.currentframe())
-            # msg = "{} Line: {}: {}: {}: {}: {} Order: {} is {}, ".format(
-            #     frameinfo.function, frameinfo.lineno,
-            #     msg_type_str,
-            #     threading.current_thread().name,
-            #     datetime.datetime.now().isoformat().replace("T", " ")[:-3],
-            #     order_type_name,
-            #     search_order_id,
-            #     found_str,
-            # )
-            # msg += "is_ws_available: {}, ".format(self.is_ws_available)
-            # msg += "found_order_in_ws: {}, ".format(found_order_in_ws)
-            #
-            # # # If we are looking for Conditional Order
-            # # if conditional_oid is not None:
-            # #     msg += "searched_ws_conditional_order: {}, ".format(searched_ws_conditional_order)
-            # #     msg += "tried_conditional_order_search_in_exchange: {}, ".format(
-            # #         tried_conditional_order_search_in_exchange)
-            # #
-            # # msg += "searched_ws_active_order: {}, ".format(searched_ws_active_order)
-            # # msg += "tried_active_order_search_in_exchange: {}, ".format(tried_active_order_search_in_exchange)
-            #
-            # msg += "params:"
-            # print(msg)
-            # pprint(params)
-            pass
-
+        # INFO: It is OK to have order is None here
         return order
 
     @retry
