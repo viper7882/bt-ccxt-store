@@ -42,6 +42,7 @@ from pybit import usdt_perpetual
 from pprint import pprint
 from time import time as timer
 
+from .bybit_exchange__specifications import BYBIT_EXCHANGE_ID
 from .bt_ccxt__specifications import CASH_DIGITS
 from .bt_ccxt_order__classes import BT_CCXT_Order
 from .bt_ccxt_exchange__classes import BT_CCXT_Exchange
@@ -170,7 +171,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         #       established before moving on to another thread
         with self.account__thread__connectivity__lock:
             # INFO: Support for Bybit below
-            if str(self.exchange).lower() == "bybit":
+            if str(self.exchange).lower() == BYBIT_EXCHANGE_ID:
                 self.is_ws_available = True
                 self.config__api_key = config['apiKey']
                 self.config__api_secret = config['secret']
@@ -246,7 +247,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         return instrument
 
     def get_commission_info(self):
-        return self.commission_info[None]
+        return self.parent.get_commission_info()
 
     def get_balance(self):
         self._get_balance()
@@ -674,8 +675,17 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
             print(json.dumps(ccxt_order, indent=self.indent))
 
         # INFO: Exposed simulated so that we could proceed with order without running cerebro
-        order = BT_CCXT_Order(owner, datafeed, ccxt_order, execution_type, symbol_id, position_type, ordering_type, 
-                              order_intent)
+        bt_ccxt_order__dict = dict(
+            owner=owner,
+            symbol_id=symbol_id,
+            datafeed=datafeed,
+            ccxt_order=ccxt_order,
+            execution_type=execution_type,
+            position_type=position_type,
+            ordering_type=ordering_type,
+            order_intent=order_intent,
+        )
+        order = BT_CCXT_Order(**bt_ccxt_order__dict)
 
         # Check if the exchange order is NOT closed
         if ccxt_order[self.parent.mappings['closed_order']['key']] != self.parent.mappings['closed_order']['value']:
@@ -690,13 +700,18 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         exchange_order_intent = None
         # WARNING: The following code could be Bybit-specific
         if 'reduce_only' in ccxt_order['info'].keys():
-            if bool(ccxt_order['info']['reduce_only']) == False:
+            # Validate assumption made
+            assert isinstance(ccxt_order['info']['reduce_only'], bool)
+
+            if ccxt_order['info']['reduce_only'] == False:
                 exchange_order_intent = backtrader.Order.Entry_Order
             else:
                 # Validate assumption made
-                assert bool(ccxt_order['info']['reduce_only']) == True
+                assert ccxt_order['info']['reduce_only'] == True
 
                 exchange_order_intent = backtrader.Order.Exit_Order
+        else:
+            raise NotImplementedError()
         return exchange_order_intent
 
     def fetch_ccxt_order(self, symbol_id, order_id=None, stop_order_id=None):
@@ -949,50 +964,73 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                 # Legality Check
                 throws_out_error = False
                 sub_error_msg = None
-                if order.ccxt_order['filled'] is not None:
-                    if abs(order.executed.filled_size) != order.filled:
-                        sub_error_msg = " abs(order.executed.filled_size): {:.{}f} != " \
-                                     "Exchange's filled: {:.{}f}!!!".format(
+                if abs(order.executed.size) != abs(order.size):
+                    sub_error_msg = \
+                        " abs(order.executed.size): {:.{}f} != Exchange's abs(size): {:.{}f}!!!".format(
+                            abs(order.executed.size), commission_info.qty_digits,
+                            abs(order.size), commission_info.qty_digits,
+                        )
+                    throws_out_error = True
+
+                if abs(order.executed.filled_size) != order.filled:
+                    sub_error_msg = \
+                        " abs(order.executed.filled_size): {:.{}f} != Exchange's filled: {:.{}f}!!!".format(
                             abs(order.executed.filled_size), commission_info.qty_digits,
                             order.filled, commission_info.qty_digits,
                         )
-                        throws_out_error = True
-                else:
-                    if abs(order.executed.filled_size) != order.size:
-                        sub_error_msg = " abs(order.executed.filled_size): {:.{}f} != " \
-                                     "Exchange's size: {:.{}f}!!!".format(
-                            abs(order.executed.filled_size), commission_info.qty_digits,
-                            order.size, commission_info.qty_digits,
-                        )
-                        throws_out_error = True
+                    throws_out_error = True
 
-                if order.ccxt_order['remaining'] is not None:
-                    if abs(order.executed.remaining_size) != order.remaining:
-                        sub_error_msg = " abs(order.executed.remaining_size): {:.{}f} != " \
-                                     "Exchange's remaining: {:.{}f}!!!".format(
+                if abs(order.executed.remaining_size) != order.remaining:
+                    sub_error_msg = \
+                        " abs(order.executed.remaining_size): {:.{}f} != Exchange's remaining: {:.{}f}!!!".format(
                             abs(order.executed.remaining_size), commission_info.qty_digits,
                             order.remaining, commission_info.qty_digits,
                         )
-                        throws_out_error = True
+                    throws_out_error = True
+
+                if throws_out_error == True:
+                    msg_type = "ERROR"
                 else:
-                    if abs(order.executed.remaining_size) != order.remaining:
-                        sub_error_msg = " abs(order.executed.remaining_size): {:.{}f} != " \
-                                     "Exchange's remaining: {:.{}f}!!!".format(
+                    msg_type = "DEBUG"
+
+                frameinfo = inspect.getframeinfo(inspect.currentframe())
+                msg = "{} Line: {}: {}: ".format(
+                    frameinfo.function, frameinfo.lineno,
+                    msg_type,
+                )
+                sub_msg = "order.ccxt_order:"
+                print(msg + sub_msg)
+                print(json.dumps(order.ccxt_order, indent=self.indent))
+
+                sub_msg = "order:"
+                print(msg + sub_msg)
+                pprint(order)
+
+                if throws_out_error == False:
+                    sub_msg = "pre-position:"
+                    print(msg + sub_msg)
+                    pprint(original_position)
+
+                    sub_msg = "post-position:"
+                    print(msg + sub_msg)
+                    pprint(position)
+
+                    sub_msg = \
+                        "abs(order.executed.filled_size): {:.{}f} vs Exchange's filled: {:.{}f}".format(
+                            abs(order.executed.filled_size), commission_info.qty_digits,
+                            order.filled, commission_info.qty_digits,
+                        )
+                    print(msg + sub_msg)
+
+                    sub_msg = \
+                        "abs(order.executed.remaining_size): {:.{}f} vs Exchange's remaining: {:.{}f}".format(
                             abs(order.executed.remaining_size), commission_info.qty_digits,
                             order.remaining, commission_info.qty_digits,
                         )
-                        throws_out_error = True
+                    print(msg + sub_msg)
 
                 if throws_out_error == True:
                     legality_check_not_none_obj(sub_error_msg, "sub_error_msg")
-                    frameinfo = inspect.getframeinfo(inspect.currentframe())
-                    msg = "{} Line: {}: ERROR: ".format(
-                        frameinfo.function, frameinfo.lineno,
-                    )
-                    msg += "order.ccxt_order:"
-                    print(msg)
-                    print(json.dumps(order.ccxt_order, indent=self.indent))
-
                     error_msg = "{}:".format(
                         inspect.currentframe(),
                     )
@@ -1721,7 +1759,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                         # INFO: Extract the exchange name from the exception
                         json_error = e.args[0].replace(str(self.exchange).lower() + " ", "")
                         exchange_error_dict = json.loads(json_error)
-                        if str(self.exchange).lower() == "bybit":
+                        if str(self.exchange).lower() == BYBIT_EXCHANGE_ID:
                             if exchange_error_dict['ret_code'] == 130125:
                                 '''
                                 'ret_msg' = 'current position is zero, cannot fix reduce-only order qty'
@@ -1735,6 +1773,11 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                             elif exchange_error_dict['ret_code'] == 130010:
                                 '''
                                 'ret_msg' = 'order not exists or too late to repalce'
+                                '''
+                                break
+                            elif exchange_error_dict['ret_code'] == 130075:
+                                '''
+                                'ret_msg' = 'expect Failling, but trigger_price[11975000] \u003e= current[11968000]??1'
                                 '''
                                 break
 
@@ -1753,7 +1796,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                             )
 
                             # Credits: https://stackoverflow.com/questions/3419984/print-to-the-same-line-and-not-a-new-line
-                            # INFO: Print on the same line without newline, customized accordingly to cater for latest need
+                            # INFO: Print on the same line without newline, customized accordingly to cater for our requirement
                             print("\r" + msg + sub_msg, end="")
 
                     pass
@@ -2028,26 +2071,28 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
             if found_order_in_ws == False:
                 frameinfo = inspect.getframeinfo(inspect.currentframe())
 
-                # # TODO: Debug use
-                # msg = "{} Line: {}: DEBUG: {}: ".format(
-                #     frameinfo.function, frameinfo.lineno,
-                #     datetime.datetime.now().isoformat().replace("T", " ")[:-3],
-                # )
-                # sub_msg = "searched__conditional_order_ids:"
-                # print(msg + sub_msg)
-                # pprint(searched__conditional_order_ids)
-                # sub_msg = "searched__active_order_ids:"
-                # print(msg + sub_msg)
-                # pprint(searched__active_order_ids)
+                # TODO: Debug use
+                msg = "{} Line: {}: DEBUG: {}: ".format(
+                    frameinfo.function, frameinfo.lineno,
+                    datetime.datetime.now().isoformat().replace("T", " ")[:-3],
+                )
+                sub_msg = "searched__conditional_order_ids:"
+                print(msg + sub_msg)
+                pprint(searched__conditional_order_ids)
+                sub_msg = "searched__active_order_ids:"
+                print(msg + sub_msg)
+                pprint(searched__active_order_ids)
 
                 msg = "{} Line: {}: WARNING: {}: ".format(
                     frameinfo.function, frameinfo.lineno,
                     datetime.datetime.now().isoformat().replace("T", " ")[:-3],
                 )
-                sub_msg = "order id: \'{}\' not found in websocket. Trying to search using HTTP instead...".format(
+                sub_msg = "order id: \'{}\' not found in Websocket. Trying to search using HTTP instead...".format(
                     search_order_id,
                 )
-                print(msg + sub_msg)
+                # Credits: https://stackoverflow.com/questions/3419984/print-to-the-same-line-and-not-a-new-line
+                # INFO: Print on the same line without newline, customized accordingly to cater for our requirement
+                print("\r" + msg + sub_msg, end="")
                 order = self._snail_path_to_fetch_order_from_exchange(order_id, symbol_id, params)
         else:
             frameinfo = inspect.getframeinfo(inspect.currentframe())
@@ -2055,7 +2100,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                 frameinfo.function, frameinfo.lineno,
                 datetime.datetime.now().isoformat().replace("T", " ")[:-3],
             )
-            sub_msg = "websocket is not available, searching order id: \'{}\' using HTTP...".format(
+            sub_msg = "Websocket is not available, searching order id: \'{}\' using HTTP...".format(
                 search_order_id,
             )
             print(msg + sub_msg)

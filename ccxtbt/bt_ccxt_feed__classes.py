@@ -78,6 +78,7 @@ class BT_CCXT_Feed(with_metaclass(MetaCCXTFeed, DataBase)):
         ('convert_to_heikin_ashi', False),    # True if the klines are converted into Heiken Ashi candlesticks
         ('symbol_tick_size', None),
         ('price_digits', None),
+        ('dataname', None),
         ('drop_newest', False),
         ('debug', False)
     )
@@ -94,7 +95,7 @@ class BT_CCXT_Feed(with_metaclass(MetaCCXTFeed, DataBase)):
         self._data = deque()  # data queue for price data
         self._last_ts = 0  # last processed timestamp for ohlcv
         self._ts_delta = None  # timestamp delta for ohlcv
-        self._name = None  # name of datafeed
+        self._name = self.p.dataname  # name of datafeed
 
         # Legality Check
         if self.p.convert_to_heikin_ashi:

@@ -30,23 +30,23 @@ from .utils import dump_obj
 
 
 class BT_CCXT_Order(backtrader.OrderBase):
-    def __init__(self, owner, datafeed, ccxt_order, execution_type, symbol_id, position_type, ordering_type,
-                 order_intent):
-        self.owner = owner
-        self.datafeed = datafeed
+    params = dict(
+        ccxt_order=None,
+        symbol_id=None,
+        position_type=None,
+        ordering_type=None,
+        order_intent=None,
+    )
+
+    def __init__(self):
         self.executed_fills = []
-        self.execution_type = execution_type
-        self.symbol_id = symbol_id
-        self.position_type = position_type
-        self.ordering_type = ordering_type
-        self.order_intent = order_intent
-        self.extract_from_ccxt_order(ccxt_order)
+        self.extract_from_ccxt_order(self.p.ccxt_order)
         self.indent = 4
 
         super(BT_CCXT_Order, self).__init__()
 
         # Legality Check
-        if self.symbol_id.endswith("USDT"):
+        if self.p.symbol_id.endswith("USDT"):
             stop_out = False
             if 'position_idx' in self.ccxt_order['info'].keys():
                 '''
@@ -55,12 +55,12 @@ class BT_CCXT_Order(backtrader.OrderBase):
                 2-Sell side of both side mode
                 '''
                 throws_out_error = False
-                if self.position_type == backtrader.Position.LONG_POSITION:
+                if self.p.position_type == backtrader.Position.LONG_POSITION:
                     if int(self.ccxt_order['info']['position_idx']) != 1:
                         throws_out_error = True
                 else:
                     # Validate assumption made
-                    assert self.position_type == backtrader.Position.SHORT_POSITION
+                    assert self.p.position_type == backtrader.Position.SHORT_POSITION
 
                     if int(self.ccxt_order['info']['position_idx']) != 2:
                         throws_out_error = True
@@ -71,7 +71,7 @@ class BT_CCXT_Order(backtrader.OrderBase):
                         frameinfo.function, frameinfo.lineno,
                         self.ref,
                         datetime.datetime.now().isoformat().replace("T", " ")[:-3],
-                        backtrader.Position.Position_Types[self.position_type],
+                        backtrader.Position.Position_Types[self.p.position_type],
                         self.ccxt_order['info']['position_idx'],
                     )
                     print(msg)
@@ -79,13 +79,17 @@ class BT_CCXT_Order(backtrader.OrderBase):
                     stop_out = True
 
             if 'reduce_only' in self.ccxt_order['info'].keys():
+                # Validate assumption made
+                assert isinstance(self.ccxt_order['info']['reduce_only'], bool)
+
                 throws_out_error = False
-                if self.order_intent == backtrader.Order.Entry_Order:
+
+                if self.p.order_intent == backtrader.Order.Entry_Order:
                     if self.ccxt_order['info']['reduce_only'] != False:
                         throws_out_error = True
                 else:
                     # Validate assumption made
-                    assert self.order_intent == backtrader.Order.Exit_Order
+                    assert self.p.order_intent == backtrader.Order.Exit_Order
 
                     if self.ccxt_order['info']['reduce_only'] != True:
                         throws_out_error = True
@@ -100,13 +104,13 @@ class BT_CCXT_Order(backtrader.OrderBase):
                         self.ccxt_order['info']['reduce_only'],
                     )
                     print(msg)
-                    print(json.dumps(ccxt_order, indent=self.indent))
+                    print(json.dumps(self.ccxt_order, indent=self.indent))
                     stop_out = True
 
             if stop_out == True:
                 raise RuntimeError("Abort due to at least one error is found...")
         else:
-            raise NotImplementedError("symbol_id: {} is yet to be supported!!!".format(self.symbol_id))
+            raise NotImplementedError("symbol_id: {} is yet to be supported!!!".format(self.p.symbol_id))
 
     def extract_from_ccxt_order(self, ccxt_order):
         self.ccxt_order = ccxt_order
@@ -137,7 +141,16 @@ class BT_CCXT_Order(backtrader.OrderBase):
         if ccxt_order['filled'] is not None:
             self.filled = float(ccxt_order['filled'])
         else:
-            self.filled = 0.0
+            # INFO: For market order, the ccxt_order['filled'] will always be None
+            if ccxt_order['type'] == backtrader.Order.Execution_Types[backtrader.Order.Market].lower():
+                self.filled = self.size
+            # INFO: For Conditional Limit Order
+            # WARNING: The following code could be Bybit-specific
+            elif ccxt_order['type'] == backtrader.Order.Execution_Types[backtrader.Order.Limit].lower() and \
+                    ccxt_order['stopPrice'] is not None:
+                self.filled = self.size
+            else:
+                self.filled = 0.0
 
         if ccxt_order['remaining'] is not None:
             self.remaining = float(ccxt_order['remaining'])
@@ -155,14 +168,15 @@ class BT_CCXT_Order(backtrader.OrderBase):
 
     def __str__(self):
         tojoin = list()
-        tojoin.append('Datafeed: {}'.format(self.datafeed._name))
-        tojoin.append('ID: {}'.format(self.ccxt_id))
-        tojoin.append('Order Type Name: {}'.format(self.order_type_name()))
-        tojoin.append('Ordering Type Name: {}'.format(self.ordering_type_name()))
-        tojoin.append('Order Intent Name: {}'.format(self.order_intent_name()))
-        tojoin.append('Status Name: {}'.format(self.ccxt_order['status']))
-        tojoin.append('Execution Type Name: {}'.format(self.execution_type_name()))
-        tojoin.append('Position Type Name: {}'.format(backtrader.Position.Position_Types[self.position_type]))
+        tojoin.append('datafeed: {}'.format(self.p.datafeed._name))
+        tojoin.append('id: \'{}\''.format(self.ccxt_id))
+        tojoin.append('{}: Position'.format(backtrader.Position.Position_Types[self.p.position_type]))
+        tojoin.append('Order Intent: {}'.format(self.order_intent_name()))
+        tojoin.append('{} Ordering Type'.format(self.ordering_type_name()))
+        tojoin.append('Order Type: {}'.format(self.order_type_name()))
+        tojoin.append('{}: Execution Type'.format(self.execution_type_name()))
+        tojoin.append('Backtrader Status: {}'.format(backtrader.Order.Status[self.status]))
+        tojoin.append('CCXT Status: {}'.format(self.ccxt_order['status']))
 
         if type(self.ccxt_order).__name__ == BT_CCXT_Order.__name__:
             if getattr(self.ccxt_order, 'created'):
