@@ -35,7 +35,7 @@ pip install -e .
 - Modified getcash() and getvalue():
       Backtrader will call getcash and getvalue before and after next, slowing things down
       with rest calls. As such, these will just return the last values called from getbalance().
-      Because getbalance() will not be called by cerebro, you need to do this manually as and when  
+      Because getbalance() will not be called by cerebro, you need to do this manually as and when
       you want the information.
 
 - **Note:** The broker mapping should contain a new dict for order_types and mappings like below:

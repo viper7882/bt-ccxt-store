@@ -6,7 +6,7 @@ import backtrader as bt
 import datetime as dt
 import inspect
 
-from ccxtbt import CCXTStore
+from ccxtbt import BT_CCXT_Account_or_Store
 from time import time as timer
 
 # DEBUG = True
@@ -66,7 +66,7 @@ def main():
         'enableRateLimit': True,
     }
 
-    store = CCXTStore(exchange=BYBIT_EXCHANGE_ID, currency=currency, config=broker_config, retries=5, debug=DEBUG,
+    store = BT_CCXT_Account_or_Store(exchange=BYBIT_EXCHANGE_ID, currency=currency, config=broker_config, retries=5, debug=DEBUG,
                       sandbox=True)
 
     broker_mapping = {

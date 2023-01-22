@@ -1,4 +1,4 @@
-from ccxtbt import CCXTStore
+from ccxtbt import BT_CCXT_Account_or_Store
 import backtrader as bt
 from datetime import datetime, timedelta
 
@@ -61,7 +61,7 @@ config = {'apiKey': apikey,
 # IMPORTANT NOTE - Kraken (and some other exchanges) will not return any values
 # for get cash or value if You have never held any LTC coins in your account.
 # So switch LTC to a coin you have funded previously if you get errors
-store = CCXTStore(exchange='kraken', currency='LTC', config=config, retries=5, debug=False)
+store = BT_CCXT_Account_or_Store(exchange='kraken', currency='LTC', config=config, retries=5, debug=False)
 
 
 # Get the broker and pass any kwargs if needed.

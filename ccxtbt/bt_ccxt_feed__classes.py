@@ -117,7 +117,7 @@ class BT_CCXT_Feed(with_metaclass(MetaCCXTFeed, DataBase)):
         if self.p.fromdate:
             self._state = self._HISTORY_BACK_STATE
             self.put_notification(self.DELAYED)
-            self._fetch_ohlcv(self.p.fromdate)
+            self._fetch_ohlcv(self.p.fromdate, self.p.todate)
 
         else:
             self._state = self._LIVE_STATE

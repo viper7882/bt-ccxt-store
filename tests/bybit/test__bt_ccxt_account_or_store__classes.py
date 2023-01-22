@@ -1,15 +1,15 @@
 import backtrader
 import datetime
-import decimal
 import inspect
 import json
-import math
 import os
+import pathlib
 import threading
 import traceback
 import unittest
 
 from time import time as timer
+from pprint import pprint
 
 from ccxtbt.bt_ccxt__specifications import MAX_LIVE_EXCHANGE_RETRIES, VALUE_DIGITS
 from ccxtbt.bt_ccxt_account_or_store__classes import BT_CCXT_Account_or_Store
@@ -17,7 +17,7 @@ from ccxtbt.bt_ccxt_feed__classes import BT_CCXT_Feed
 from ccxtbt.bt_ccxt_instrument__classes import BT_CCXT_Instrument
 from ccxtbt.bt_ccxt_order__classes import BT_CCXT_Order
 from ccxtbt.bybit_exchange__specifications import BYBIT_EXCHANGE_ID, BYBIT_OHLCV_LIMIT, BYBIT_COMMISSION_PRECISION
-from ccxtbt.utils import get_time_diff, legality_check_not_none_obj, truncate
+from ccxtbt.utils import get_time_diff, legality_check_not_none_obj, truncate, get_digits, get_wallet_currency
 
 API_KEY_AND_SECRET_FILE_NAME = "testnet__api_key_and_secret.json"
 
@@ -86,31 +86,6 @@ def get_commission_info(params):
     commission_info = FAKE_COMMISSION_INFO(params)
     return commission_info
 
-def get_digits(step_size) -> int:
-    if isinstance(step_size, float):
-        # Credits: https://stackoverflow.com/questions/6189956/easy-way-of-finding-decimal-places
-        number_of_digits = abs(decimal.Decimal(str(step_size)).as_tuple().exponent)
-    elif isinstance(step_size, int):
-        # Credits: https://stackoverflow.com/questions/2189800/how-to-find-length-of-digits-in-an-integer
-        number_of_digits = int(math.log10(step_size)) + 1
-    else:
-        raise NotImplementedError("{}: Unsupported step_size type: {}".format(
-            inspect.currentframe(),
-            type(step_size),
-        ))
-    return number_of_digits
-
-
-def get_wallet_currency(symbol_id):
-    currency = None
-    if symbol_id.endswith("USDT"):
-        currency = "USDT"
-    elif symbol_id.endswith("USDC"):
-        currency = symbol_id.replace("USDC", "")
-    elif symbol_id.endswith("USD"):
-        currency = symbol_id.replace("USD", "")
-    legality_check_not_none_obj(currency, "currency")
-    return currency
 
 def handle_datafeed(datafeed, price):
     datafeed.start()
@@ -181,13 +156,23 @@ class Bybit__bt_ccxt_account_or_store__TestCases(unittest.TestCase):
             enable_rate_limit = True
             account__thread__connectivity__lock = threading.Lock()
             self.symbol_id = "ETHUSDT"
-            symbol_tick_size = 0.05
-            price_digits = get_digits(symbol_tick_size)
             symbols_id = [self.symbol_id]
 
-            assert os.path.exists(API_KEY_AND_SECRET_FILE_NAME)
+            file_path = pathlib.Path(__file__).parent.resolve()
+            api_key_and_secret_full_path = os.path.join(file_path, API_KEY_AND_SECRET_FILE_NAME)
+            assert os.path.exists(api_key_and_secret_full_path)
 
-            with open(API_KEY_AND_SECRET_FILE_NAME, "r") as file_to_read:
+            commission = 0.0006
+            leverage_in_percent = 50.0
+            get_commission_info__dict = dict(
+                symbol_id=self.symbol_id,
+                isolated_toggle_switch_value=self.isolated_toggle_switch_value,
+                leverage_in_percent=leverage_in_percent,
+                commission=commission,
+            )
+            commission_info = get_commission_info(params=get_commission_info__dict)
+
+            with open(api_key_and_secret_full_path, "r") as file_to_read:
                 json_data = json.load(file_to_read)
                 api_key = json_data['key']
                 api_secret = json_data['secret']
@@ -225,15 +210,6 @@ class Bybit__bt_ccxt_account_or_store__TestCases(unittest.TestCase):
 
                 self.bt_ccxt_account_or_store = BT_CCXT_Account_or_Store(**account_or_store__dict)
 
-                commission = 0.006
-                leverage_in_percent = 50.0
-                get_commission_info__dict = dict(
-                    symbol_id=self.symbol_id,
-                    isolated_toggle_switch_value=self.isolated_toggle_switch_value,
-                    leverage_in_percent=leverage_in_percent,
-                    commission=commission,
-                )
-                commission_info = get_commission_info(params=get_commission_info__dict)
                 fake_exchange = FAKE_EXCHANGE(owner=self.bt_ccxt_account_or_store)
                 fake_exchange.add_commission_info(commission_info)
                 self.bt_ccxt_account_or_store.set__parent(fake_exchange)
@@ -267,8 +243,8 @@ class Bybit__bt_ccxt_account_or_store__TestCases(unittest.TestCase):
                 ohlcv_limit=BYBIT_OHLCV_LIMIT,
 
                 convert_to_heikin_ashi=convert_to_heikin_ashi,
-                symbol_tick_size=symbol_tick_size,
-                price_digits=price_digits,
+                symbol_tick_size=commission_info.symbol_tick_size,
+                price_digits=commission_info.price_digits,
 
                 fromdate=start_date,
                 drop_newest=drop_newest,
@@ -360,7 +336,56 @@ class Bybit__bt_ccxt_account_or_store__TestCases(unittest.TestCase):
             bt_ccxt_order__dict = reverse_engineer__ccxt_order(bt_ccxt_order__dict)
             self.primary_entry_order = BT_CCXT_Order(**bt_ccxt_order__dict)
 
-            hedging_entry__ccxt_order = \
+            offset_entry__ccxt_order = \
+            {
+                "info": {
+                    "stop_order_id": "823f4c52-2be2-4fb2-9231-fd3281733e5f",
+                    "trigger_price": "1195.4",
+                    "base_price": "1193.55",
+                    "trigger_by": "LastPrice",
+                    "user_id": "660978",
+                    "symbol": "ETHUSDT",
+                    "side": "Buy",
+                    "order_type": "Limit",
+                    "time_in_force": "GoodTillCancel",
+                    "order_status": "Untriggered",
+                    "tp_trigger_by": "UNKNOWN",
+                    "sl_trigger_by": "UNKNOWN",
+                    "price": "1195.4",
+                    "qty": "1.03",
+                    "order_link_id": "",
+                    "reduce_only": False,
+                    "close_on_trigger": False,
+                    "take_profit": "0",
+                    "stop_loss": "0",
+                    "created_time": "2022-12-28T11:55:14Z",
+                    "updated_time": "2022-12-28T14:50:47Z"
+                },
+                "id": "823f4c52-2be2-4fb2-9231-fd3281733e5f",
+                "clientOrderId": None,
+                "timestamp": 1672228514000,
+                "datetime": "2022-12-28T11:55:14.000Z",
+                "lastTradeTimestamp": 1672239047000,
+                "symbol": "ETH/USDT:USDT",
+                "type": "limit",
+                "timeInForce": "GTC",
+                "postOnly": False,
+                "side": "buy",
+                "price": 1195.4,
+                "stopPrice": "1195.4",
+                "amount": 1.03,
+                "cost": None,
+                "average": None,
+                "filled": None,
+                "remaining": None,
+                "status": "open",
+                "fee": None,
+                "trades": [],
+                "fees": []
+            }
+
+            # INFO: The later CCXT order that has been updated with new size which will be returned by exchange
+            self.hedging_entry__ccxt_order = \
             {
                 "info": {
                     "stop_order_id": "823f4c52-2be2-4fb2-9231-fd3281733e5f",
@@ -408,11 +433,13 @@ class Bybit__bt_ccxt_account_or_store__TestCases(unittest.TestCase):
                 "fees": []
             }
 
+            # INFO: Ideal situation
             bt_ccxt_order__dict = dict(
                 owner=self,
                 position_type=backtrader.Position.LONG_POSITION,
                 datafeed=self.long_bb_data,
-                ccxt_order=hedging_entry__ccxt_order,
+                ccxt_order=offset_entry__ccxt_order,
+                # ccxt_order=hedging_entry__ccxt_order,
                 symbol_id=self.symbol_id,
             )
             bt_ccxt_order__dict = reverse_engineer__ccxt_order(bt_ccxt_order__dict)
@@ -420,7 +447,7 @@ class Bybit__bt_ccxt_account_or_store__TestCases(unittest.TestCase):
 
         except Exception:
             traceback.print_exc()
-    @unittest.skip("Only run if required")
+    # @unittest.skip("Only run if required")
     def test_01__fetch__primary_order(self):
         start = timer()
         try:
@@ -436,7 +463,7 @@ class Bybit__bt_ccxt_account_or_store__TestCases(unittest.TestCase):
             )
             sub_msg = "ccxt_order:"
             print(msg + sub_msg)
-            print(json.dumps(ccxt_order, indent=self.bt_ccxt_account_or_store.indent))
+            pprint(ccxt_order, indent=self.bt_ccxt_account_or_store.indent)
 
             pass
         except Exception:
@@ -463,7 +490,7 @@ class Bybit__bt_ccxt_account_or_store__TestCases(unittest.TestCase):
             )
             sub_msg = "ccxt_order:"
             print(msg + sub_msg)
-            print(json.dumps(ccxt_order, indent=self.bt_ccxt_account_or_store.indent))
+            pprint(ccxt_order, indent=self.bt_ccxt_account_or_store.indent)
 
             pass
         except Exception:
@@ -489,12 +516,15 @@ class Bybit__bt_ccxt_account_or_store__TestCases(unittest.TestCase):
         print("{} Line: {}: Took {}m:{:.2f}s".format(frameinfo.function, frameinfo.lineno,
                                                      int(minutes), seconds))
 
-    # @unittest.skip("Ready for regression")
+    @unittest.skip("Ready for regression")
     def test_11__execute__primary_order_and_then_hedging_order(self):
         start = timer()
         try:
             current_price = self.hedging_entry_price
             self.bt_ccxt_account_or_store.execute(self.primary_entry_order, current_price)
+
+            # INFO: Actual situation due to modification of hedging size
+            self.hedging_entry_order.ccxt_order = self.hedging_entry__ccxt_order
             self.bt_ccxt_account_or_store.execute(self.hedging_entry_order, current_price)
             pass
         except Exception:

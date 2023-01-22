@@ -1,3 +1,4 @@
+import decimal
 import inspect
 import datetime
 import math
@@ -136,6 +137,9 @@ def round_to_nearest_decimal_points(x, prec, base):
     legality_check_not_none_obj(x, "x")
     legality_check_not_none_obj(prec, "prec")
     legality_check_not_none_obj(base, "base")
+
+    assert isinstance(prec, int)
+
     if type(x) == float or type(x) == int or type(x) == np.float64:
         ret_number = round(base * round(float(x)/base), prec)
         return ret_number
@@ -207,12 +211,55 @@ def get_ccxt_order_id(order):
         elif 'order_id' in order.keys():
             ccxt_order_id = order['order_id']
     else:
-        # assert type(order).__name__ == BT_CCXT_Order.__name__
-        if 'id' in order.ccxt_order.keys():
-            ccxt_order_id = order.ccxt_order['id']
-        elif 'stop_order_id' in order.ccxt_order['info'].keys():
-            ccxt_order_id = order.ccxt_order['info']['stop_order_id']
-        elif 'order_id' in order.ccxt_order['info'].keys():
-            ccxt_order_id = order.ccxt_order['info']['order_id']
+        # Validate assumption made
+        assert isinstance(order, object)
+
+        if hasattr(order, 'ccxt_id'):
+            ccxt_order_id = order.ccxt_id
+        elif hasattr(order, 'ccxt_order'):
+            if order.ccxt_order is not None:
+                if isinstance(order.ccxt_order, dict):
+                    if 'id' in order.ccxt_order.keys():
+                        ccxt_order_id = order.ccxt_order['id']
+                    elif 'stop_order_id' in order.ccxt_order['info'].keys():
+                        ccxt_order_id = order.ccxt_order['info']['stop_order_id']
+                    elif 'order_id' in order.ccxt_order['info'].keys():
+                        ccxt_order_id = order.ccxt_order['info']['order_id']
+                else:
+                    # Validate assumption made
+                    assert isinstance(order.ccxt_order, object)
+
+                    raise NotImplementedError()
+            else:
+                raise NotImplementedError()
+        else:
+            raise NotImplementedError()
     legality_check_not_none_obj(ccxt_order_id, "ccxt_order_id")
     return ccxt_order_id
+
+
+def get_digits(step_size) -> int:
+    if isinstance(step_size, float):
+        # Credits: https://stackoverflow.com/questions/6189956/easy-way-of-finding-decimal-places
+        number_of_digits = abs(decimal.Decimal(str(step_size)).as_tuple().exponent)
+    elif isinstance(step_size, int):
+        # Credits: https://stackoverflow.com/questions/2189800/how-to-find-length-of-digits-in-an-integer
+        number_of_digits = int(math.log10(step_size)) + 1
+    else:
+        raise NotImplementedError("{}: Unsupported step_size type: {}".format(
+            inspect.currentframe(),
+            type(step_size),
+        ))
+    return number_of_digits
+
+
+def get_wallet_currency(symbol_id):
+    currency = None
+    if symbol_id.endswith("USDT"):
+        currency = "USDT"
+    elif symbol_id.endswith("USDC"):
+        currency = symbol_id.replace("USDC", "")
+    elif symbol_id.endswith("USD"):
+        currency = symbol_id.replace("USD", "")
+    legality_check_not_none_obj(currency, "currency")
+    return currency

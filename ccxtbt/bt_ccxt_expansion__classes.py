@@ -1,9 +1,10 @@
 import backtrader
+import datetime
 
 
 class Enhanced_Position(backtrader.Position):
-    def __init__(self, size=0.0, price=0.0):
-        super(Enhanced_Position, self).__init__(size=size, price=price)
+    def __init__(self, size=0.0, price=0.0, datetime=None):
+        super(Enhanced_Position, self).__init__(size=size, price=price, datetime=datetime)
 
         # Enhanced attributes
         # self.position_value = 0.0
@@ -40,12 +41,12 @@ class Enhanced_Position(backtrader.Position):
         return ret_value
 
     def clone(self):
-        return Enhanced_Position(size=self.size, price=self.price)
+        return Enhanced_Position(size=self.size, price=self.price, datetime=self.datetime)
 
     def pseudoupdate(self, size, price):
-        return Enhanced_Position(self.size, self.price).update(size, price)
+        return Enhanced_Position(self.size, self.price, self.datetime).update(size, price)
 
-    def update(self, size, price, dt=None):
+    def update(self, size, price, dt=datetime.datetime.utcnow()):
         '''
         Updates the current position and returns the updated size, price and
         units used to open/close a position
@@ -82,11 +83,14 @@ class Enhanced_Position(backtrader.Position):
             Both opened and closed carry the same sign as the "size" argument
             because they refer to a part of the "size" argument
         '''
-        self.datetime = dt  # record datetime update (datetime.datetime)
-
         self.price_orig = self.price
         oldsize = self.size
         self.size += size
+
+        if self.size != 0.0:
+            self.datetime = dt  # record datetime update (datetime.datetime)
+        else:
+            self.datetime = None
 
         if self.size == 0.0:
             # Update closed existing position
@@ -106,7 +110,7 @@ class Enhanced_Position(backtrader.Position):
                 opened, closed = 0.0, size
                 # self.price = self.price
 
-            else:  
+            else:
                 # reversed position form plus to minus
                 # Validate assumption made
                 assert self.size < 0.0
@@ -142,3 +146,8 @@ class Enhanced_Position(backtrader.Position):
 
     def set(self, size, price):
         super(Enhanced_Position, self).set(size=size, price=price)
+
+        if size != 0.0:
+            self.datetime = datetime.datetime.utcnow()
+        else:
+            self.datetime = None

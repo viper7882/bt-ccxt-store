@@ -163,7 +163,7 @@ class BT_CCXT_Exchange(backtrader.with_metaclass(backtrader.MetaSingleton, objec
     def set_account_or_store(self, main_net_toggle_switch_value, account_alias, account_type):
         # Legality Check
         assert isinstance(main_net_toggle_switch_value, bool)
-        
+
         success = False
         for account_or_store in self.accounts_or_stores:
             if account_or_store.main_net_toggle_switch_value == main_net_toggle_switch_value:
@@ -179,7 +179,7 @@ class BT_CCXT_Exchange(backtrader.with_metaclass(backtrader.MetaSingleton, objec
     def get_account_or_store(self, main_net_toggle_switch_value, account_alias, account_type):
         # Legality Check
         assert isinstance(main_net_toggle_switch_value, bool)
-        
+
         success = False
         ret_account_or_store = None
         for account_or_store in self.accounts_or_stores:

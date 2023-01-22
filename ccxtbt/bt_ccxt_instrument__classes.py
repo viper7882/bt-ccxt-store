@@ -160,7 +160,7 @@ class BT_CCXT_Instrument(backtrader.with_metaclass(Meta_Instrument, object)):
         return self._event_stop
 
     def modify_order(self, order_id, symbol, type, side, amount=None, price=None, trigger_price=None, params={}):
-        return self.parent.modify_order(order_id, symbol, type, side, amount=amount, price=price, 
+        return self.parent.modify_order(order_id, symbol, type, side, amount=amount, price=price,
                                         trigger_price=trigger_price, params=params)
 
     def fetch_ccxt_order(self, symbol_id, order_id=None, stop_order_id=None):

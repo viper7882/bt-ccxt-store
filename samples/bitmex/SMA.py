@@ -1,4 +1,4 @@
-from ccxtbt import CCXTStore
+from ccxtbt import BT_CCXT_Account_or_Store
 import backtrader as bt
 from datetime import datetime, timedelta
 import json
@@ -57,9 +57,9 @@ config = {'apiKey': params["bitmex"]["apikey"],
           }
 
 
-# IMPORTANT NOTE - To use the testnet on Bitmex you need to register and 
+# IMPORTANT NOTE - To use the testnet on Bitmex you need to register and
 # create an API key on http://testnet.bitmex.com
-store = CCXTStore(exchange='bitmex', currency='BTC', config=config, retries=5, debug=False, sandbox=True)
+store = BT_CCXT_Account_or_Store(exchange='bitmex', currency='BTC', config=config, retries=5, debug=False, sandbox=True)
 
 
 # Get the broker and pass any kwargs if needed.

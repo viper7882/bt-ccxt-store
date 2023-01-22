@@ -113,7 +113,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         self.init2(exchange_dropdown_value, wallet_currency, config, retries, symbols_id, main_net_toggle_switch_value,
                    initial__capital_reservation__value, is_ohlcv_provider, account__thread__connectivity__lock,
                    debug)
-    
+
     def init2(self, exchange_dropdown_value, wallet_currency, config, retries, symbols_id, main_net_toggle_switch_value,
              initial__capital_reservation__value, is_ohlcv_provider, account__thread__connectivity__lock, debug=False):
         # Legality Check
@@ -820,10 +820,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         assert isinstance(datafeed_dt, datetime.datetime)
 
         if order.ccxt_order is None:
-            # Validate assumption made
-            assert isinstance(order, dict)
-
-            ccxt_order_id = self.get_ccxt_order_id(order)
+            ccxt_order_id = get_ccxt_order_id(order)
             legality_check_not_none_obj(order.ordering_type, "order.ordering_type")
 
             if order.ordering_type == backtrader.Order.ACTIVE_ORDERING_TYPE:
@@ -836,6 +833,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                     msg += "ccxt_order_id: {}".format(ccxt_order_id)
                     print(msg)
 
+                # INFO: Refresh Active Order
                 order.ccxt_order = self.fetch_ccxt_order(order.symbol_id, order_id=ccxt_order_id)
             else:
                 # Validate assumption made
@@ -850,15 +848,25 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                     msg += "ccxt_order_id: {}".format(ccxt_order_id)
                     print(msg)
 
-                order.ccxt_order = \
-                    self.fetch_ccxt_order(order.symbol_id, stop_order_id=ccxt_order_id)
+                # INFO: Refresh Conditional Order
+                order.ccxt_order = self.fetch_ccxt_order(order.symbol_id, stop_order_id=ccxt_order_id)
 
         # Legality Check
         legality_check_not_none_obj(order.ccxt_order, "order.ccxt_order")
 
+        # INFO: Refresh the content of ccxt_order with the latest ccxt_order
+        order.extract_from_ccxt_order(order.ccxt_order)
+
         if order.status == order.Partial:
             size = order.executed.filled_size
         else:
+            # INFO: Refresh contents of executed with the latest size
+            remaining_size = abs(order.filled)
+            if order.order_type == backtrader.Order.Sell:
+                # INFO: Invert the sign
+                remaining_size = -remaining_size
+            order.executed = backtrader.OrderData(remaining_size=remaining_size)
+
             size = order.executed.remaining_size
 
         if size == 0.0:
@@ -1006,15 +1014,15 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                 print(msg + sub_msg)
                 pprint(order)
 
+                sub_msg = "pre-position:"
+                print(msg + sub_msg)
+                pprint(original_position)
+
+                sub_msg = "post-position:"
+                print(msg + sub_msg)
+                pprint(position)
+
                 if throws_out_error == False:
-                    sub_msg = "pre-position:"
-                    print(msg + sub_msg)
-                    pprint(original_position)
-
-                    sub_msg = "post-position:"
-                    print(msg + sub_msg)
-                    pprint(position)
-
                     sub_msg = \
                         "abs(order.executed.filled_size): {:.{}f} vs Exchange's filled: {:.{}f}".format(
                             abs(order.executed.filled_size), commission_info.qty_digits,
@@ -1302,6 +1310,13 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                         api_secret=self.config__api_secret,
                         # to pass a custom domain in case of connectivity problems, you can use:
                         # domain="bytick"  # the default is "bybit"
+
+                        # INFO: Attempting to resolve WebSocket USDT Perp encountered error: ping/pong timed out in
+                        #       dashboard
+                        # ping_interval=20,
+                        # ping_timeout=10,
+                        retries=20,
+                        # trace_logging=True,
                     )
 
                 try:
@@ -1356,6 +1371,13 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                     api_secret=self.config__api_secret,
                     # to pass a custom domain in case of connectivity problems, you can use:
                     # domain="bytick"  # the default is "bybit"
+
+                    # INFO: Attempting to resolve WebSocket USDT Perp encountered error: ping/pong timed out in
+                    #       dashboard
+                    # ping_interval=20,
+                    # ping_timeout=10,
+                    retries=20,
+                    # trace_logging=True,
                 )
 
                 try:
