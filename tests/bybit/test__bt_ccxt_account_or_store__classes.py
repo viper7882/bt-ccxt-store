@@ -21,6 +21,7 @@ from ccxtbt.utils import get_time_diff, legality_check_not_none_obj, truncate, g
 
 API_KEY_AND_SECRET_FILE_NAME = "testnet__api_key_and_secret.json"
 
+
 class FAKE_EXCHANGE(object):
     def __init__(self, owner):
         self.owner = owner
@@ -74,13 +75,15 @@ class FAKE_COMMISSION_INFO(object):
                              .format(price, self.price_digits, size, self.qty_digits, pseudoexec))
 
         # Order Cost: https://help.bybit.com/hc/en-us/articles/900000169703-Order-Cost-USDT-Contract-
-        commission_in_coin_refer = truncate((abs(size) * self.commission) * price, BYBIT_COMMISSION_PRECISION)
+        commission_in_coin_refer = truncate(
+            (abs(size) * self.commission) * price, BYBIT_COMMISSION_PRECISION)
         return commission_in_coin_refer
 
     def get_commission_rate(self, size, price):
         '''Calculates the commission of an operation at a given price
         '''
         return self._get_commission_rate(size, price, pseudoexec=True)
+
 
 def get_commission_info(params):
     commission_info = FAKE_COMMISSION_INFO(params)
@@ -93,6 +96,7 @@ def handle_datafeed(datafeed, price):
     datafeed._load()
     datafeed._tz = None
     datafeed.close[0] = price
+
 
 def reverse_engineer__ccxt_order(bt_ccxt_order__dict):
     # INFO: Un-serialize Params
@@ -139,6 +143,7 @@ def reverse_engineer__ccxt_order(bt_ccxt_order__dict):
     ))
     return bt_ccxt_order__dict
 
+
 class Bybit__bt_ccxt_account_or_store__TestCases(unittest.TestCase):
     def setUp(self):
         try:
@@ -159,7 +164,8 @@ class Bybit__bt_ccxt_account_or_store__TestCases(unittest.TestCase):
             symbols_id = [self.symbol_id]
 
             file_path = pathlib.Path(__file__).parent.resolve()
-            api_key_and_secret_full_path = os.path.join(file_path, API_KEY_AND_SECRET_FILE_NAME)
+            api_key_and_secret_full_path = os.path.join(
+                file_path, API_KEY_AND_SECRET_FILE_NAME)
             assert os.path.exists(api_key_and_secret_full_path)
 
             commission = 0.0006
@@ -170,7 +176,8 @@ class Bybit__bt_ccxt_account_or_store__TestCases(unittest.TestCase):
                 leverage_in_percent=leverage_in_percent,
                 commission=commission,
             )
-            commission_info = get_commission_info(params=get_commission_info__dict)
+            commission_info = get_commission_info(
+                params=get_commission_info__dict)
 
             with open(api_key_and_secret_full_path, "r") as file_to_read:
                 json_data = json.load(file_to_read)
@@ -208,13 +215,16 @@ class Bybit__bt_ccxt_account_or_store__TestCases(unittest.TestCase):
                     # debug=True,
                 ))
 
-                self.bt_ccxt_account_or_store = BT_CCXT_Account_or_Store(**account_or_store__dict)
+                self.bt_ccxt_account_or_store = BT_CCXT_Account_or_Store(
+                    **account_or_store__dict)
 
-                fake_exchange = FAKE_EXCHANGE(owner=self.bt_ccxt_account_or_store)
+                fake_exchange = FAKE_EXCHANGE(
+                    owner=self.bt_ccxt_account_or_store)
                 fake_exchange.add_commission_info(commission_info)
                 self.bt_ccxt_account_or_store.set__parent(fake_exchange)
 
-            legality_check_not_none_obj(self.bt_ccxt_account_or_store, "self.bt_ccxt_account_or_store")
+            legality_check_not_none_obj(
+                self.bt_ccxt_account_or_store, "self.bt_ccxt_account_or_store")
 
             bt_ccxt_instrument__dict = dict(
                 symbol_id=self.symbol_id,
@@ -234,7 +244,8 @@ class Bybit__bt_ccxt_account_or_store__TestCases(unittest.TestCase):
             self.primary_entry_price = 1193.55
             self.hedging_entry_price = 1195.4
 
-            start_date = datetime.datetime.utcnow() - datetime.timedelta(minutes=granularity_compression + 1)
+            start_date = datetime.datetime.utcnow(
+            ) - datetime.timedelta(minutes=granularity_compression + 1)
 
             datafeed__dict = dict(
                 dataname=self.symbol_id,
@@ -270,61 +281,61 @@ class Bybit__bt_ccxt_account_or_store__TestCases(unittest.TestCase):
             handle_datafeed(self.short_bb_data, price=self.primary_entry_price)
 
             primary_entry__ccxt_order = \
-            {
-                "info": {
-                    "order_id": "41992e55-3ed8-4ea0-80f6-085a36e73d86",
-                    "last_exec_price": "1193.55",
-                    "cum_exec_qty": "1.03",
-                    "cum_exec_value": "1229.3565",
-                    "cum_exec_fee": "0.7376139",
-                    "user_id": "660978",
-                    "symbol": "ETHUSDT",
-                    "side": "Sell",
-                    "order_type": "Limit",
-                    "time_in_force": "GoodTillCancel",
-                    "order_status": "Filled",
-                    "tp_trigger_by": "UNKNOWN",
-                    "sl_trigger_by": "UNKNOWN",
-                    "price": "1193.55",
-                    "qty": "1.03",
-                    "order_link_id": "",
-                    "reduce_only": False,
-                    "close_on_trigger": False,
-                    "take_profit": "0",
-                    "stop_loss": "0",
-                    "created_time": "2022-12-28T11:55:13Z",
-                    "updated_time": "2022-12-28T11:55:13Z"
-                },
-                "id": "41992e55-3ed8-4ea0-80f6-085a36e73d86",
-                "clientOrderId": None,
-                "timestamp": 1672228513000,
-                "datetime": "2022-12-28T11:55:13.000Z",
-                "lastTradeTimestamp": 1672228513000,
-                "symbol": "ETH/USDT:USDT",
-                "type": "limit",
-                "timeInForce": "GTC",
-                "postOnly": False,
-                "side": "sell",
-                "price": 1193.55,
-                "stopPrice": None,
-                "amount": 1.03,
-                "cost": 1229.3565,
-                "average": 1193.55,
-                "filled": 1.03,
-                "remaining": 0.0,
-                "status": "closed",
-                "fee": {
-                    "cost": 0.7376139,
-                    "currency": "USDT"
-                },
-                "trades": [],
-                "fees": [
-                    {
+                {
+                    "info": {
+                        "order_id": "41992e55-3ed8-4ea0-80f6-085a36e73d86",
+                        "last_exec_price": "1193.55",
+                        "cum_exec_qty": "1.03",
+                        "cum_exec_value": "1229.3565",
+                        "cum_exec_fee": "0.7376139",
+                        "user_id": "660978",
+                        "symbol": "ETHUSDT",
+                        "side": "Sell",
+                        "order_type": "Limit",
+                        "time_in_force": "GoodTillCancel",
+                        "order_status": "Filled",
+                        "tp_trigger_by": "UNKNOWN",
+                        "sl_trigger_by": "UNKNOWN",
+                        "price": "1193.55",
+                        "qty": "1.03",
+                        "order_link_id": "",
+                        "reduce_only": False,
+                        "close_on_trigger": False,
+                        "take_profit": "0",
+                        "stop_loss": "0",
+                        "created_time": "2022-12-28T11:55:13Z",
+                        "updated_time": "2022-12-28T11:55:13Z"
+                    },
+                    "id": "41992e55-3ed8-4ea0-80f6-085a36e73d86",
+                    "clientOrderId": None,
+                    "timestamp": 1672228513000,
+                    "datetime": "2022-12-28T11:55:13.000Z",
+                    "lastTradeTimestamp": 1672228513000,
+                    "symbol": "ETH/USDT:USDT",
+                    "type": "limit",
+                    "timeInForce": "GTC",
+                    "postOnly": False,
+                    "side": "sell",
+                    "price": 1193.55,
+                    "stopPrice": None,
+                    "amount": 1.03,
+                    "cost": 1229.3565,
+                    "average": 1193.55,
+                    "filled": 1.03,
+                    "remaining": 0.0,
+                    "status": "closed",
+                    "fee": {
                         "cost": 0.7376139,
                         "currency": "USDT"
-                    }
-                ]
-            }
+                    },
+                    "trades": [],
+                    "fees": [
+                        {
+                            "cost": 0.7376139,
+                            "currency": "USDT"
+                        }
+                    ]
+                }
 
             bt_ccxt_order__dict = dict(
                 owner=self,
@@ -333,105 +344,106 @@ class Bybit__bt_ccxt_account_or_store__TestCases(unittest.TestCase):
                 ccxt_order=primary_entry__ccxt_order,
                 symbol_id=self.symbol_id,
             )
-            bt_ccxt_order__dict = reverse_engineer__ccxt_order(bt_ccxt_order__dict)
+            bt_ccxt_order__dict = reverse_engineer__ccxt_order(
+                bt_ccxt_order__dict)
             self.primary_entry_order = BT_CCXT_Order(**bt_ccxt_order__dict)
 
             offset_entry__ccxt_order = \
-            {
-                "info": {
-                    "stop_order_id": "823f4c52-2be2-4fb2-9231-fd3281733e5f",
-                    "trigger_price": "1195.4",
-                    "base_price": "1193.55",
-                    "trigger_by": "LastPrice",
-                    "user_id": "660978",
-                    "symbol": "ETHUSDT",
-                    "side": "Buy",
-                    "order_type": "Limit",
-                    "time_in_force": "GoodTillCancel",
-                    "order_status": "Untriggered",
-                    "tp_trigger_by": "UNKNOWN",
-                    "sl_trigger_by": "UNKNOWN",
-                    "price": "1195.4",
-                    "qty": "1.03",
-                    "order_link_id": "",
-                    "reduce_only": False,
-                    "close_on_trigger": False,
-                    "take_profit": "0",
-                    "stop_loss": "0",
-                    "created_time": "2022-12-28T11:55:14Z",
-                    "updated_time": "2022-12-28T14:50:47Z"
-                },
-                "id": "823f4c52-2be2-4fb2-9231-fd3281733e5f",
-                "clientOrderId": None,
-                "timestamp": 1672228514000,
-                "datetime": "2022-12-28T11:55:14.000Z",
-                "lastTradeTimestamp": 1672239047000,
-                "symbol": "ETH/USDT:USDT",
-                "type": "limit",
-                "timeInForce": "GTC",
-                "postOnly": False,
-                "side": "buy",
-                "price": 1195.4,
-                "stopPrice": "1195.4",
-                "amount": 1.03,
-                "cost": None,
-                "average": None,
-                "filled": None,
-                "remaining": None,
-                "status": "open",
-                "fee": None,
-                "trades": [],
-                "fees": []
-            }
+                {
+                    "info": {
+                        "stop_order_id": "823f4c52-2be2-4fb2-9231-fd3281733e5f",
+                        "trigger_price": "1195.4",
+                        "base_price": "1193.55",
+                        "trigger_by": "LastPrice",
+                        "user_id": "660978",
+                        "symbol": "ETHUSDT",
+                        "side": "Buy",
+                        "order_type": "Limit",
+                        "time_in_force": "GoodTillCancel",
+                        "order_status": "Untriggered",
+                        "tp_trigger_by": "UNKNOWN",
+                        "sl_trigger_by": "UNKNOWN",
+                        "price": "1195.4",
+                        "qty": "1.03",
+                        "order_link_id": "",
+                        "reduce_only": False,
+                        "close_on_trigger": False,
+                        "take_profit": "0",
+                        "stop_loss": "0",
+                        "created_time": "2022-12-28T11:55:14Z",
+                        "updated_time": "2022-12-28T14:50:47Z"
+                    },
+                    "id": "823f4c52-2be2-4fb2-9231-fd3281733e5f",
+                    "clientOrderId": None,
+                    "timestamp": 1672228514000,
+                    "datetime": "2022-12-28T11:55:14.000Z",
+                    "lastTradeTimestamp": 1672239047000,
+                    "symbol": "ETH/USDT:USDT",
+                    "type": "limit",
+                    "timeInForce": "GTC",
+                    "postOnly": False,
+                    "side": "buy",
+                    "price": 1195.4,
+                    "stopPrice": "1195.4",
+                    "amount": 1.03,
+                    "cost": None,
+                    "average": None,
+                    "filled": None,
+                    "remaining": None,
+                    "status": "open",
+                    "fee": None,
+                    "trades": [],
+                    "fees": []
+                }
 
             # INFO: The later CCXT order that has been updated with new size which will be returned by exchange
             self.hedging_entry__ccxt_order = \
-            {
-                "info": {
-                    "stop_order_id": "823f4c52-2be2-4fb2-9231-fd3281733e5f",
-                    "trigger_price": "1195.4",
-                    "base_price": "1193.55",
-                    "trigger_by": "LastPrice",
-                    "user_id": "660978",
-                    "symbol": "ETHUSDT",
-                    "side": "Buy",
-                    "order_type": "Limit",
-                    "time_in_force": "GoodTillCancel",
-                    "order_status": "Filled",
-                    "tp_trigger_by": "UNKNOWN",
-                    "sl_trigger_by": "UNKNOWN",
-                    "price": "1195.4",
-                    "qty": "1.78",
-                    "order_link_id": "",
-                    "reduce_only": False,
-                    "close_on_trigger": False,
-                    "take_profit": "0",
-                    "stop_loss": "0",
-                    "created_time": "2022-12-28T11:55:14Z",
-                    "updated_time": "2022-12-28T14:50:47Z"
-                },
-                "id": "823f4c52-2be2-4fb2-9231-fd3281733e5f",
-                "clientOrderId": None,
-                "timestamp": 1672228514000,
-                "datetime": "2022-12-28T11:55:14.000Z",
-                "lastTradeTimestamp": 1672239047000,
-                "symbol": "ETH/USDT:USDT",
-                "type": "limit",
-                "timeInForce": "GTC",
-                "postOnly": False,
-                "side": "buy",
-                "price": 1195.4,
-                "stopPrice": "1195.4",
-                "amount": 1.78,
-                "cost": None,
-                "average": None,
-                "filled": None,
-                "remaining": None,
-                "status": "closed",
-                "fee": None,
-                "trades": [],
-                "fees": []
-            }
+                {
+                    "info": {
+                        "stop_order_id": "823f4c52-2be2-4fb2-9231-fd3281733e5f",
+                        "trigger_price": "1195.4",
+                        "base_price": "1193.55",
+                        "trigger_by": "LastPrice",
+                        "user_id": "660978",
+                        "symbol": "ETHUSDT",
+                        "side": "Buy",
+                        "order_type": "Limit",
+                        "time_in_force": "GoodTillCancel",
+                        "order_status": "Filled",
+                        "tp_trigger_by": "UNKNOWN",
+                        "sl_trigger_by": "UNKNOWN",
+                        "price": "1195.4",
+                        "qty": "1.78",
+                        "order_link_id": "",
+                        "reduce_only": False,
+                        "close_on_trigger": False,
+                        "take_profit": "0",
+                        "stop_loss": "0",
+                        "created_time": "2022-12-28T11:55:14Z",
+                        "updated_time": "2022-12-28T14:50:47Z"
+                    },
+                    "id": "823f4c52-2be2-4fb2-9231-fd3281733e5f",
+                    "clientOrderId": None,
+                    "timestamp": 1672228514000,
+                    "datetime": "2022-12-28T11:55:14.000Z",
+                    "lastTradeTimestamp": 1672239047000,
+                    "symbol": "ETH/USDT:USDT",
+                    "type": "limit",
+                    "timeInForce": "GTC",
+                    "postOnly": False,
+                    "side": "buy",
+                    "price": 1195.4,
+                    "stopPrice": "1195.4",
+                    "amount": 1.78,
+                    "cost": None,
+                    "average": None,
+                    "filled": None,
+                    "remaining": None,
+                    "status": "closed",
+                    "fee": None,
+                    "trades": [],
+                    "fees": []
+                }
 
             # INFO: Ideal situation
             bt_ccxt_order__dict = dict(
@@ -442,12 +454,14 @@ class Bybit__bt_ccxt_account_or_store__TestCases(unittest.TestCase):
                 # ccxt_order=hedging_entry__ccxt_order,
                 symbol_id=self.symbol_id,
             )
-            bt_ccxt_order__dict = reverse_engineer__ccxt_order(bt_ccxt_order__dict)
+            bt_ccxt_order__dict = reverse_engineer__ccxt_order(
+                bt_ccxt_order__dict)
             self.hedging_entry_order = BT_CCXT_Order(**bt_ccxt_order__dict)
 
         except Exception:
             traceback.print_exc()
     # @unittest.skip("Only run if required")
+
     def test_01__fetch__primary_order(self):
         start = timer()
         try:
@@ -506,7 +520,8 @@ class Bybit__bt_ccxt_account_or_store__TestCases(unittest.TestCase):
         start = timer()
         try:
             current_price = self.primary_entry_price
-            self.bt_ccxt_account_or_store.execute(self.primary_entry_order, current_price)
+            self.bt_ccxt_account_or_store.execute(
+                self.primary_entry_order, current_price)
             pass
         except Exception:
             traceback.print_exc()
@@ -521,11 +536,13 @@ class Bybit__bt_ccxt_account_or_store__TestCases(unittest.TestCase):
         start = timer()
         try:
             current_price = self.hedging_entry_price
-            self.bt_ccxt_account_or_store.execute(self.primary_entry_order, current_price)
+            self.bt_ccxt_account_or_store.execute(
+                self.primary_entry_order, current_price)
 
             # INFO: Actual situation due to modification of hedging size
             self.hedging_entry_order.ccxt_order = self.hedging_entry__ccxt_order
-            self.bt_ccxt_account_or_store.execute(self.hedging_entry_order, current_price)
+            self.bt_ccxt_account_or_store.execute(
+                self.hedging_entry_order, current_price)
             pass
         except Exception:
             traceback.print_exc()

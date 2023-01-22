@@ -1,15 +1,16 @@
+from time import time as timer
+from ccxtbt import BT_CCXT_Account_or_Store
+import inspect
+import datetime as dt
+import backtrader as bt
+import time
 DEFAULT_DATE_TIME_FORMAT = "%d-%m-%y %H:%M"
 
 # Credits: https://gist.github.com/rodrigo-brito/3b0fca2487c92ad97869247edd5fd852
-import time
-import backtrader as bt
-import datetime as dt
-import inspect
 
-from ccxtbt import BT_CCXT_Account_or_Store
-from time import time as timer
 
 # DEBUG = True
+
 
 def get_time_diff(start):
     prog_time_diff = timer() - start
@@ -29,14 +30,17 @@ class CustomStrategy(bt.Strategy):
         else:
             # INFO: At this moment of time, there is no data available yet. Hence there is no data.datetime.
             # If run self.log("NOT LIVE - {}".format(self.status)), will get IndexError: array index out of range
-            print("[{}] NOT LIVE but {}".format(dt.datetime.utcnow().strftime(DEFAULT_DATE_TIME_FORMAT), self.status))
+            print("[{}] NOT LIVE but {}".format(
+                dt.datetime.utcnow().strftime(DEFAULT_DATE_TIME_FORMAT), self.status))
 
     def next(self):
         if self.status != "LIVE":
-            self.log("{} - O: {:.8} C: {:.8}".format(self.status, self.data0.open[0], self.data0.close[0]))
+            self.log("{} - O: {:.8} C: {:.8}".format(self.status,
+                     self.data0.open[0], self.data0.close[0]))
             return
 
-        self.log("{} - O: {:.8} C: {:.8}".format(self.status, self.data0.open[0], self.data0.close[0]))
+        self.log("{} - O: {:.8} C: {:.8}".format(self.status,
+                 self.data0.open[0], self.data0.close[0]))
 
     def log(self, txt):
         # if not DEBUG:
@@ -67,7 +71,7 @@ def main():
     }
 
     store = BT_CCXT_Account_or_Store(exchange=BYBIT_EXCHANGE_ID, currency=currency, config=broker_config, retries=5, debug=DEBUG,
-                      sandbox=True)
+                                     sandbox=True)
 
     broker_mapping = {
         'order_types': {
@@ -107,7 +111,8 @@ def main():
     if days is not None:
         timeframe = bt.TimeFrame.Days
         compression = days
-        hist_start_date = dt.datetime.utcnow() - dt.timedelta(hours=days * 24 * BYBIT_OHLCV_LIMIT)
+        hist_start_date = dt.datetime.utcnow() - dt.timedelta(hours=days *
+                                                              24 * BYBIT_OHLCV_LIMIT)
     elif hours is not None:
         timeframe = bt.TimeFrame.Minutes
         compression = hours * 60
@@ -115,7 +120,8 @@ def main():
     elif minutes is not None:
         timeframe = bt.TimeFrame.Minutes
         compression = minutes
-        hist_start_date = dt.datetime.utcnow() - dt.timedelta(minutes=minutes * BYBIT_OHLCV_LIMIT)
+        hist_start_date = dt.datetime.utcnow(
+        ) - dt.timedelta(minutes=minutes * BYBIT_OHLCV_LIMIT)
 
     data = store.getdata(
         dataname=symbol_name,
@@ -132,6 +138,7 @@ def main():
     cerebro.add_strategy(CustomStrategy)
     cerebro.run()
 
+
 if __name__ == "__main__":
     start = timer()
     try:
@@ -142,5 +149,6 @@ if __name__ == "__main__":
 
     _, minutes, seconds = get_time_diff(start)
     print("{} Line: {}: Took {}:{:.2f}s".format(inspect.getframeinfo(inspect.currentframe()).function,
-                                                inspect.getframeinfo(inspect.currentframe()).lineno,
+                                                inspect.getframeinfo(
+                                                    inspect.currentframe()).lineno,
                                                 int(minutes), seconds))

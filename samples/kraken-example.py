@@ -7,7 +7,7 @@ class TestStrategy(bt.Strategy):
 
     def __init__(self):
 
-        self.sma = bt.indicators.SMA(self.data,period=21)
+        self.sma = bt.indicators.SMA(self.data, period=21)
 
     def next(self):
 
@@ -28,19 +28,19 @@ class TestStrategy(bt.Strategy):
         for datafeed in self.datafeeds:
 
             print('{} - {} | Cash {} | O: {} H: {} L: {} C: {} V:{} SMA:{}'.format(data.datetime.datetime(),
-                datafeed._name, cash, data.open[0], data.high[0], data.low[0], data.close[0], data.volume[0],
-                self.sma[0]))
+                                                                                   datafeed._name, cash, data.open[0], data.high[
+                                                                                       0], data.low[0], data.close[0], data.volume[0],
+                                                                                   self.sma[0]))
 
     def datafeed_notification(self, data, status, *args, **kwargs):
         dn = datafeed._name
         dt = datetime.now()
-        msg= 'Data Status: {}'.format(data._getstatusname(status))
-        print(dt,dn,msg)
+        msg = 'Data Status: {}'.format(data._getstatusname(status))
+        print(dt, dn, msg)
         if data._getstatusname(status) == 'LIVE':
             self.live_data = True
         else:
             self.live_data = False
-
 
 
 apikey = 'INSERT YOUR API KEY'
@@ -54,14 +54,15 @@ cerebro.add_strategy(TestStrategy)
 
 # Create our store
 config = {'apiKey': apikey,
-            'secret': secret,
-            'enableRateLimit': True
-            }
+          'secret': secret,
+          'enableRateLimit': True
+          }
 
 # IMPORTANT NOTE - Kraken (and some other exchanges) will not return any values
 # for get cash or value if You have never held any LTC coins in your account.
 # So switch LTC to a coin you have funded previously if you get errors
-store = BT_CCXT_Account_or_Store(exchange='kraken', currency='LTC', config=config, retries=5, debug=False)
+store = BT_CCXT_Account_or_Store(
+    exchange='kraken', currency='LTC', config=config, retries=5, debug=False)
 
 
 # Get the broker and pass any kwargs if needed.
@@ -73,19 +74,19 @@ broker_mapping = {
     'order_types': {
         bt.Order.Market: 'market',
         bt.Order.Limit: 'limit',
-        bt.Order.StopMarket: 'stop-loss', #stop-loss for kraken, stop for bitmex
+        bt.Order.StopMarket: 'stop-loss',  # stop-loss for kraken, stop for bitmex
         bt.Order.StopLimit: 'stop limit'
     },
-    'mappings':{
-        'closed_order':{
+    'mappings': {
+        'closed_order': {
             'key': 'status',
-            'value':'closed'
-            },
-        'canceled_order':{
+            'value': 'closed'
+        },
+        'canceled_order': {
             'key': 'result',
-            'value':1}
-            }
+            'value': 1}
     }
+}
 
 broker = store.get_broker_or_exchange(broker_mapping=broker_mapping)
 cerebro.set_broker_or_exchange(broker)
@@ -94,8 +95,8 @@ cerebro.set_broker_or_exchange(broker)
 # Drop newest will prevent us from loading partial data from incomplete candles
 hist_start_date = datetime.utcnow() - timedelta(minutes=50)
 data = store.getdata(dataname='LTC/USD', name="LTCUSD",
-                         timeframe=bt.TimeFrame.Minutes, fromdate=hist_start_date,
-                         compression=1, ohlcv_limit=50, drop_newest=True) #, historical=True)
+                     timeframe=bt.TimeFrame.Minutes, fromdate=hist_start_date,
+                     compression=1, ohlcv_limit=50, drop_newest=True)  # , historical=True)
 
 # Add the feed
 cerebro.add_datafeed(data)

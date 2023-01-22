@@ -194,7 +194,8 @@ class BT_CCXT_Instrument(backtrader.with_metaclass(Meta_Instrument, object)):
                 inspect.currentframe(), position_type, range(len(backtrader.Position.Position_Types))))
 
         if len(self.positions.items()) < position_type:
-            self.positions[position_type] = Enhanced_Position(size=0.0, price=0.0)
+            self.positions[position_type] = Enhanced_Position(
+                size=0.0, price=0.0)
             ret_value = self.positions[position_type]
         else:
             if clone:
@@ -331,9 +332,12 @@ class BT_CCXT_Instrument(backtrader.with_metaclass(Meta_Instrument, object)):
         for position_type, position in self.positions.items():
             if position_type in position_types:
                 if position.size != 0.0:
-                    per_data_pnl = commission_info.profit_and_loss(position.size, position.price, close_price)
-                    entry_comm = commission_info.get_commission_rate(position.size, position.price)
-                    exit_comm = commission_info.get_commission_rate(position.size, close_price)
+                    per_data_pnl = commission_info.profit_and_loss(
+                        position.size, position.price, close_price)
+                    entry_comm = commission_info.get_commission_rate(
+                        position.size, position.price)
+                    exit_comm = commission_info.get_commission_rate(
+                        position.size, close_price)
                     pnl_comm += per_data_pnl - entry_comm - exit_comm
 
                     force = False
@@ -343,15 +347,18 @@ class BT_CCXT_Instrument(backtrader.with_metaclass(Meta_Instrument, object)):
                     # For Short
                     if position.size < 0.0:
                         max_price = max(position.price, close_price)
-                        max_initial_margin = commission_info.get_initial_margin(position.size, max_price, force)
+                        max_initial_margin = commission_info.get_initial_margin(
+                            position.size, max_price, force)
                         normalized_initial_margin += max_initial_margin
                     # For Long
                     elif position.size > 0.0:
                         min_price = min(position.price, close_price)
-                        min_initial_margin = commission_info.get_initial_margin(position.size, min_price, force)
+                        min_initial_margin = commission_info.get_initial_margin(
+                            position.size, min_price, force)
                         normalized_initial_margin += min_initial_margin
 
-        pnl_in_percentage = pnl_comm * 100.0 / (normalized_initial_margin or 1.0)
+        pnl_in_percentage = pnl_comm * 100.0 / \
+            (normalized_initial_margin or 1.0)
         return pnl_comm, pnl_in_percentage, normalized_initial_margin
 
     def get_account_alias(self):

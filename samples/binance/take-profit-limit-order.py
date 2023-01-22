@@ -8,6 +8,7 @@ import time
 import json
 import logging
 
+
 class TestStrategy(bt.Strategy):
 
     def __init__(self):
@@ -28,19 +29,21 @@ class TestStrategy(bt.Strategy):
             #
             # Attention! If you don't want to actually sell the stopPrice should be way above the market price.
             # This way you still have time to cancel the order at the exchange.
-            self.order = self.sell(size=2.0, exectype=Order.StopLimit, price=7.485, stopPrice=7.485)
+            self.order = self.sell(
+                size=2.0, exectype=Order.StopLimit, price=7.485, stopPrice=7.485)
             self.sold = True
 
         for datafeed in self.datafeeds:
 
             print('{} - {} | O: {} H: {} L: {} C: {} V:{}'.format(data.datetime.datetime(),
-                                                                                   datafeed._name, data.open[0], data.high[0], data.low[0], data.close[0], data.volume[0]))
+                                                                  datafeed._name, data.open[0], data.high[0], data.low[0], data.close[0], data.volume[0]))
 
     def datafeed_notification(self, data, status, *args, **kwargs):
         dn = datafeed._name
         dt = datetime.now()
-        msg= 'Data Status: {}, Order Status: {}'.format(data._getstatusname(status), status)
-        print(dt,dn,msg)
+        msg = 'Data Status: {}, Order Status: {}'.format(
+            data._getstatusname(status), status)
+        print(dt, dn, msg)
         if data._getstatusname(status) == 'LIVE':
             self.live_data = True
         else:
@@ -67,7 +70,8 @@ config = {'apiKey': params["binance"]["apikey"],
           'nonce': lambda: str(int(time.time() * 1000)),
           }
 
-store = BT_CCXT_Account_or_Store(exchange='binance', currency='BNB', config=config, retries=5, debug=True)
+store = BT_CCXT_Account_or_Store(
+    exchange='binance', currency='BNB', config=config, retries=5, debug=True)
 
 
 # Get the broker and pass any kwargs if needed.
@@ -79,17 +83,17 @@ broker_mapping = {
     'order_types': {
         bt.Order.Market: 'market',
         bt.Order.Limit: 'limit',
-        bt.Order.StopMarket: 'stop_loss', #stop-loss for kraken, stop for bitmex
+        bt.Order.StopMarket: 'stop_loss',  # stop-loss for kraken, stop for bitmex
         bt.Order.StopLimit: 'TAKE_PROFIT_LIMIT'
     },
-    'mappings':{
-        'closed_order':{
+    'mappings': {
+        'closed_order': {
             'key': 'status',
-            'value':'closed'
+            'value': 'closed'
         },
-        'canceled_order':{
+        'canceled_order': {
             'key': 'result',
-            'value':1}
+            'value': 1}
     }
 }
 
@@ -101,7 +105,7 @@ cerebro.set_broker_or_exchange(broker)
 hist_start_date = datetime.utcnow() - timedelta(minutes=50)
 data = store.getdata(dataname='BNB/USDT', name="BNBUSDT",
                      timeframe=bt.TimeFrame.Minutes, fromdate=hist_start_date,
-                     compression=1, ohlcv_limit=50, drop_newest=True) #, historical=True)
+                     compression=1, ohlcv_limit=50, drop_newest=True)  # , historical=True)
 
 # Add the feed
 cerebro.add_datafeed(data)

@@ -91,7 +91,8 @@ class TestStrategy(Strategy):
 
     def next(self, dt=None):
         dt = dt or self.datafeeds[0].datetime.datetime(0)
-        print('%s closing price: %s' % (dt.isoformat(), self.datafeeds[0].close[0]))
+        print('%s closing price: %s' %
+              (dt.isoformat(), self.datafeeds[0].close[0]))
         self.next_runs += 1
 
 
@@ -131,7 +132,8 @@ def backtesting(exchange_specific_config):
         # debug=True,
     ))
 
-    bt_ccxt_account_or_store = BT_CCXT_Account_or_Store(**account_or_store__dict)
+    bt_ccxt_account_or_store = BT_CCXT_Account_or_Store(
+        **account_or_store__dict)
 
     bt_ccxt_instrument__dict = dict(
         symbol_id=symbol_id,

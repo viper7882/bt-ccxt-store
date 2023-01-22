@@ -4,7 +4,8 @@ import datetime
 
 class Enhanced_Position(backtrader.Position):
     def __init__(self, size=0.0, price=0.0, datetime=None):
-        super(Enhanced_Position, self).__init__(size=size, price=price, datetime=datetime)
+        super(Enhanced_Position, self).__init__(
+            size=size, price=price, datetime=datetime)
 
         # Enhanced attributes
         # self.position_value = 0.0

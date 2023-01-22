@@ -70,7 +70,8 @@ class BT_CCXT_Order(backtrader.OrderBase):
                     msg = "{} Line: {}: ERROR: {}: {}: For {} position vs position_idx: {}, ccxt_order:".format(
                         frameinfo.function, frameinfo.lineno,
                         self.ref,
-                        datetime.datetime.now().isoformat().replace("T", " ")[:-3],
+                        datetime.datetime.now().isoformat().replace(
+                            "T", " ")[:-3],
                         backtrader.Position.Position_Types[self.p.position_type],
                         self.ccxt_order['info']['position_idx'],
                     )
@@ -99,7 +100,8 @@ class BT_CCXT_Order(backtrader.OrderBase):
                     msg = "{} Line: {}: ERROR: {}: {}: For {} order_intent vs reduce_only: {}, ccxt_order:".format(
                         frameinfo.function, frameinfo.lineno,
                         self.ref,
-                        datetime.datetime.now().isoformat().replace("T", " ")[:-3],
+                        datetime.datetime.now().isoformat().replace(
+                            "T", " ")[:-3],
                         self.order_intent_name(),
                         self.ccxt_order['info']['reduce_only'],
                     )
@@ -108,9 +110,11 @@ class BT_CCXT_Order(backtrader.OrderBase):
                     stop_out = True
 
             if stop_out == True:
-                raise RuntimeError("Abort due to at least one error is found...")
+                raise RuntimeError(
+                    "Abort due to at least one error is found...")
         else:
-            raise NotImplementedError("symbol_id: {} is yet to be supported!!!".format(self.p.symbol_id))
+            raise NotImplementedError(
+                "symbol_id: {} is yet to be supported!!!".format(self.p.symbol_id))
 
     def extract_from_ccxt_order(self, ccxt_order):
         self.ccxt_order = ccxt_order
@@ -170,12 +174,14 @@ class BT_CCXT_Order(backtrader.OrderBase):
         tojoin = list()
         tojoin.append('datafeed: {}'.format(self.p.datafeed._name))
         tojoin.append('id: \'{}\''.format(self.ccxt_id))
-        tojoin.append('{}: Position'.format(backtrader.Position.Position_Types[self.p.position_type]))
+        tojoin.append('{}: Position'.format(
+            backtrader.Position.Position_Types[self.p.position_type]))
         tojoin.append('Order Intent: {}'.format(self.order_intent_name()))
         tojoin.append('{} Ordering Type'.format(self.ordering_type_name()))
         tojoin.append('Order Type: {}'.format(self.order_type_name()))
         tojoin.append('{}: Execution Type'.format(self.execution_type_name()))
-        tojoin.append('Backtrader Status: {}'.format(backtrader.Order.Status[self.status]))
+        tojoin.append('Backtrader Status: {}'.format(
+            backtrader.Order.Status[self.status]))
         tojoin.append('CCXT Status: {}'.format(self.ccxt_order['status']))
 
         if type(self.ccxt_order).__name__ == BT_CCXT_Order.__name__:
@@ -183,13 +189,15 @@ class BT_CCXT_Order(backtrader.OrderBase):
                 tojoin.append('Created Price: {} x Size: {} @ {}'.format(
                     self.ccxt_order['created']['price'],
                     self.ccxt_order['created']['size'],
-                    backtrader.num2date(self.ccxt_order['created']['dt']).isoformat().replace("T", " ")[:-3],
+                    backtrader.num2date(
+                        self.ccxt_order['created']['dt']).isoformat().replace("T", " ")[:-3],
                 ))
             if getattr(self.ccxt_order, 'executed'):
                 tojoin.append('Executed Price: {} x Size: {} @ {}'.format(
                     self.ccxt_order['executed']['price'],
                     self.ccxt_order['executed']['size'],
-                    backtrader.num2date(self.ccxt_order['executed']['dt']).isoformat().replace("T", " ")[:-3],
+                    backtrader.num2date(
+                        self.ccxt_order['executed']['dt']).isoformat().replace("T", " ")[:-3],
                 ))
         else:
             tojoin.append('Price: {} x Size: {} @ {}'.format(

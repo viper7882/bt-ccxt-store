@@ -75,7 +75,8 @@ class BT_CCXT_Feed(with_metaclass(MetaCCXTFeed, DataBase)):
         ('backfill_start', False),  # do backfilling at the start
         ('fetch_ohlcv_params', {}),
         ('ohlcv_limit', 20),
-        ('convert_to_heikin_ashi', False),    # True if the klines are converted into Heiken Ashi candlesticks
+        # True if the klines are converted into Heiken Ashi candlesticks
+        ('convert_to_heikin_ashi', False),
         ('symbol_tick_size', None),
         ('price_digits', None),
         ('dataname', None),
@@ -143,8 +144,10 @@ class BT_CCXT_Feed(with_metaclass(MetaCCXTFeed, DataBase)):
                     if self.p.debug:
                         print('----     LOAD    ----')
                         print('{} Line: {}: {} Load OHLCV Returning: {}'.format(
-                            inspect.getframeinfo(inspect.currentframe()).function,
-                            inspect.getframeinfo(inspect.currentframe()).lineno,
+                            inspect.getframeinfo(
+                                inspect.currentframe()).function,
+                            inspect.getframeinfo(
+                                inspect.currentframe()).lineno,
                             datetime.utcnow(), ret
                         ))
                     return ret
@@ -155,8 +158,10 @@ class BT_CCXT_Feed(with_metaclass(MetaCCXTFeed, DataBase)):
                     if self.p.debug:
                         print('----     LOAD    ----')
                         print('{} Line: {}: {} Load OHLCV Returning: {}'.format(
-                            inspect.getframeinfo(inspect.currentframe()).function,
-                            inspect.getframeinfo(inspect.currentframe()).lineno,
+                            inspect.getframeinfo(
+                                inspect.currentframe()).function,
+                            inspect.getframeinfo(
+                                inspect.currentframe()).lineno,
                             datetime.utcnow(), ret
                         ))
                     return ret
@@ -181,14 +186,17 @@ class BT_CCXT_Feed(with_metaclass(MetaCCXTFeed, DataBase)):
                 return ohlcv
             except Exception:
                 if num_retries == max_retries - 1:
-                    raise ValueError('Failed to fetch', timeframe, symbol_id, 'klines in', max_retries, 'attempts')
+                    raise ValueError('Failed to fetch', timeframe,
+                                     symbol_id, 'klines in', max_retries, 'attempts')
 
     def _fetch_ohlcv(self, fromdate=None, todate=None, max_retries=300):
         """Fetch OHLCV data into self._data queue"""
-        granularity = self.instrument.get_granularity(self._timeframe, self._compression)
+        granularity = self.instrument.get_granularity(
+            self._timeframe, self._compression)
 
         if fromdate:
-            since = int((fromdate - datetime(1970, 1, 1)).total_seconds() * 1000)
+            since = int((fromdate - datetime(1970, 1, 1)
+                         ).total_seconds() * 1000)
         else:
             if self._last_ts > 0:
                 if self._ts_delta is None:
@@ -201,25 +209,31 @@ class BT_CCXT_Feed(with_metaclass(MetaCCXTFeed, DataBase)):
         if todate:
             until = int((todate - datetime(1970, 1, 1)).total_seconds() * 1000)
         else:
-            until = int((datetime.utcnow() - datetime(1970, 1, 1)).total_seconds() * 1000)
+            until = int((datetime.utcnow() - datetime(1970, 1, 1)
+                         ).total_seconds() * 1000)
 
         limit = self.p.ohlcv_limit
 
-        timeframe_duration_in_seconds = self.instrument.parse_timeframe(granularity)
+        timeframe_duration_in_seconds = self.instrument.parse_timeframe(
+            granularity)
         timeframe_duration_in_ms = timeframe_duration_in_seconds * 1000
         time_delta = limit * timeframe_duration_in_ms
         all_ohlcv = []
         fetch_since = since
         while fetch_since < until:
-            ohlcv = self.retry_fetch_ohlcv(self.p.dataname, granularity, fetch_since, limit, max_retries)
+            ohlcv = self.retry_fetch_ohlcv(
+                self.p.dataname, granularity, fetch_since, limit, max_retries)
             if len(ohlcv) == 0:
                 break
-            fetch_since = (ohlcv[-1][0] + 1) if len(ohlcv) else (fetch_since + time_delta)
+            fetch_since = (
+                ohlcv[-1][0] + 1) if len(ohlcv) else (fetch_since + time_delta)
             all_ohlcv = all_ohlcv + ohlcv
 
-        ohlcv_list = self.instrument.filter_by_since_limit(all_ohlcv, since, limit=None, key=0)
+        ohlcv_list = self.instrument.filter_by_since_limit(
+            all_ohlcv, since, limit=None, key=0)
         # Filter off excessive data should there is any
-        ohlcv_list = [entry for i, entry in enumerate(ohlcv_list) if ohlcv_list[i][0] < until]
+        ohlcv_list = [entry for i, entry in enumerate(
+            ohlcv_list) if ohlcv_list[i][0] < until]
 
         # Check to see if dropping the latest candle will help with
         # exchanges which return partial data
@@ -234,7 +248,8 @@ class BT_CCXT_Feed(with_metaclass(MetaCCXTFeed, DataBase)):
                 # INFO: Configure the columns to be CCXT
                 df.columns = CCXT_DATA_COLUMNS[:-1]
 
-                df_ha = get_ha_bars(df, self.p.price_digits, self.p.symbol_tick_size)
+                df_ha = get_ha_bars(df, self.p.price_digits,
+                                    self.p.symbol_tick_size)
 
                 ohlcv_list = df_ha.values.tolist()
                 # print("{} Line: {}: {}: {}: AFTER: ohlcv_list[-1]: ".format(
@@ -278,14 +293,16 @@ class BT_CCXT_Feed(with_metaclass(MetaCCXTFeed, DataBase)):
             self.lines.close[0] = ohlcv[3]
             self.lines.volume[0] = ohlcv[4]
         else:
-            order_book = self.instrument.fetch_order_book(symbol=self.p.dataname)
+            order_book = self.instrument.fetch_order_book(
+                symbol=self.p.dataname)
             # nearest_ask = order_book['asks'][0][0]
             nearest_bid = order_book['bids'][0][0]
             nearest_ask_volume = order_book['asks'][0][1]
             nearest_bid_volume = order_book['bids'][0][1]
 
             # Convert isoformat to datetime
-            order_book_datetime = dateutil.parser.isoparse(order_book['datetime'])
+            order_book_datetime = dateutil.parser.isoparse(
+                order_book['datetime'])
 
             self.lines.datetime[0] = bt.date2num(order_book_datetime)
             self.lines.open[0] = nearest_bid
@@ -295,7 +312,8 @@ class BT_CCXT_Feed(with_metaclass(MetaCCXTFeed, DataBase)):
 
             # INFO: Volume below is not an actual value provided by most exchange
             # INFO: Consuming average volume is probably a better way to go
-            self.lines.volume[0] = (nearest_bid_volume + nearest_ask_volume) / 2
+            self.lines.volume[0] = (
+                nearest_bid_volume + nearest_ask_volume) / 2
 
         return True
 

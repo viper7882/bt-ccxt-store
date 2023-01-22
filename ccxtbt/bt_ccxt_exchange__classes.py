@@ -129,7 +129,8 @@ class BT_CCXT_Exchange(backtrader.with_metaclass(backtrader.MetaSingleton, objec
         self.account_or_store = account_or_store
 
     def get__child(self):
-        legality_check_not_none_obj(self.account_or_store, "self.account_or_store")
+        legality_check_not_none_obj(
+            self.account_or_store, "self.account_or_store")
         return self.account_or_store
 
     def get__children(self):
@@ -153,7 +154,8 @@ class BT_CCXT_Exchange(backtrader.with_metaclass(backtrader.MetaSingleton, objec
             if account_or_store.is_ohlcv_provider == True:
                 ohlcv_provider__account_or_store = account_or_store
 
-        legality_check_not_none_obj(ohlcv_provider__account_or_store, "ohlcv_provider__account_or_store")
+        legality_check_not_none_obj(
+            ohlcv_provider__account_or_store, "ohlcv_provider__account_or_store")
         return ohlcv_provider__account_or_store
 
     def get_account_alias(self, owner):

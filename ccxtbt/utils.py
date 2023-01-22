@@ -15,7 +15,8 @@ from .bt_ccxt__specifications import CCXT_DATA_COLUMNS, OPEN_COL, HIGH_COL, LOW_
 def print_timestamp_checkpoint(function, lineno, comment="Checkpoint timestamp", start=None):
     # Convert datetime to string
     # Refer to https://docs.python.org/3/library/datetime.html#strftime-and-strptime-format-codes
-    timestamp_str = get_strftime(datetime.datetime.now(), DATE_TIME_FORMAT_WITH_MS_PRECISION)
+    timestamp_str = get_strftime(
+        datetime.datetime.now(), DATE_TIME_FORMAT_WITH_MS_PRECISION)
     if start:
         minutes, seconds, milliseconds = get_ms_time_diff(start)
         print("{} Line: {}: {}: {}, Delta: {}m:{}s.{}ms".format(
@@ -61,7 +62,8 @@ def get_ha_bars(df, price_digits, symbol_tick_size):
     for i in range(df_ha.shape[0]):
         if i > 0:
             df_ha.loc[df_ha.index[i], CCXT_DATA_COLUMNS[OPEN_COL]] = \
-                (df_ha[CCXT_DATA_COLUMNS[OPEN_COL]][i - 1] + df_ha[CCXT_DATA_COLUMNS[CLOSE_COL]][i - 1]) / 2
+                (df_ha[CCXT_DATA_COLUMNS[OPEN_COL]][i - 1] +
+                 df_ha[CCXT_DATA_COLUMNS[CLOSE_COL]][i - 1]) / 2
 
         df_ha.loc[df_ha.index[i], CCXT_DATA_COLUMNS[CLOSE_COL]] = \
             (df[CCXT_DATA_COLUMNS[OPEN_COL]][i] + df[CCXT_DATA_COLUMNS[CLOSE_COL]][i] +
@@ -95,8 +97,8 @@ def dump_ohlcv(function, lineno, data_name, ohlcv_list):
     assert isinstance(ohlcv_list, list)
 
     print("{} Line: {}: DEBUG: len of ohlcv: {}".format(
-            function, lineno, len(ohlcv_list),
-        ))
+        function, lineno, len(ohlcv_list),
+    ))
 
     for i, ohlcv in enumerate(ohlcv_list):
         tstamp = ohlcv[0] / 1e3
@@ -111,7 +113,8 @@ def dump_ohlcv(function, lineno, data_name, ohlcv_list):
         kline_volume = ohlcv[5]
 
         msg = "{} Line: {}: INFO: {}: [{}]: {}: ".format(
-            function, lineno, data_name, i + 1, kline_dt.isoformat().replace("T", " ")[:-3],
+            function, lineno, data_name, i +
+            1, kline_dt.isoformat().replace("T", " ")[:-3],
         )
         msg += "{}: {}, ".format(CCXT_DATA_COLUMNS[OPEN_COL], kline_open)
         msg += "{}: {}, ".format(CCXT_DATA_COLUMNS[HIGH_COL], kline_high)
@@ -127,7 +130,8 @@ def legality_check_not_none_obj(obj, obj_name):
     if obj is None:
         if obj_name is None:
             obj_name = get_var_name(obj)
-        raise Exception("{}: {} must NOT be {}!!!".format(inspect.currentframe(), obj_name, obj))
+        raise Exception("{}: {} must NOT be {}!!!".format(
+            inspect.currentframe(), obj_name, obj))
 
 
 def round_to_nearest_decimal_points(x, prec, base):
@@ -148,7 +152,8 @@ def round_to_nearest_decimal_points(x, prec, base):
         new_numbers = []
         for number in numbers:
             if math.isnan(number) == False:
-                new_numbers.append(round(base * round(float(number)/base), prec))
+                new_numbers.append(
+                    round(base * round(float(number)/base), prec))
             else:
                 # INFO: For NaN, just remain as it is
                 new_numbers.append(number)
@@ -175,7 +180,7 @@ def get_var_name(variable):
     return var_name
 
 
-def dump_obj(obj, name = "obj"):
+def dump_obj(obj, name="obj"):
     '''
     Credits: https://stackoverflow.com/questions/192109/is-there-a-built-in-function-to-print-all-the-current-properties-and-values-of-a?rq=1
     Credits: https://stackoverflow.com/questions/21542753/dir-without-built-in-methods
@@ -241,7 +246,8 @@ def get_ccxt_order_id(order):
 def get_digits(step_size) -> int:
     if isinstance(step_size, float):
         # Credits: https://stackoverflow.com/questions/6189956/easy-way-of-finding-decimal-places
-        number_of_digits = abs(decimal.Decimal(str(step_size)).as_tuple().exponent)
+        number_of_digits = abs(decimal.Decimal(
+            str(step_size)).as_tuple().exponent)
     elif isinstance(step_size, int):
         # Credits: https://stackoverflow.com/questions/2189800/how-to-find-length-of-digits-in-an-integer
         number_of_digits = int(math.log10(step_size)) + 1

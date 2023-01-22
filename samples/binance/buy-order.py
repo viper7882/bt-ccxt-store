@@ -25,7 +25,7 @@ class TestStrategy(bt.Strategy):
             # make sure you use a price that is below the market price if you don't want to actually buy
             self.order = self.buy(size=2.0, exectype=Order.Limit, price=5.4326)
             # And immediately cancel the buy order
-            self.cancel(self.order);
+            self.cancel(self.order)
             self.bought = True
 
         for datafeed in self.datafeeds:
@@ -36,7 +36,8 @@ class TestStrategy(bt.Strategy):
     def datafeed_notification(self, data, status, *args, **kwargs):
         dn = datafeed._name
         dt = datetime.now()
-        msg = 'Data Status: {}, Order Status: {}'.format(data._getstatusname(status), status)
+        msg = 'Data Status: {}, Order Status: {}'.format(
+            data._getstatusname(status), status)
         print(dt, dn, msg)
         if data._getstatusname(status) == 'LIVE':
             self.live_data = True
@@ -64,7 +65,8 @@ config = {'apiKey': params["binance"]["apikey"],
           'nonce': lambda: str(int(time.time() * 1000)),
           }
 
-store = BT_CCXT_Account_or_Store(exchange='binance', currency='BNB', config=config, retries=5, debug=True)
+store = BT_CCXT_Account_or_Store(
+    exchange='binance', currency='BNB', config=config, retries=5, debug=True)
 
 # Get the broker and pass any kwargs if needed.
 # ----------------------------------------------
