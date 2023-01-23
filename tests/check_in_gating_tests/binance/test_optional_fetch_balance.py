@@ -26,8 +26,8 @@ class TestFeedInitialFetchBalance(unittest.TestCase):
     """
     At least at Binance and probably on other exchanges too fetching ohlcv data doesn't need authentication
     while obviously fetching the balance of ones account does need authentication.
-    Usually the BT_CCXT_Account_or_Store fetches the balance when it is initialized which is not a problem during live trading
-    operation.
+    Usually the BT_CCXT_Account_or_Store fetches the balance when it is initialized which is not a problem during live
+    trading operation.
     But the store is also initialized when the BT_CCXT_Feed is created and used during unit testing and backtesting.
     For this case it is beneficial to turn off the initial fetching of the balance as it is not really needed and
     it avoids needing to have api keys.
@@ -48,6 +48,8 @@ class TestFeedInitialFetchBalance(unittest.TestCase):
 
         self.enable_rate_limit = True
         self.account_alias__dropdown_value = "Main"
+
+        # INFO: Bybit exchange-specific value
         self.account_type = "CONTRACT"
 
     @patch('ccxt.binance.fetch_balance')
