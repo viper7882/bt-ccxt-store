@@ -3,9 +3,9 @@ import datetime
 
 
 class Enhanced_Position(backtrader.Position):
-    def __init__(self, size=0.0, price=0.0, datetime=None):
+    def __init__(self, size=0.0, price=0.0, date_and_time=None):
         super(Enhanced_Position, self).__init__(
-            size=size, price=price, datetime=datetime)
+            size=size, price=price, date_and_time=datetime)
 
         # Enhanced attributes
         # self.position_value = 0.0
@@ -42,7 +42,7 @@ class Enhanced_Position(backtrader.Position):
         return ret_value
 
     def clone(self):
-        return Enhanced_Position(size=self.size, price=self.price, datetime=self.datetime)
+        return Enhanced_Position(size=self.size, price=self.price, date_and_time=self.datetime)
 
     def pseudoupdate(self, size, price):
         return Enhanced_Position(self.size, self.price, self.datetime).update(size, price)

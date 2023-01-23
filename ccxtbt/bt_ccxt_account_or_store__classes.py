@@ -1038,36 +1038,37 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                     frameinfo.function, frameinfo.lineno,
                     msg_type,
                 )
-                sub_msg = "order.ccxt_order:"
-                print(msg + sub_msg)
-                print(json.dumps(order.ccxt_order, indent=self.indent))
 
-                sub_msg = "order:"
-                print(msg + sub_msg)
-                pprint(order)
-
-                sub_msg = "pre-position:"
-                print(msg + sub_msg)
-                pprint(original_position)
-
-                sub_msg = "post-position:"
-                print(msg + sub_msg)
-                pprint(position)
-
-                if throws_out_error == False:
-                    sub_msg = \
-                        "abs(order.executed.filled_size): {:.{}f} vs Exchange's filled: {:.{}f}".format(
-                            abs(order.executed.filled_size), commission_info.qty_digits,
-                            order.filled, commission_info.qty_digits,
-                        )
-                    print(msg + sub_msg)
-
-                    sub_msg = \
-                        "abs(order.executed.remaining_size): {:.{}f} vs Exchange's remaining: {:.{}f}".format(
-                            abs(order.executed.remaining_size), commission_info.qty_digits,
-                            order.remaining, commission_info.qty_digits,
-                        )
-                    print(msg + sub_msg)
+                # sub_msg = "order.ccxt_order:"
+                # print(msg + sub_msg)
+                # print(json.dumps(order.ccxt_order, indent=self.indent))
+                #
+                # sub_msg = "order:"
+                # print(msg + sub_msg)
+                # pprint(order)
+                #
+                # sub_msg = "pre-position:"
+                # print(msg + sub_msg)
+                # pprint(original_position)
+                #
+                # sub_msg = "post-position:"
+                # print(msg + sub_msg)
+                # pprint(position)
+                #
+                # if throws_out_error == False:
+                #     sub_msg = \
+                #         "abs(order.executed.filled_size): {:.{}f} vs Exchange's filled: {:.{}f}".format(
+                #             abs(order.executed.filled_size), commission_info.qty_digits,
+                #             order.filled, commission_info.qty_digits,
+                #         )
+                #     print(msg + sub_msg)
+                #
+                #     sub_msg = \
+                #         "abs(order.executed.remaining_size): {:.{}f} vs Exchange's remaining: {:.{}f}".format(
+                #             abs(order.executed.remaining_size), commission_info.qty_digits,
+                #             order.remaining, commission_info.qty_digits,
+                #         )
+                #     print(msg + sub_msg)
 
                 if throws_out_error == True:
                     legality_check_not_none_obj(sub_error_msg, "sub_error_msg")

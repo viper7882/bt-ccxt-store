@@ -58,7 +58,7 @@ class TestFeedInitialFetchBalance(unittest.TestCase):
         If API keys are provided the store is expected to fetch the balance.
         """
         exchange_specific_config = {
-            'api': None,
+            'apiKey': None,
             'secret': None,
             'nonce': lambda: str(int(time.time() * 1000)),
             'enableRateLimit': self.enable_rate_limit,
@@ -75,7 +75,7 @@ class TestFeedInitialFetchBalance(unittest.TestCase):
         not fetch the balance and load the ohlcv data without them.
         """
         exchange_specific_config = {
-            # 'api': None,
+            # 'apiKey': None,
             # 'secret': None,
             'nonce': lambda: str(int(time.time() * 1000)),
             'enableRateLimit': self.enable_rate_limit,

@@ -11,137 +11,16 @@ import unittest
 from time import time as timer
 from pprint import pprint
 
-from ccxtbt.bt_ccxt__specifications import MAX_LIVE_EXCHANGE_RETRIES, VALUE_DIGITS
+from ccxtbt.bt_ccxt__specifications import MAX_LIVE_EXCHANGE_RETRIES
 from ccxtbt.bt_ccxt_account_or_store__classes import BT_CCXT_Account_or_Store
 from ccxtbt.bt_ccxt_feed__classes import BT_CCXT_Feed
 from ccxtbt.bt_ccxt_instrument__classes import BT_CCXT_Instrument
 from ccxtbt.bt_ccxt_order__classes import BT_CCXT_Order
-from ccxtbt.bybit_exchange__specifications import BYBIT_EXCHANGE_ID, BYBIT_OHLCV_LIMIT, BYBIT_COMMISSION_PRECISION
-from ccxtbt.utils import get_time_diff, legality_check_not_none_obj, truncate, get_digits, get_wallet_currency
-
-API_KEY_AND_SECRET_FILE_NAME = "testnet__api_key_and_secret.json"
-
-
-class FAKE_EXCHANGE(object):
-    def __init__(self, owner):
-        self.owner = owner
-
-    def add_commission_info(self, commission_info):
-        self.commission_info = commission_info
-
-    def get_commission_info(self):
-        return self.commission_info
-
-    def get_ohlcv_provider__account_or_store(self):
-        return self.owner
-
-
-class FAKE_COMMISSION_INFO(object):
-    def __init__(self, params):
-        # INFO: Un-serialize Params
-        for key, val in params.items():
-            setattr(self, key, val)
-
-        if self.symbol_id == "ETHUSDT":
-            self.symbol_tick_size = 0.05
-            self.price_digits = get_digits(self.symbol_tick_size)
-            self.qty_step = 0.01
-            self.qty_digits = get_digits(self.qty_step)
-        else:
-            raise NotImplementedError()
-
-    def get_value_size(self, size, price):
-        '''
-        Returns the value of size for given a price. For future-like objects it is fixed at size * margin.
-        Value size a.k.a. Initial Margin in cryptocurrency.
-        Cash will be deducted from (size > 0)/added to (size < 0) this amount.
-        '''
-        valuesize = 0.0
-        if size:
-            valuesize = truncate(abs(size) * price, VALUE_DIGITS)
-        return valuesize
-
-    def _get_commission_rate(self, size, price, pseudoexec):
-        '''
-        Calculates the commission of an operation at a given price
-            pseudoexec: if True the operation has not yet been executed
-
-            Percentage based commission fee.
-            More details at https://www.backtrader.com/docu/user-defined-commissions/commission-schemes-subclassing/.
-        '''
-        assert isinstance(price, float)
-        if ((pseudoexec == False) and (price <= 0.0)):
-            raise ValueError("Price: {:.{}f} cannot be zero or negative! Size is {:.{}f}, pseudoexec: {}"
-                             .format(price, self.price_digits, size, self.qty_digits, pseudoexec))
-
-        # Order Cost: https://help.bybit.com/hc/en-us/articles/900000169703-Order-Cost-USDT-Contract-
-        commission_in_coin_refer = truncate(
-            (abs(size) * self.commission) * price, BYBIT_COMMISSION_PRECISION)
-        return commission_in_coin_refer
-
-    def get_commission_rate(self, size, price):
-        '''Calculates the commission of an operation at a given price
-        '''
-        return self._get_commission_rate(size, price, pseudoexec=True)
-
-
-def get_commission_info(params):
-    commission_info = FAKE_COMMISSION_INFO(params)
-    return commission_info
-
-
-def handle_datafeed(datafeed, price):
-    datafeed.start()
-    datafeed.forward()
-    datafeed._load()
-    datafeed._tz = None
-    datafeed.close[0] = price
-
-
-def reverse_engineer__ccxt_order(bt_ccxt_order__dict):
-    # INFO: Un-serialize Params
-    ccxt_order = bt_ccxt_order__dict['ccxt_order']
-
-    if ccxt_order['type'] == backtrader.Order.Execution_Types[backtrader.Order.Limit].lower():
-        execution_type = backtrader.Order.Limit
-    else:
-        execution_type = backtrader.Order.Market
-
-    if ccxt_order['stopPrice'] is None:
-        stop_price = None
-    elif isinstance(ccxt_order['stopPrice'], str):
-        stop_price = float(ccxt_order['stopPrice'])
-    elif isinstance(ccxt_order['stopPrice'], int) or isinstance(ccxt_order['stopPrice'], float):
-        stop_price = ccxt_order['stopPrice']
-    else:
-        raise NotImplementedError()
-
-    if stop_price is None:
-        ordering_type = backtrader.Order.ACTIVE_ORDERING_TYPE
-    else:
-        ordering_type = backtrader.Order.CONDITIONAL_ORDERING_TYPE
-
-    # TOOD: Bybit exchange-specific codes
-    if 'info' in ccxt_order.keys():
-        if 'reduce_only' in ccxt_order['info'].keys():
-            # Validate assumption made
-            assert isinstance(ccxt_order['info']['reduce_only'], bool)
-
-            if ccxt_order['info']['reduce_only'] == False:
-                order_intent = backtrader.Order.Entry_Order
-            else:
-                order_intent = backtrader.Order.Exit_Order
-        else:
-            raise NotImplementedError()
-    else:
-        raise NotImplementedError()
-
-    bt_ccxt_order__dict.update(dict(
-        execution_type=execution_type,
-        ordering_type=ordering_type,
-        order_intent=order_intent,
-    ))
-    return bt_ccxt_order__dict
+from ccxtbt.bybit_exchange__specifications import BYBIT_EXCHANGE_ID, BYBIT_OHLCV_LIMIT
+from ccxtbt.utils import get_time_diff, legality_check_not_none_obj, get_wallet_currency
+from check_in_gating_tests.common.test__classes import FAKE_EXCHANGE
+from check_in_gating_tests.common.test__helper import get_commission_info, handle_datafeed, reverse_engineer__ccxt_order
+from check_in_gating_tests.common.test__specifications import API_KEY_AND_SECRET_FILE_NAME
 
 
 class Bybit__bt_ccxt_account_or_store__TestCases(unittest.TestCase):
@@ -460,8 +339,8 @@ class Bybit__bt_ccxt_account_or_store__TestCases(unittest.TestCase):
 
         except Exception:
             traceback.print_exc()
-    # @unittest.skip("Only run if required")
 
+    @unittest.skip("Only run if required")
     def test_01__fetch__primary_order(self):
         start = timer()
         try:
@@ -515,7 +394,7 @@ class Bybit__bt_ccxt_account_or_store__TestCases(unittest.TestCase):
         print("{} Line: {}: Took {}m:{:.2f}s".format(frameinfo.function, frameinfo.lineno,
                                                      int(minutes), seconds))
 
-    @unittest.skip("Ready for regression")
+    # @unittest.skip("Ready for regression")
     def test_10__execute__primary_order(self):
         start = timer()
         try:
@@ -531,7 +410,7 @@ class Bybit__bt_ccxt_account_or_store__TestCases(unittest.TestCase):
         print("{} Line: {}: Took {}m:{:.2f}s".format(frameinfo.function, frameinfo.lineno,
                                                      int(minutes), seconds))
 
-    @unittest.skip("Ready for regression")
+    # @unittest.skip("Ready for regression")
     def test_11__execute__primary_order_and_then_hedging_order(self):
         start = timer()
         try:

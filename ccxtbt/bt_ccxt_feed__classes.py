@@ -81,6 +81,7 @@ class BT_CCXT_Feed(with_metaclass(MetaCCXTFeed, DataBase)):
         ('price_digits', None),
         ('dataname', None),
         ('drop_newest', False),
+        ('ut__halt_if_no_ohlcv', False),
         ('debug', False)
     )
 
@@ -141,6 +142,13 @@ class BT_CCXT_Feed(with_metaclass(MetaCCXTFeed, DataBase)):
                         #       an amount of bars but only load one bar at a given time.
                         self._fetch_ohlcv()
                     ret = self._load_ohlcv()
+
+                    if self.p.ut__halt_if_no_ohlcv:
+                        # INFO: For unit test, we must halt the state machine so that we could continue to the next
+                        #       test case
+                        if ret is None:
+                            ret = False
+
                     if self.p.debug:
                         print('----     LOAD    ----')
                         print('{} Line: {}: {} Load OHLCV Returning: {}'.format(
@@ -227,7 +235,7 @@ class BT_CCXT_Feed(with_metaclass(MetaCCXTFeed, DataBase)):
                 break
             fetch_since = (
                 ohlcv[-1][0] + 1) if len(ohlcv) else (fetch_since + time_delta)
-            all_ohlcv = all_ohlcv + ohlcv
+            all_ohlcv += ohlcv
 
         ohlcv_list = self.instrument.filter_by_since_limit(
             all_ohlcv, since, limit=None, key=0)
@@ -238,7 +246,8 @@ class BT_CCXT_Feed(with_metaclass(MetaCCXTFeed, DataBase)):
         # Check to see if dropping the latest candle will help with
         # exchanges which return partial data
         if self.p.drop_newest:
-            if len(ohlcv_list) > 0:
+            # INFO: Begin to drop the newest if we only have more than one ohlcv
+            if len(ohlcv_list) > 1:
                 del ohlcv_list[-1]
 
         if self.p.convert_to_heikin_ashi:
@@ -267,6 +276,9 @@ class BT_CCXT_Feed(with_metaclass(MetaCCXTFeed, DataBase)):
             # if prev_tstamp is not None and self._ts_delta is None:
             #     # INFO: Record down the TS delta so that it can be used to increment TS
             #     self._ts_delta = tstamp - prev_tstamp
+
+            if self.p.debug:
+                print('tstamp: {}'.format(tstamp))
 
             if tstamp > self._last_ts:
                 if self.p.debug:
