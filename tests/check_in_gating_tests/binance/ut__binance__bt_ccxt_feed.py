@@ -11,8 +11,9 @@ from ccxtbt.bt_ccxt_account_or_store__classes import BT_CCXT_Account_or_Store
 from ccxtbt.bt_ccxt_feed__classes import BT_CCXT_Feed
 from ccxtbt.bt_ccxt_instrument__classes import BT_CCXT_Instrument
 from ccxtbt.exchange.binance.binance__exchange__specifications import BINANCE_EXCHANGE_ID, BINANCE_OHLCV_LIMIT
+from ccxtbt.exchange.bybit.bybit__exchange__helper import get_wallet_currency
 from ccxtbt.exchange.exchange__helper import get_api_and_secret_file_path
-from ccxtbt.utils import legality_check_not_none_obj, get_wallet_currency
+from ccxtbt.utils import legality_check_not_none_obj
 
 from check_in_gating_tests.common.test__classes import FAKE_EXCHANGE
 from check_in_gating_tests.common.test__helper import get_commission_info
@@ -20,16 +21,6 @@ from check_in_gating_tests.common.test__helper import get_commission_info
 
 class Test_Feed(unittest.TestCase):
     def setUp(self):
-        """
-        The initial balance is fetched in the context of the initialization of the BT_CCXT_Account_or_Store.
-        But as the BT_CCXT_Account_or_Store is a singleton it's normally initialized only once and the instance is
-        reused causing side effects.
-        If the  first test run initializes the store without fetching the balance a subsequent test run
-        would not try to fetch the balance again as the initialization won't happen again.
-        Resetting the singleton to None here causes the initialization of the store to happen in every test method.
-        """
-        BT_CCXT_Account_or_Store._singleton = None
-
         # self.main_net_toggle_switch_value = False
         self.main_net_toggle_switch_value = True
         self.exchange_dropdown_value = BINANCE_EXCHANGE_ID
@@ -170,6 +161,7 @@ def backtesting(exchange_specific_config, custom__bt_ccxt_feed__dict, api_and_se
     symbol_id = symbol_name.replace("/", "")
 
     initial__capital_reservation__value = 0.0
+    leverage_in_percent = 50.0
 
     # INFO: Set to True if websocket feed is required. E.g. Ticks data
     is_ohlcv_provider = True
@@ -183,6 +175,7 @@ def backtesting(exchange_specific_config, custom__bt_ccxt_feed__dict, api_and_se
         config=exchange_specific_config,
         initial__capital_reservation__value=initial__capital_reservation__value,
         is_ohlcv_provider=is_ohlcv_provider,
+        leverage_in_percent=leverage_in_percent,
     )
 
     # INFO: Live-specific Params

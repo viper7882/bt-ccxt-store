@@ -259,13 +259,24 @@ def get_digits(step_size) -> int:
     return number_of_digits
 
 
-def get_wallet_currency(symbol_id):
-    currency = None
-    if symbol_id.endswith("USDT"):
-        currency = "USDT"
-    elif symbol_id.endswith("USDC"):
-        currency = symbol_id.replace("USDC", "")
-    elif symbol_id.endswith("USD"):
-        currency = symbol_id.replace("USD", "")
-    legality_check_not_none_obj(currency, "currency")
-    return currency
+def convert_slider_from_percent(slider_in_percent, min_value, max_value, step_size=1):
+    '''
+    Convert slider in % into the nearest value
+    '''
+    ret_slider_value = min_value
+    assert slider_in_percent >= 0.0
+
+    if slider_in_percent > 0.0:
+        # INFO: We zero-based the formula below to counter for easier leverage calculation where 50.0% => 50.0,
+        #       50.0% => 25 etc.
+        ret_slider_value = slider_in_percent * max_value / 100.0
+
+    if ret_slider_value < min_value:
+        ret_slider_value = min_value
+    elif ret_slider_value > max_value:
+        ret_slider_value = max_value
+
+    step_digits = get_digits(step_size)
+    ret_slider_value = round_to_nearest_decimal_points(
+        ret_slider_value, step_digits, step_size)
+    return ret_slider_value

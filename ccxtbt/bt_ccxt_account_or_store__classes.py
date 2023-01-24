@@ -37,16 +37,21 @@ import websocket
 from backtrader.utils.py3 import queue
 from ccxt.base.errors import NetworkError, ExchangeError, OrderNotFound
 from functools import wraps
+
 from pybit import usdt_perpetual
 from pprint import pprint
 from time import time as timer
 
+from ccxtbt.exchange.binance.binance__exchange__helper import get_binance_leverages, set_binance_leverage
 from ccxtbt.exchange.binance.binance__exchange__specifications import BINANCE_EXCHANGE_ID
+from ccxtbt.exchange.bybit.bybit__exchange__helper import get_bybit_leverages, set_bybit_leverage
 from ccxtbt.exchange.bybit.bybit__exchange__specifications import BYBIT_EXCHANGE_ID
-from ccxtbt.bt_ccxt__specifications import CASH_DIGITS, CCXT__MARKET_TYPE__FUTURES, CCXT__MARKET_TYPE__SPOT
+from ccxtbt.bt_ccxt__specifications import CASH_DIGITS, CCXT__MARKET_TYPES, CCXT__MARKET_TYPE__FUTURES, \
+    CCXT__MARKET_TYPE__LINEAR, MAX_LEVERAGE_IN_PERCENT, MIN_LEVERAGE, MIN_LEVERAGE_IN_PERCENT
 from ccxtbt.bt_ccxt_order__classes import BT_CCXT_Order
 from ccxtbt.bt_ccxt_exchange__classes import BT_CCXT_Exchange
-from ccxtbt.utils import legality_check_not_none_obj, round_to_nearest_decimal_points, truncate, get_time_diff, \
+from ccxtbt.utils import convert_slider_from_percent, legality_check_not_none_obj, round_to_nearest_decimal_points, \
+    truncate, get_time_diff, \
     get_ccxt_order_id
 
 
@@ -170,17 +175,18 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
 
     def __init__(self, exchange_dropdown_value, wallet_currency, config, retries, symbols_id,
                  main_net_toggle_switch_value, initial__capital_reservation__value, is_ohlcv_provider,
-                 account__thread__connectivity__lock, debug=False):
+                 account__thread__connectivity__lock, leverage_in_percent, debug=False):
         super().__init__()
 
         # WARNING: Must rename to init2 here or else it will cause
         #          TypeError: BT_CCXT_Account_or_Store.init() missing 7 required positional arguments:
         self.init2(exchange_dropdown_value, wallet_currency, config, retries, symbols_id, main_net_toggle_switch_value,
                    initial__capital_reservation__value, is_ohlcv_provider, account__thread__connectivity__lock,
-                   debug)
+                   leverage_in_percent, debug)
 
     def init2(self, exchange_dropdown_value, wallet_currency, config, retries, symbols_id, main_net_toggle_switch_value,
-              initial__capital_reservation__value, is_ohlcv_provider, account__thread__connectivity__lock, debug=False):
+              initial__capital_reservation__value, is_ohlcv_provider, account__thread__connectivity__lock,
+              leverage_in_percent, debug=False):
         # Legality Check
         assert isinstance(retries, int)
         assert isinstance(symbols_id, list)
@@ -238,6 +244,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         self.is_ws_available = False
         self.ws_mainnet_usdt_perpetual = None
         self.ws_usdt_perpetual = None
+        self.market_type_name = None
         self.twm = None
 
         # INFO: For sensitive section, apply thread-safe locking mechanism to guarantee connection is completely
@@ -250,6 +257,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                 )
                 self.config__api_key = config['apiKey']
                 self.config__api_secret = config['secret']
+                self.market_type_name = config['type']
                 # self.is_ws_available = True
                 #
                 # Gated by: https://github.com/sammchardy/python-binance/issues/1243
@@ -268,6 +276,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                 self.is_ws_available = True
                 self.config__api_key = config['apiKey']
                 self.config__api_secret = config['secret']
+                self.market_type_name = config['type']
                 fetch_balance__dict = {}
 
                 self.ws_instrument_info = collections.defaultdict(tuple)
@@ -301,6 +310,76 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                     self._value = balance['total'][wallet_currency]
             except KeyError:
                 self._value = 0
+
+        # INFO: It is crucial to initialize leverage here
+        self.set_leverage_in_percent(leverage_in_percent)
+
+    def set_leverage_in_percent(self, leverage_in_percent, position_value=0.0):
+        # Legality Check
+        legality_check_not_none_obj(leverage_in_percent, "leverage_in_percent")
+        assert isinstance(leverage_in_percent, int) or isinstance(
+            leverage_in_percent, float)
+
+        if leverage_in_percent < MIN_LEVERAGE_IN_PERCENT or leverage_in_percent > MAX_LEVERAGE_IN_PERCENT:
+            raise RuntimeError("leverage_in_percent: {} must be from {} -> {}!!!".format(
+                leverage_in_percent,
+                MIN_LEVERAGE_IN_PERCENT,
+                MAX_LEVERAGE_IN_PERCENT,
+            ))
+
+        success = True
+        self.leverage_in_percent = leverage_in_percent
+
+        # INFO: Support for Binance and Bybit below
+        if str(self.exchange).lower() == BINANCE_EXCHANGE_ID or str(self.exchange).lower() == BYBIT_EXCHANGE_ID:
+            legality_check_not_none_obj(
+                self.market_type_name, "self.market_type_name")
+
+            if str(self.exchange).lower() == BINANCE_EXCHANGE_ID:
+                # INFO: Workaround for Binance's market type name
+                if self.market_type_name == CCXT__MARKET_TYPES[CCXT__MARKET_TYPE__FUTURES][:-1]:
+                    self.market_type_name = CCXT__MARKET_TYPES[CCXT__MARKET_TYPE__FUTURES]
+
+            if self.market_type_name == CCXT__MARKET_TYPES[CCXT__MARKET_TYPE__FUTURES] or \
+                    self.market_type_name == CCXT__MARKET_TYPES[CCXT__MARKET_TYPE__LINEAR]:
+                for symbol_id in self.symbols_id:
+                    get_leverage__dict = dict(
+                        bt_ccxt_account_or_store=self,
+                        market_type_name=self.market_type_name,
+                        symbol_id=symbol_id,
+                        notional_value=position_value,
+                    )
+                    if str(self.exchange).lower() == BINANCE_EXCHANGE_ID:
+                        (from_leverage, max_leverage,) = get_binance_leverages(
+                            params=get_leverage__dict)
+                    else:
+                        assert str(self.exchange).lower() == BYBIT_EXCHANGE_ID
+
+                        (from_leverage, max_leverage,) = get_bybit_leverages(
+                            params=get_leverage__dict)
+
+                    to_leverage = int(convert_slider_from_percent(
+                        self.leverage_in_percent, MIN_LEVERAGE, max_leverage))
+
+                    if to_leverage != from_leverage:
+                        set_leverage__dict = copy.copy(get_leverage__dict)
+                        set_leverage__dict.update(dict(
+                            from_leverage=from_leverage,
+                            to_leverage=to_leverage,
+                        ))
+                        if str(self.exchange).lower() == BINANCE_EXCHANGE_ID:
+                            set_binance_leverage(params=set_leverage__dict)
+                        else:
+                            assert str(self.exchange).lower(
+                            ) == BYBIT_EXCHANGE_ID
+
+                            set_bybit_leverage(params=set_leverage__dict)
+                    else:
+                        success = False
+            # INFO: Spot Market does not support leverage
+        else:
+            raise NotImplementedError()
+        return success
 
     def __repr__(self):
         return str(self)
@@ -1614,7 +1693,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
 
     def handle_positions(self, message):
         '''
-        This routine gets triggered whenever there is a position change. If the position does not changed, it will not
+        This routine gets triggered whenever there is a position change. If the position does not change, it will not
         appear in the message.
         '''
         try:
@@ -1657,7 +1736,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                     # Store the outdated positions first
                     self.ws_positions[symbol_id] = \
                         self._fetch_opened_positions_from_exchange(
-                            [symbol_id], params={'type': symbol_type})
+                            symbols=[symbol_id], params={'type': symbol_type})
 
                 # INFO: Identify ws_position to be changed
                 positions_to_be_changed = []

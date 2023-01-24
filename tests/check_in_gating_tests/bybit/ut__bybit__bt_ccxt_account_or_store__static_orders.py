@@ -17,8 +17,9 @@ from ccxtbt.bt_ccxt_feed__classes import BT_CCXT_Feed
 from ccxtbt.bt_ccxt_instrument__classes import BT_CCXT_Instrument
 from ccxtbt.bt_ccxt_order__classes import BT_CCXT_Order
 from ccxtbt.exchange.bybit.bybit__exchange__specifications import BYBIT_EXCHANGE_ID, BYBIT_OHLCV_LIMIT
+from ccxtbt.exchange.bybit.bybit__exchange__helper import get_wallet_currency
 from ccxtbt.exchange.exchange__helper import get_api_and_secret_file_path
-from ccxtbt.utils import get_time_diff, legality_check_not_none_obj, get_wallet_currency
+from ccxtbt.utils import get_time_diff, legality_check_not_none_obj
 
 from check_in_gating_tests.common.test__classes import FAKE_EXCHANGE
 from check_in_gating_tests.common.test__helper import get_commission_info, handle_datafeed, reverse_engineer__ccxt_order
@@ -33,10 +34,14 @@ class Bybit__bt_ccxt_account_or_store__Static_Orders__TestCases(unittest.TestCas
             self.exchange_dropdown_value = BYBIT_EXCHANGE_ID
             self.isolated_toggle_switch_value = False
 
-            market_type = CCXT__MARKET_TYPE__SPOT
-            # market_type = CCXT__MARKET_TYPE__LINEAR
+            # WARNING: Avoid assigning market_type to CCXT__MARKET_TYPE__SPOT and run all check in tests altogether.
+            #          Doing so will cause _fetch_opened_positions_from_exchange to mix up between swap and spot market
+            #          and eventually causing whole bunch of "invalid symbols" error
+            # market_type = CCXT__MARKET_TYPE__SPOT
+            market_type = CCXT__MARKET_TYPE__LINEAR
 
             initial__capital_reservation__value = 0.0
+            leverage_in_percent = 50.0
             is_ohlcv_provider = False
             enable_rate_limit = True
             account__thread__connectivity__lock = threading.Lock()
@@ -86,6 +91,7 @@ class Bybit__bt_ccxt_account_or_store__Static_Orders__TestCases(unittest.TestCas
                     config=exchange_specific_config,
                     initial__capital_reservation__value=initial__capital_reservation__value,
                     is_ohlcv_provider=is_ohlcv_provider,
+                    leverage_in_percent=leverage_in_percent,
                 )
 
                 wallet_currency = get_wallet_currency(self.symbol_id)
