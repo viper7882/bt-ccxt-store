@@ -23,11 +23,11 @@ from __future__ import (absolute_import, division, print_function,
                         unicode_literals)
 
 import dateutil.parser
+import datetime
 import inspect
 import pandas as pd
 
 from collections import deque
-from datetime import datetime
 
 import backtrader as bt
 from backtrader.feed import DataBase
@@ -98,6 +98,7 @@ class BT_CCXT_Feed(with_metaclass(MetaCCXTFeed, DataBase)):
         self._last_ts = 0  # last processed timestamp for ohlcv
         self._ts_delta = None  # timestamp delta for ohlcv
         self._name = self.p.dataname  # name of datafeed
+        self._last_ws_ts = 0  # last processed timestamp for ohlcv from websocket
 
         # Legality Check
         if self.p.convert_to_heikin_ashi:
@@ -156,7 +157,7 @@ class BT_CCXT_Feed(with_metaclass(MetaCCXTFeed, DataBase)):
                                 inspect.currentframe()).function,
                             inspect.getframeinfo(
                                 inspect.currentframe()).lineno,
-                            datetime.utcnow(), ret
+                            datetime.datetime.utcnow(), ret
                         ))
                     return ret
 
@@ -170,7 +171,7 @@ class BT_CCXT_Feed(with_metaclass(MetaCCXTFeed, DataBase)):
                                 inspect.currentframe()).function,
                             inspect.getframeinfo(
                                 inspect.currentframe()).lineno,
-                            datetime.utcnow(), ret
+                            datetime.datetime.utcnow(), ret
                         ))
                     return ret
                 else:
@@ -203,7 +204,7 @@ class BT_CCXT_Feed(with_metaclass(MetaCCXTFeed, DataBase)):
             self._timeframe, self._compression)
 
         if fromdate:
-            since = int((fromdate - datetime(1970, 1, 1)
+            since = int((fromdate - datetime.datetime(1970, 1, 1)
                          ).total_seconds() * 1000)
         else:
             if self._last_ts > 0:
@@ -215,9 +216,10 @@ class BT_CCXT_Feed(with_metaclass(MetaCCXTFeed, DataBase)):
                 raise ValueError("Unable to determine the since value!!!")
 
         if todate:
-            until = int((todate - datetime(1970, 1, 1)).total_seconds() * 1000)
+            until = int((todate - datetime.datetime(1970, 1, 1)
+                         ).total_seconds() * 1000)
         else:
-            until = int((datetime.utcnow() - datetime(1970, 1, 1)
+            until = int((datetime.datetime.utcnow() - datetime.datetime(1970, 1, 1)
                          ).total_seconds() * 1000)
 
         limit = self.p.ohlcv_limit
@@ -293,17 +295,35 @@ class BT_CCXT_Feed(with_metaclass(MetaCCXTFeed, DataBase)):
         # start = timer()
 
         if self.instrument.is_ws_available():
-            (tstamp, ohlcv) = self.instrument.get_ws_klines(self.p.dataname)
+            try:
+                (tstamp, ohlcv) = self.instrument.get_ws_klines(self.p.dataname)
 
-            # Convert timestamp to datetime in UTC timezone
-            kline_dt = datetime.utcfromtimestamp(tstamp)
+                # INFO: If there is an update
+                if tstamp > self._last_ws_ts:
+                    self._last_ws_ts = tstamp
 
-            self.lines.datetime[0] = bt.date2num(kline_dt)
-            self.lines.open[0] = ohlcv[0]
-            self.lines.high[0] = ohlcv[1]
-            self.lines.low[0] = ohlcv[2]
-            self.lines.close[0] = ohlcv[3]
-            self.lines.volume[0] = ohlcv[4]
+                    # Convert timestamp to datetime in UTC timezone
+                    kline_dt = datetime.datetime.utcfromtimestamp(tstamp)
+
+                    self.lines.datetime[0] = bt.date2num(kline_dt)
+                    self.lines.open[0] = ohlcv[0]
+                    self.lines.high[0] = ohlcv[1]
+                    self.lines.low[0] = ohlcv[2]
+                    self.lines.close[0] = ohlcv[3]
+                    self.lines.volume[0] = ohlcv[4]
+                else:
+                    return None
+            except ValueError as err:
+                frameinfo = inspect.getframeinfo(inspect.currentframe())
+                msg = "{} Line: {}: {}: {}: ".format(
+                    frameinfo.function, frameinfo.lineno,
+                    self.p.dataname,
+                    datetime.datetime.utcnow().isoformat().replace("T", " ")[
+                        :-3],
+                )
+                sub_msg = "err: {}".format(err)
+                print("\r" + msg + sub_msg, end="")
+                return False
         else:
             order_book = self.instrument.fetch_order_book(
                 symbol=self.p.dataname)
@@ -337,7 +357,7 @@ class BT_CCXT_Feed(with_metaclass(MetaCCXTFeed, DataBase)):
 
         tstamp, open_, high, low, close, volume = ohlcv
 
-        dtime = datetime.utcfromtimestamp(tstamp // 1000)
+        dtime = datetime.datetime.utcfromtimestamp(tstamp // 1000)
 
         self.lines.datetime[0] = bt.date2num(dtime)
         self.lines.open[0] = open_

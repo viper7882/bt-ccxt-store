@@ -2,28 +2,29 @@ import backtrader
 import datetime
 import inspect
 import json
-import os
-import pathlib
 import threading
+import time
 import traceback
 import unittest
 
 from time import time as timer
 from pprint import pprint
 
-from ccxtbt.bt_ccxt__specifications import MAX_LIVE_EXCHANGE_RETRIES
+from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPES, CCXT__MARKET_TYPE__LINEAR, CCXT__MARKET_TYPE__SPOT, \
+    MAX_LIVE_EXCHANGE_RETRIES
 from ccxtbt.bt_ccxt_account_or_store__classes import BT_CCXT_Account_or_Store
 from ccxtbt.bt_ccxt_feed__classes import BT_CCXT_Feed
 from ccxtbt.bt_ccxt_instrument__classes import BT_CCXT_Instrument
 from ccxtbt.bt_ccxt_order__classes import BT_CCXT_Order
-from ccxtbt.bybit_exchange__specifications import BYBIT_EXCHANGE_ID, BYBIT_OHLCV_LIMIT
+from ccxtbt.exchange.bybit.bybit__exchange__specifications import BYBIT_EXCHANGE_ID, BYBIT_OHLCV_LIMIT
+from ccxtbt.exchange.exchange__helper import get_api_and_secret_file_path
 from ccxtbt.utils import get_time_diff, legality_check_not_none_obj, get_wallet_currency
+
 from check_in_gating_tests.common.test__classes import FAKE_EXCHANGE
 from check_in_gating_tests.common.test__helper import get_commission_info, handle_datafeed, reverse_engineer__ccxt_order
-from check_in_gating_tests.common.test__specifications import API_KEY_AND_SECRET_FILE_NAME
 
 
-class Bybit__bt_ccxt_account_or_store__TestCases(unittest.TestCase):
+class Bybit__bt_ccxt_account_or_store__Static_Orders__TestCases(unittest.TestCase):
     def setUp(self):
         try:
             self.bt_ccxt_account_or_store = None
@@ -32,8 +33,8 @@ class Bybit__bt_ccxt_account_or_store__TestCases(unittest.TestCase):
             self.exchange_dropdown_value = BYBIT_EXCHANGE_ID
             self.isolated_toggle_switch_value = False
 
-            # INFO: Bybit exchange-specific value
-            account_type = "CONTRACT"
+            market_type = CCXT__MARKET_TYPE__SPOT
+            # market_type = CCXT__MARKET_TYPE__LINEAR
 
             initial__capital_reservation__value = 0.0
             is_ohlcv_provider = False
@@ -42,10 +43,13 @@ class Bybit__bt_ccxt_account_or_store__TestCases(unittest.TestCase):
             self.symbol_id = "ETHUSDT"
             symbols_id = [self.symbol_id]
 
-            file_path = pathlib.Path(__file__).parent.resolve()
-            api_key_and_secret_full_path = os.path.join(
-                file_path, API_KEY_AND_SECRET_FILE_NAME)
-            assert os.path.exists(api_key_and_secret_full_path)
+            api_and_secret_file_path__dict = dict(
+                exchange_dropdown_value=self.exchange_dropdown_value,
+                market_type=market_type,
+                main_net_toggle_switch_value=self.main_net_toggle_switch_value,
+            )
+            api_key_and_secret_full_path = get_api_and_secret_file_path(
+                **api_and_secret_file_path__dict)
 
             commission = 0.0006
             leverage_in_percent = 50.0
@@ -64,14 +68,17 @@ class Bybit__bt_ccxt_account_or_store__TestCases(unittest.TestCase):
                 api_secret = json_data['secret']
                 account_alias__dropdown_value = json_data['account_alias__dropdown_value']
 
+                ccxt_market_type_name = CCXT__MARKET_TYPES[market_type]
+
                 exchange_specific_config = {
                     'apiKey': api_key,
                     'secret': api_secret,
                     'nonce': lambda: str(int(time.time() * 1000)),
                     'enableRateLimit': enable_rate_limit,
-                    # 'rateLimit': 1100, # in ms
+                    'type': ccxt_market_type_name,
+
                     'account_alias': account_alias__dropdown_value,
-                    'account_type': account_type,
+                    'account_type': market_type,
                 }
 
                 account_or_store__dict = dict(
@@ -119,9 +126,12 @@ class Bybit__bt_ccxt_account_or_store__TestCases(unittest.TestCase):
             granularity_compression = 1
             granularity_timeframe = backtrader.TimeFrame.Minutes
 
-            # TODO: User to fill in the entry prices here
+            # TODO: User to customize the entries below
             self.primary_entry_price = 1193.55
+            self.primary_entry_qty = -1.03
+
             self.hedging_entry_price = 1195.4
+            self.hedging_entry_qty = 1.78
 
             start_date = datetime.datetime.utcnow(
             ) - datetime.timedelta(minutes=granularity_compression + 1)
@@ -164,7 +174,7 @@ class Bybit__bt_ccxt_account_or_store__TestCases(unittest.TestCase):
                     "info": {
                         "order_id": "41992e55-3ed8-4ea0-80f6-085a36e73d86",
                         "last_exec_price": "1193.55",
-                        "cum_exec_qty": "1.03",
+                        "cum_exec_qty": "{}".format(abs(self.primary_entry_qty)),
                         "cum_exec_value": "1229.3565",
                         "cum_exec_fee": "0.7376139",
                         "user_id": "660978",
@@ -175,8 +185,8 @@ class Bybit__bt_ccxt_account_or_store__TestCases(unittest.TestCase):
                         "order_status": "Filled",
                         "tp_trigger_by": "UNKNOWN",
                         "sl_trigger_by": "UNKNOWN",
-                        "price": "1193.55",
-                        "qty": "1.03",
+                        "price": "{}".format(self.primary_entry_price),
+                        "qty": "{}".format(abs(self.primary_entry_qty)),
                         "order_link_id": "",
                         "reduce_only": False,
                         "close_on_trigger": False,
@@ -195,12 +205,12 @@ class Bybit__bt_ccxt_account_or_store__TestCases(unittest.TestCase):
                     "timeInForce": "GTC",
                     "postOnly": False,
                     "side": "sell",
-                    "price": 1193.55,
+                    "price": self.primary_entry_price,
                     "stopPrice": None,
-                    "amount": 1.03,
+                    "amount": abs(self.primary_entry_qty),
                     "cost": 1229.3565,
-                    "average": 1193.55,
-                    "filled": 1.03,
+                    "average": self.primary_entry_price,
+                    "filled": abs(self.primary_entry_qty),
                     "remaining": 0.0,
                     "status": "closed",
                     "fee": {
@@ -231,7 +241,7 @@ class Bybit__bt_ccxt_account_or_store__TestCases(unittest.TestCase):
                 {
                     "info": {
                         "stop_order_id": "823f4c52-2be2-4fb2-9231-fd3281733e5f",
-                        "trigger_price": "1195.4",
+                        "trigger_price": "{}".format(self.hedging_entry_price),
                         "base_price": "1193.55",
                         "trigger_by": "LastPrice",
                         "user_id": "660978",
@@ -242,8 +252,8 @@ class Bybit__bt_ccxt_account_or_store__TestCases(unittest.TestCase):
                         "order_status": "Untriggered",
                         "tp_trigger_by": "UNKNOWN",
                         "sl_trigger_by": "UNKNOWN",
-                        "price": "1195.4",
-                        "qty": "1.03",
+                        "price": "{}".format(self.hedging_entry_price),
+                        "qty": "{}".format(abs(self.primary_entry_qty)),
                         "order_link_id": "",
                         "reduce_only": False,
                         "close_on_trigger": False,
@@ -262,9 +272,9 @@ class Bybit__bt_ccxt_account_or_store__TestCases(unittest.TestCase):
                     "timeInForce": "GTC",
                     "postOnly": False,
                     "side": "buy",
-                    "price": 1195.4,
-                    "stopPrice": "1195.4",
-                    "amount": 1.03,
+                    "price": self.hedging_entry_price,
+                    "stopPrice": "{}".format(self.hedging_entry_price),
+                    "amount": abs(self.primary_entry_qty),
                     "cost": None,
                     "average": None,
                     "filled": None,
@@ -280,7 +290,7 @@ class Bybit__bt_ccxt_account_or_store__TestCases(unittest.TestCase):
                 {
                     "info": {
                         "stop_order_id": "823f4c52-2be2-4fb2-9231-fd3281733e5f",
-                        "trigger_price": "1195.4",
+                        "trigger_price": "{}".format(self.hedging_entry_price),
                         "base_price": "1193.55",
                         "trigger_by": "LastPrice",
                         "user_id": "660978",
@@ -291,8 +301,8 @@ class Bybit__bt_ccxt_account_or_store__TestCases(unittest.TestCase):
                         "order_status": "Filled",
                         "tp_trigger_by": "UNKNOWN",
                         "sl_trigger_by": "UNKNOWN",
-                        "price": "1195.4",
-                        "qty": "1.78",
+                        "price": "{}".format(self.hedging_entry_price),
+                        "qty": "{}".format(abs(self.hedging_entry_qty)),
                         "order_link_id": "",
                         "reduce_only": False,
                         "close_on_trigger": False,
@@ -311,9 +321,9 @@ class Bybit__bt_ccxt_account_or_store__TestCases(unittest.TestCase):
                     "timeInForce": "GTC",
                     "postOnly": False,
                     "side": "buy",
-                    "price": 1195.4,
-                    "stopPrice": "1195.4",
-                    "amount": 1.78,
+                    "price": self.hedging_entry_price,
+                    "stopPrice": "{}".format(self.hedging_entry_price),
+                    "amount": abs(self.hedging_entry_qty),
                     "cost": None,
                     "average": None,
                     "filled": None,
@@ -394,13 +404,31 @@ class Bybit__bt_ccxt_account_or_store__TestCases(unittest.TestCase):
         print("{} Line: {}: Took {}m:{:.2f}s".format(frameinfo.function, frameinfo.lineno,
                                                      int(minutes), seconds))
 
+    # @unittest.skip("To be enabled")
     # @unittest.skip("Ready for regression")
     def test_10__execute__primary_order(self):
         start = timer()
         try:
             current_price = self.primary_entry_price
+
+            # Test Assumption
+            self.assertEqual(self.primary_entry_order.price,
+                             self.primary_entry_price)
+            self.assertEqual(self.primary_entry_order.size,
+                             self.primary_entry_qty)
+            self.assertEqual(
+                self.primary_entry_order.executed.remaining_size, self.primary_entry_qty)
+
             self.bt_ccxt_account_or_store.execute(
                 self.primary_entry_order, current_price)
+
+            # Test Assertion
+            self.assertEqual(
+                self.primary_entry_order.executed.price, self.primary_entry_price)
+            self.assertEqual(
+                self.primary_entry_order.executed.size, self.primary_entry_qty)
+            self.assertEqual(
+                self.primary_entry_order.executed.remaining_size, 0.0)
             pass
         except Exception:
             traceback.print_exc()
@@ -410,18 +438,39 @@ class Bybit__bt_ccxt_account_or_store__TestCases(unittest.TestCase):
         print("{} Line: {}: Took {}m:{:.2f}s".format(frameinfo.function, frameinfo.lineno,
                                                      int(minutes), seconds))
 
+    # @unittest.skip("To be enabled")
     # @unittest.skip("Ready for regression")
     def test_11__execute__primary_order_and_then_hedging_order(self):
         start = timer()
         try:
             current_price = self.hedging_entry_price
+
             self.bt_ccxt_account_or_store.execute(
                 self.primary_entry_order, current_price)
 
-            # INFO: Actual situation due to modification of hedging size
-            self.hedging_entry_order.ccxt_order = self.hedging_entry__ccxt_order
+            # INFO: Mimicking actual situation in exchange due to modification of hedging size
+            self.hedging_entry_order.extract_from_ccxt_order(
+                self.hedging_entry__ccxt_order)
+            self.hedging_entry_order.executed.remaining_size = self.hedging_entry_qty
+
+            # Test Assumption
+            self.assertEqual(self.hedging_entry_order.price,
+                             self.hedging_entry_price)
+            self.assertEqual(self.hedging_entry_order.size,
+                             self.hedging_entry_qty)
+            self.assertEqual(
+                self.hedging_entry_order.executed.remaining_size, self.hedging_entry_qty)
+
             self.bt_ccxt_account_or_store.execute(
                 self.hedging_entry_order, current_price)
+
+            # Test Assertion
+            self.assertEqual(
+                self.hedging_entry_order.executed.price, self.hedging_entry_price)
+            self.assertEqual(
+                self.hedging_entry_order.executed.size, self.hedging_entry_qty)
+            self.assertEqual(
+                self.hedging_entry_order.executed.remaining_size, 0.0)
             pass
         except Exception:
             traceback.print_exc()

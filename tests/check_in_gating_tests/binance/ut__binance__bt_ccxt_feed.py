@@ -1,29 +1,21 @@
 import backtrader
 import datetime
-import inspect
 import json
-import os
-import pathlib
 import threading
 import time
-import traceback
 import unittest
 
-from backtrader import TimeFrame
-from pprint import pprint
-from time import time as timer
-from unittest.mock import patch
-
-from ccxtbt.bt_ccxt__specifications import MAX_LIVE_EXCHANGE_RETRIES, VALUE_DIGITS
+from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPES, CCXT__MARKET_TYPE__FUTURES, CCXT__MARKET_TYPE__SPOT, \
+    MAX_LIVE_EXCHANGE_RETRIES
 from ccxtbt.bt_ccxt_account_or_store__classes import BT_CCXT_Account_or_Store
 from ccxtbt.bt_ccxt_feed__classes import BT_CCXT_Feed
 from ccxtbt.bt_ccxt_instrument__classes import BT_CCXT_Instrument
-from ccxtbt.bt_ccxt_order__classes import BT_CCXT_Order
-from ccxtbt.bybit_exchange__specifications import BYBIT_EXCHANGE_ID, BYBIT_OHLCV_LIMIT, BYBIT_COMMISSION_PRECISION
-from ccxtbt.utils import get_time_diff, legality_check_not_none_obj, truncate, get_digits, get_wallet_currency
+from ccxtbt.exchange.binance.binance__exchange__specifications import BINANCE_EXCHANGE_ID, BINANCE_OHLCV_LIMIT
+from ccxtbt.exchange.exchange__helper import get_api_and_secret_file_path
+from ccxtbt.utils import legality_check_not_none_obj, get_wallet_currency
+
 from check_in_gating_tests.common.test__classes import FAKE_EXCHANGE
-from check_in_gating_tests.common.test__helper import get_commission_info, handle_datafeed, reverse_engineer__ccxt_order
-from check_in_gating_tests.common.test__specifications import API_KEY_AND_SECRET_FILE_NAME
+from check_in_gating_tests.common.test__helper import get_commission_info
 
 
 class Test_Feed(unittest.TestCase):
@@ -38,15 +30,22 @@ class Test_Feed(unittest.TestCase):
         """
         BT_CCXT_Account_or_Store._singleton = None
 
+        # self.main_net_toggle_switch_value = False
+        self.main_net_toggle_switch_value = True
+        self.exchange_dropdown_value = BINANCE_EXCHANGE_ID
+
+        # market_type = CCXT__MARKET_TYPE__SPOT
+        market_type = CCXT__MARKET_TYPE__FUTURES
+
         enable_rate_limit = True
 
-        # INFO: Bybit exchange-specific value
-        account_type = "CONTRACT"
-
-        file_path = pathlib.Path(__file__).parent.resolve()
-        api_key_and_secret_full_path = os.path.join(
-            file_path, API_KEY_AND_SECRET_FILE_NAME)
-        assert os.path.exists(api_key_and_secret_full_path)
+        self.api_and_secret_file_path__dict = dict(
+            exchange_dropdown_value=self.exchange_dropdown_value,
+            market_type=market_type,
+            main_net_toggle_switch_value=self.main_net_toggle_switch_value,
+        )
+        api_key_and_secret_full_path = get_api_and_secret_file_path(
+            **self.api_and_secret_file_path__dict)
 
         self.exchange_specific_config = None
         with open(api_key_and_secret_full_path, "r") as file_to_read:
@@ -55,13 +54,22 @@ class Test_Feed(unittest.TestCase):
             secret = json_data['secret']
             account_alias__dropdown_value = json_data['account_alias__dropdown_value']
 
+            if market_type == CCXT__MARKET_TYPE__FUTURES:
+                # WARNING: The "future" entry is NOT a typo error. It is a fixed requirement by Binance exchange.
+                #          The following code is workaround to remove the extra "s".
+                ccxt_market_type_name = CCXT__MARKET_TYPES[market_type][:-1]
+            else:
+                ccxt_market_type_name = CCXT__MARKET_TYPES[market_type]
+
             self.exchange_specific_config = {
                 'apiKey': api_key,
                 'secret': secret,
                 'nonce': lambda: str(int(time.time() * 1000)),
                 'enableRateLimit': enable_rate_limit,
+                'type': ccxt_market_type_name,
+
                 'account_alias': account_alias__dropdown_value,
-                'account_type': account_type,
+                'account_type': ccxt_market_type_name,
             }
 
         legality_check_not_none_obj(
@@ -72,6 +80,17 @@ class Test_Feed(unittest.TestCase):
         self.latest_utc_dt = datetime.datetime.utcnow()
         self.prev_day = self.latest_utc_dt - \
             datetime.timedelta(days=self.day_delta)
+
+    @unittest.skip("Only run if required")
+    def test_01__ticks_timeframe__datafeed(self):
+        '''
+        This test will run forever non-stop. That's why it should not be enabled as permanent test.
+        '''
+        custom__bt_ccxt_feed__dict = dict(
+            timeframe=backtrader.TimeFrame.Ticks,
+        )
+        finished_strategies = backtesting(
+            self.exchange_specific_config, custom__bt_ccxt_feed__dict, self.api_and_secret_file_path__dict)
 
     # @unittest.skip("To be enabled")
     # @unittest.skip("Ready for regression")
@@ -87,7 +106,7 @@ class Test_Feed(unittest.TestCase):
         )
 
         finished_strategies = backtesting(
-            self.exchange_specific_config, custom__bt_ccxt_feed__dict)
+            self.exchange_specific_config, custom__bt_ccxt_feed__dict, self.api_and_secret_file_path__dict)
         self.assertEqual(finished_strategies[0].next_runs, self.day_delta)
 
     # @unittest.skip("To be enabled")
@@ -106,7 +125,7 @@ class Test_Feed(unittest.TestCase):
         )
 
         finished_strategies = backtesting(
-            self.exchange_specific_config, custom__bt_ccxt_feed__dict)
+            self.exchange_specific_config, custom__bt_ccxt_feed__dict, self.api_and_secret_file_path__dict)
         self.assertEqual(finished_strategies[0].next_runs, self.day_delta + 1)
 
     # @unittest.skip("To be enabled")
@@ -125,7 +144,7 @@ class Test_Feed(unittest.TestCase):
         )
 
         finished_strategies = backtesting(
-            self.exchange_specific_config, custom__bt_ccxt_feed__dict)
+            self.exchange_specific_config, custom__bt_ccxt_feed__dict, self.api_and_secret_file_path__dict)
         self.assertEqual(finished_strategies[0].next_runs, self.day_delta)
 
 
@@ -137,29 +156,30 @@ class TestStrategy(backtrader.Strategy):
     def next(self, dt=None):
         dt = dt or self.datafeeds[0].datetime.datetime(0)
         print('%s closing price: %s' %
-              (dt.isoformat(), self.datafeeds[0].close[0]))
+              (dt.isoformat().replace("T", " ")[:-3], self.datafeeds[0].close[0]))
         self.next_runs += 1
 
 
-def backtesting(exchange_specific_config, custom__bt_ccxt_feed__dict):
+def backtesting(exchange_specific_config, custom__bt_ccxt_feed__dict, api_and_secret_file_path__dict):
     cerebro = backtrader.Cerebro()
 
     cerebro.add_strategy(TestStrategy)
 
-    main_net_toggle_switch_value = False
-    exchange_dropdown_value = BYBIT_EXCHANGE_ID
     isolated_toggle_switch_value = False
     symbol_name = 'ETH/USDT'
     symbol_id = symbol_name.replace("/", "")
 
     initial__capital_reservation__value = 0.0
-    is_ohlcv_provider = False
+
+    # INFO: Set to True if websocket feed is required. E.g. Ticks data
+    is_ohlcv_provider = True
+
     account__thread__connectivity__lock = threading.Lock()
     symbols_id = [symbol_id]
     wallet_currency = get_wallet_currency(symbol_id)
 
     account_or_store__dict = dict(
-        main_net_toggle_switch_value=main_net_toggle_switch_value,
+        main_net_toggle_switch_value=api_and_secret_file_path__dict['main_net_toggle_switch_value'],
         config=exchange_specific_config,
         initial__capital_reservation__value=initial__capital_reservation__value,
         is_ohlcv_provider=is_ohlcv_provider,
@@ -167,7 +187,7 @@ def backtesting(exchange_specific_config, custom__bt_ccxt_feed__dict):
 
     # INFO: Live-specific Params
     account_or_store__dict.update(dict(
-        exchange_dropdown_value=exchange_dropdown_value,
+        exchange_dropdown_value=api_and_secret_file_path__dict['exchange_dropdown_value'],
         wallet_currency=wallet_currency.upper(),
         retries=MAX_LIVE_EXCHANGE_RETRIES,
         symbols_id=symbols_id,
@@ -204,9 +224,9 @@ def backtesting(exchange_specific_config, custom__bt_ccxt_feed__dict):
     # Validate assumption made
     assert isinstance(custom__bt_ccxt_feed__dict, dict)
 
-    bt_ccxt_feed__dict = dict(exchange=exchange_dropdown_value,
+    bt_ccxt_feed__dict = dict(exchange=api_and_secret_file_path__dict['exchange_dropdown_value'],
                               dataname=symbol_id,
-                              ohlcv_limit=BYBIT_OHLCV_LIMIT,
+                              ohlcv_limit=BINANCE_OHLCV_LIMIT,
                               currency=wallet_currency,
                               config=exchange_specific_config,
                               retries=MAX_LIVE_EXCHANGE_RETRIES,

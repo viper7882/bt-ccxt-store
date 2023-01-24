@@ -31,7 +31,6 @@ import inspect
 import json
 import math
 import time
-import threading
 import traceback
 import websocket
 
@@ -42,11 +41,12 @@ from pybit import usdt_perpetual
 from pprint import pprint
 from time import time as timer
 
-from .bybit_exchange__specifications import BYBIT_EXCHANGE_ID
-from .bt_ccxt__specifications import CASH_DIGITS
-from .bt_ccxt_order__classes import BT_CCXT_Order
-from .bt_ccxt_exchange__classes import BT_CCXT_Exchange
-from .utils import legality_check_not_none_obj, round_to_nearest_decimal_points, dump_obj, truncate, get_time_diff, \
+from ccxtbt.exchange.binance.binance__exchange__specifications import BINANCE_EXCHANGE_ID
+from ccxtbt.exchange.bybit.bybit__exchange__specifications import BYBIT_EXCHANGE_ID
+from ccxtbt.bt_ccxt__specifications import CASH_DIGITS, CCXT__MARKET_TYPE__FUTURES, CCXT__MARKET_TYPE__SPOT
+from ccxtbt.bt_ccxt_order__classes import BT_CCXT_Order
+from ccxtbt.bt_ccxt_exchange__classes import BT_CCXT_Exchange
+from ccxtbt.utils import legality_check_not_none_obj, round_to_nearest_decimal_points, truncate, get_time_diff, \
     get_ccxt_order_id
 
 
@@ -103,6 +103,71 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         '''Returns ``Instrument_Cls`` with args, kwargs'''
         return cls.Instrument_Cls(*args, **kwargs)
 
+    def retry(method):
+        @wraps(method)
+        def retry_method(self, *args, **kwargs):
+            for i in range(self.retries):
+                if self.debug:
+                    print(
+                        '{} - {} - Attempt {}'.format(datetime.datetime.now(), method.__name__, i))
+                time.sleep(self.exchange.rateLimit / 1000)
+                try:
+                    return method(self, *args, **kwargs)
+                except (NetworkError, ExchangeError) as e:
+                    if i == self.retries - 1:
+                        raise
+
+                    if isinstance(e, ExchangeError):
+                        # INFO: Extract the exchange name from the exception
+                        json_error = e.args[0].replace(
+                            str(self.exchange).lower() + " ", "")
+                        exchange_error_dict = json.loads(json_error)
+                        if str(self.exchange).lower() == BYBIT_EXCHANGE_ID:
+                            if exchange_error_dict['ret_code'] == 130125:
+                                '''
+                                'ret_msg' = 'current position is zero, cannot fix reduce-only order qty'
+                                '''
+                                break
+                            elif exchange_error_dict['ret_code'] == 130074:
+                                '''
+                                'ret_msg' = 'expect Rising, but trigger_price[12705000] <= current[12706500]'
+                                '''
+                                break
+                            elif exchange_error_dict['ret_code'] == 130010:
+                                '''
+                                'ret_msg' = 'order not exists or too late to repalce'
+                                '''
+                                break
+                            elif exchange_error_dict['ret_code'] == 130075:
+                                '''
+                                'ret_msg' = 'expect Failling, but trigger_price[11975000] \u003e= current[11968000]??1'
+                                '''
+                                break
+
+                            # INFO: Print out warning regarding the response received from ExchangeError
+                            frameinfo = inspect.getframeinfo(
+                                inspect.currentframe())
+                            msg = "{} Line: {}: INFO: {}: {}/{}: ".format(
+                                frameinfo.function, frameinfo.lineno,
+                                datetime.datetime.now().isoformat().replace(
+                                    "T", " ")[:-3],
+                                i + 1, self.retries,
+                            )
+                            sub_msg = "{}: ret_code: {}, ret_msg: {}{}".format(
+                                str(self.exchange).lower(),
+                                exchange_error_dict['ret_code'],
+                                exchange_error_dict['ret_msg'],
+                                " " * 3,
+                            )
+
+                            # Credits: https://stackoverflow.com/questions/3419984/print-to-the-same-line-and-not-a-new-line
+                            # INFO: Print on the same line without newline, customized accordingly to cater for our requirement
+                            print("\r" + msg + sub_msg, end="")
+
+                    pass
+
+        return retry_method
+
     def __init__(self, exchange_dropdown_value, wallet_currency, config, retries, symbols_id,
                  main_net_toggle_switch_value, initial__capital_reservation__value, is_ohlcv_provider,
                  account__thread__connectivity__lock, debug=False):
@@ -150,6 +215,12 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         self.exchange = getattr(ccxt, exchange_dropdown_value)(config)
         self.exchange.set_sandbox_mode(not self.main_net_toggle_switch_value)
 
+        # Preload all markets from the exchange
+        load_markets__dict = dict(
+            type=config['type'],  # CCXT Market Type
+        )
+        self.exchange.load_markets(params=load_markets__dict)
+
         self.config__api_key = None
         self.config__api_secret = None
 
@@ -167,15 +238,37 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         self.is_ws_available = False
         self.ws_mainnet_usdt_perpetual = None
         self.ws_usdt_perpetual = None
+        self.twm = None
 
         # INFO: For sensitive section, apply thread-safe locking mechanism to guarantee connection is completely
         #       established before moving on to another thread
         with self.account__thread__connectivity__lock:
+            # INFO: Support for Binance below
+            if str(self.exchange).lower() == BINANCE_EXCHANGE_ID:
+                fetch_balance__dict = dict(
+                    type=config['type'],
+                )
+                self.config__api_key = config['apiKey']
+                self.config__api_secret = config['secret']
+                # self.is_ws_available = True
+                #
+                # Gated by: https://github.com/sammchardy/python-binance/issues/1243
+                # # socket manager using threads
+                # twm__dict = dict(
+                #     api_key=config['apiKey'],
+                #     api_secret=config['secret'],
+                # )
+                # self.twm = binance.ThreadedWebsocketManager(**twm__dict)
+                # self.twm.start()
+                #
+                # self.establish_binance_websocket()
+                pass
             # INFO: Support for Bybit below
-            if str(self.exchange).lower() == BYBIT_EXCHANGE_ID:
+            elif str(self.exchange).lower() == BYBIT_EXCHANGE_ID:
                 self.is_ws_available = True
                 self.config__api_key = config['apiKey']
                 self.config__api_secret = config['secret']
+                fetch_balance__dict = {}
 
                 self.ws_instrument_info = collections.defaultdict(tuple)
                 self.ws_klines = collections.defaultdict(tuple)
@@ -190,7 +283,8 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                 self.ws_active_orders = None
                 self.ws_conditional_orders = None
                 self.ws_positions = None
-            balance = self.exchange.fetch_balance() if 'secret' in config else 0.0
+            balance = self.exchange.fetch_balance(
+                params=fetch_balance__dict) if 'secret' in config else 0.0
 
             try:
                 if balance == 0 or not balance['free'][wallet_currency]:
@@ -518,6 +612,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                 order.extract_from_ccxt_order(new_ccxt_order)
                 order.completed()
                 self.execute(order, order.price)
+                assert order.executed.remaining_size == 0.0
                 self.open_orders.remove(order)
                 self._get_balance()
             # Check if the exchange order is rejected
@@ -1278,15 +1373,36 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
     def get_positions(self, symbols=None, params={}):
         return self._fetch_opened_positions(symbols, params)
 
+    @retry
+    def __exchange_end_point(self, type, endpoint, params):
+        '''
+        Open method to allow calls to be made to any private end point.
+        See here: https://github.com/ccxt/ccxt/wiki/Manual#implicit-api-methods
+
+        - type: String, 'Get', 'Post','Put' or 'Delete'.
+        - endpoint = String containing the endpoint address eg. 'order/{id}/cancel'
+        - Params: Dict: An implicit method takes a dictionary of parameters, sends
+          the request to the exchange and returns an exchange-specific JSON
+          result from the API as is, unparsed.
+
+        To get a list of all available methods with an exchange instance,
+        including implicit methods and unified methods you can simply do the
+        following:
+
+        print(dir(ccxt.hitbtc()))
+        '''
+        return getattr(self.exchange, endpoint)(params)
+
     def __common_end_point(self, is_private, type, endpoint, params, prefix):
         endpoint_str = endpoint.replace('/', '_')
         endpoint_str = endpoint_str.replace('-', '_')
         endpoint_str = endpoint_str.replace('{', '')
         endpoint_str = endpoint_str.replace('}', '')
 
-        private_or_public = "public"
         if is_private == True:
             private_or_public = "private"
+        else:
+            private_or_public = "public"
 
         if prefix != "":
             method_str = prefix.lower() + "_" + private_or_public + "_" + \
@@ -1294,7 +1410,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         else:
             method_str = private_or_public + "_" + type.lower() + endpoint_str.lower()
 
-        return self.__private_end_point(type=type, endpoint=method_str, params=params)
+        return self.__exchange_end_point(type=type, endpoint=method_str, params=params)
 
     def public_end_point(self, type, endpoint, params, prefix=""):
         is_private = False
@@ -1321,6 +1437,15 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         '''
         is_private = True
         return self.__common_end_point(is_private, type, endpoint, params, prefix)
+
+    def handle_socket_message(self, msg):
+        print(f"message type: {msg['e']}")
+        print(msg)
+
+    def establish_binance_websocket(self):
+        for symbol_id in self.symbols_id:
+            self.twm.start_kline_socket(
+                callback=self.handle_socket_message, symbol=symbol_id)
 
     def establish_bybit_websocket(self):
         self.establish_bybit_usdt_perpetual_websocket()
@@ -1839,71 +1964,6 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
             self.establish_bybit_usdt_perpetual_websocket()
             self.establish_bybit_mainnet_usdt_perpetual_websocket()
 
-    def retry(method):
-        @wraps(method)
-        def retry_method(self, *args, **kwargs):
-            for i in range(self.retries):
-                if self.debug:
-                    print(
-                        '{} - {} - Attempt {}'.format(datetime.datetime.now(), method.__name__, i))
-                time.sleep(self.exchange.rateLimit / 1000)
-                try:
-                    return method(self, *args, **kwargs)
-                except (NetworkError, ExchangeError) as e:
-                    if i == self.retries - 1:
-                        raise
-
-                    if isinstance(e, ExchangeError):
-                        # INFO: Extract the exchange name from the exception
-                        json_error = e.args[0].replace(
-                            str(self.exchange).lower() + " ", "")
-                        exchange_error_dict = json.loads(json_error)
-                        if str(self.exchange).lower() == BYBIT_EXCHANGE_ID:
-                            if exchange_error_dict['ret_code'] == 130125:
-                                '''
-                                'ret_msg' = 'current position is zero, cannot fix reduce-only order qty'
-                                '''
-                                break
-                            elif exchange_error_dict['ret_code'] == 130074:
-                                '''
-                                'ret_msg' = 'expect Rising, but trigger_price[12705000] <= current[12706500]'
-                                '''
-                                break
-                            elif exchange_error_dict['ret_code'] == 130010:
-                                '''
-                                'ret_msg' = 'order not exists or too late to repalce'
-                                '''
-                                break
-                            elif exchange_error_dict['ret_code'] == 130075:
-                                '''
-                                'ret_msg' = 'expect Failling, but trigger_price[11975000] \u003e= current[11968000]??1'
-                                '''
-                                break
-
-                            # INFO: Print out warning regarding the response received from ExchangeError
-                            frameinfo = inspect.getframeinfo(
-                                inspect.currentframe())
-                            msg = "{} Line: {}: INFO: {}: {}/{}: ".format(
-                                frameinfo.function, frameinfo.lineno,
-                                datetime.datetime.now().isoformat().replace(
-                                    "T", " ")[:-3],
-                                i + 1, self.retries,
-                            )
-                            sub_msg = "{}: ret_code: {}, ret_msg: {}{}".format(
-                                str(self.exchange).lower(),
-                                exchange_error_dict['ret_code'],
-                                exchange_error_dict['ret_msg'],
-                                " " * 3,
-                            )
-
-                            # Credits: https://stackoverflow.com/questions/3419984/print-to-the-same-line-and-not-a-new-line
-                            # INFO: Print on the same line without newline, customized accordingly to cater for our requirement
-                            print("\r" + msg + sub_msg, end="")
-
-                    pass
-
-        return retry_method
-
     @retry
     def get_market(self, symbol):
         market = self.exchange.market(symbol)
@@ -2274,23 +2334,3 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
             ret_positions = self._fetch_opened_positions_from_exchange(
                 [symbol_id], params)
         return ret_positions
-
-    @retry
-    def __private_end_point(self, type, endpoint, params):
-        '''
-        Open method to allow calls to be made to any private end point.
-        See here: https://github.com/ccxt/ccxt/wiki/Manual#implicit-api-methods
-
-        - type: String, 'Get', 'Post','Put' or 'Delete'.
-        - endpoint = String containing the endpoint address eg. 'order/{id}/cancel'
-        - Params: Dict: An implicit method takes a dictionary of parameters, sends
-          the request to the exchange and returns an exchange-specific JSON
-          result from the API as is, unparsed.
-
-        To get a list of all available methods with an exchange instance,
-        including implicit methods and unified methods you can simply do the
-        following:
-
-        print(dir(ccxt.hitbtc()))
-        '''
-        return getattr(self.exchange, endpoint)(params)

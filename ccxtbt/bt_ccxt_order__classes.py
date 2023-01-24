@@ -76,7 +76,7 @@ class BT_CCXT_Order(backtrader.OrderBase):
                         self.ccxt_order['info']['position_idx'],
                     )
                     print(msg)
-                    print(json.dumps(ccxt_order, indent=self.indent))
+                    print(json.dumps(self.ccxt_order, indent=self.indent))
                     stop_out = True
 
             if 'reduce_only' in self.ccxt_order['info'].keys():

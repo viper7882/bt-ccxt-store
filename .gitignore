@@ -108,4 +108,5 @@ samples/.DS_Store
 .DS_Store
 
 # API key and Secret
-testnet__api_key_and_secret.json
+*testnet__api_key_and_secret.json
+*mainnet__api_key_and_secret.json

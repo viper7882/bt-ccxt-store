@@ -1,5 +1,54 @@
 import backtrader
 import datetime
+import inspect
+
+from abc import ABC
+
+from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPES
+
+
+class Wecoz(object):
+    def __init__(self, params):
+        # INFO: Un-serialize Params
+        for key, val in params.items():
+            setattr(self, key, val)
+
+    def check_required_attributes(self, must_have_attributes):
+        assert isinstance(must_have_attributes, tuple)
+        for must_have_attribute in must_have_attributes:
+            if hasattr(self, must_have_attribute) == False:
+                msg = "\'{}\' attribute must be defined!!!".format(
+                    must_have_attribute)
+                raise NotImplementedError(msg)
+
+
+class Exchange_HTTP_Parser(Wecoz, ABC):
+    def __init__(self, params) -> None:
+        super().__init__(params)
+
+        # INFO: Ensure creator initialize the following attributes
+        must_have_attributes = ('market_type', )
+        self.check_required_attributes(must_have_attributes)
+
+        # Legality Check
+        if self.market_type not in range(len(CCXT__MARKET_TYPES)):
+            raise RuntimeError("{}: {} market_type must be one of {}!!!".format(
+                inspect.currentframe(),
+                self.market_type, range(len(CCXT__MARKET_TYPES))))
+
+        self.market_type_name = CCXT__MARKET_TYPES[self.market_type]
+
+
+class Exchange_HTTP_Parser_Per_Symbol(Exchange_HTTP_Parser):
+    def __init__(self, params) -> None:
+        super().__init__(params)
+
+        # INFO: Ensure creator initialize the following attributes
+        must_have_attributes = ('symbol_id', )
+        self.check_required_attributes(must_have_attributes)
+
+        # Legality Check
+        assert isinstance(self.symbol_id, str)
 
 
 class Enhanced_Position(backtrader.Position):

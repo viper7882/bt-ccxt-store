@@ -1,5 +1,5 @@
 from ccxtbt.bt_ccxt__specifications import VALUE_DIGITS
-from ccxtbt.bybit_exchange__specifications import BYBIT_COMMISSION_PRECISION
+from ccxtbt.exchange.bybit.bybit__exchange__specifications import BYBIT_COMMISSION_PRECISION
 from ccxtbt.utils import get_digits, truncate
 
 
