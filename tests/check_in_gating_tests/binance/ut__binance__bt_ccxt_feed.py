@@ -52,16 +52,17 @@ class Test_Feed(unittest.TestCase):
             else:
                 ccxt_market_type_name = CCXT__MARKET_TYPES[market_type]
 
-            self.exchange_specific_config = {
-                'apiKey': api_key,
-                'secret': secret,
-                'nonce': lambda: str(int(time.time() * 1000)),
-                'enableRateLimit': enable_rate_limit,
-                'type': ccxt_market_type_name,
+            self.exchange_specific_config = dict(
+                apiKey=api_key,
+                secret=secret,
+                nonce=lambda: str(int(time.time() * 1000)),
+                enableRateLimit=enable_rate_limit,
+                type=ccxt_market_type_name,
 
-                'account_alias': account_alias__dropdown_value,
-                'account_type': ccxt_market_type_name,
-            }
+                account_alias=account_alias__dropdown_value,
+                account_type=ccxt_market_type_name,
+                market_type=market_type,
+            )
 
         legality_check_not_none_obj(
             self.exchange_specific_config, "self.exchange_specific_config")

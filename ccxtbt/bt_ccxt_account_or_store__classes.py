@@ -50,9 +50,8 @@ from ccxtbt.bt_ccxt__specifications import CASH_DIGITS, CCXT__MARKET_TYPES, CCXT
     CCXT__MARKET_TYPE__LINEAR, MAX_LEVERAGE_IN_PERCENT, MIN_LEVERAGE, MIN_LEVERAGE_IN_PERCENT
 from ccxtbt.bt_ccxt_order__classes import BT_CCXT_Order
 from ccxtbt.bt_ccxt_exchange__classes import BT_CCXT_Exchange
-from ccxtbt.utils import convert_slider_from_percent, legality_check_not_none_obj, round_to_nearest_decimal_points, \
-    truncate, get_time_diff, \
-    get_ccxt_order_id
+from ccxtbt.utils import convert_slider_from_percent, legality_check_not_none_obj, \
+    round_to_nearest_decimal_points, truncate, get_time_diff, get_ccxt_order_id
 
 
 class Meta_Account_or_Store(backtrader.Broker_or_Exchange_Base.__class__):
@@ -199,6 +198,8 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         self.wallet_currency = wallet_currency
         self.account_alias = config['account_alias']
         self.account_type = config['account_type']
+        self.market_type = config['market_type']
+        self.market_type_name = config['type']
         self.retries = retries
         self.symbols_id = symbols_id
         self.main_net_toggle_switch_value = main_net_toggle_switch_value
@@ -212,6 +213,9 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         # Legality Check
         legality_check_not_none_obj(self.account__thread__connectivity__lock,
                                     "self.account__thread__connectivity__lock")
+        if self.market_type not in range(len(CCXT__MARKET_TYPES)):
+            raise RuntimeError("{}: {} market_type must be one of {}!!!".format(
+                inspect.currentframe(), self.market_type, range(len(CCXT__MARKET_TYPES))))
 
         self.parent = None
         self.ccxt_instruments = []
@@ -221,7 +225,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         self.exchange = getattr(ccxt, exchange_dropdown_value)(config)
         self.exchange.set_sandbox_mode(not self.main_net_toggle_switch_value)
 
-        # Preload all markets from the exchange
+        # Preload all markets from the exchange base on the market type specified by user
         load_markets__dict = dict(
             type=config['type'],  # CCXT Market Type
         )
@@ -244,7 +248,6 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         self.is_ws_available = False
         self.ws_mainnet_usdt_perpetual = None
         self.ws_usdt_perpetual = None
-        self.market_type_name = None
         self.twm = None
 
         # INFO: For sensitive section, apply thread-safe locking mechanism to guarantee connection is completely
@@ -257,7 +260,6 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                 )
                 self.config__api_key = config['apiKey']
                 self.config__api_secret = config['secret']
-                self.market_type_name = config['type']
                 # self.is_ws_available = True
                 #
                 # Gated by: https://github.com/sammchardy/python-binance/issues/1243
@@ -276,7 +278,6 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                 self.is_ws_available = True
                 self.config__api_key = config['apiKey']
                 self.config__api_secret = config['secret']
-                self.market_type_name = config['type']
                 fetch_balance__dict = {}
 
                 self.ws_instrument_info = collections.defaultdict(tuple)
@@ -332,20 +333,12 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
 
         # INFO: Support for Binance and Bybit below
         if str(self.exchange).lower() == BINANCE_EXCHANGE_ID or str(self.exchange).lower() == BYBIT_EXCHANGE_ID:
-            legality_check_not_none_obj(
-                self.market_type_name, "self.market_type_name")
-
-            if str(self.exchange).lower() == BINANCE_EXCHANGE_ID:
-                # INFO: Workaround for Binance's market type name
-                if self.market_type_name == CCXT__MARKET_TYPES[CCXT__MARKET_TYPE__FUTURES][:-1]:
-                    self.market_type_name = CCXT__MARKET_TYPES[CCXT__MARKET_TYPE__FUTURES]
-
-            if self.market_type_name == CCXT__MARKET_TYPES[CCXT__MARKET_TYPE__FUTURES] or \
-                    self.market_type_name == CCXT__MARKET_TYPES[CCXT__MARKET_TYPE__LINEAR]:
+            if self.market_type == CCXT__MARKET_TYPE__FUTURES or \
+                    self.market_type == CCXT__MARKET_TYPE__LINEAR:
                 for symbol_id in self.symbols_id:
                     get_leverage__dict = dict(
                         bt_ccxt_account_or_store=self,
-                        market_type_name=self.market_type_name,
+                        market_type=self.market_type,
                         symbol_id=symbol_id,
                         notional_value=position_value,
                     )
@@ -1659,6 +1652,42 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                         self.ws_mainnet_usdt_perpetual.is_connected() == True:
                     break
                 else:
+                    self.ws_mainnet_usdt_perpetual = None
+                    time.sleep(0.1)
+                    gc.collect()
+
+    def close_bybit_websocket(self):
+        self.close_bybit_usdt_perpetual_websocket()
+        self.close_bybit_mainnet_usdt_perpetual_websocket()
+
+    def close_bybit_usdt_perpetual_websocket(self):
+        if self.ws_usdt_perpetual is not None:
+            if len(self.ws_usdt_perpetual.active_connections) > 0 and \
+                    self.ws_usdt_perpetual.is_connected() == True:
+                try:
+                    if hasattr(self.ws_usdt_perpetual, 'ws'):
+                        self.ws_usdt_perpetual.ws.close()
+                    self.ws_usdt_perpetual.close()
+                except Exception:
+                    pass
+
+                self.ws_usdt_perpetual = None
+                time.sleep(0.1)
+                gc.collect()
+
+    def close_bybit_mainnet_usdt_perpetual_websocket(self):
+        # INFO: Only OHLCV_PROVIDER should be connected to ws_mainnet_usdt_perpetual
+        if self.is_ohlcv_provider == True:
+            if self.ws_mainnet_usdt_perpetual is not None:
+                if len(self.ws_mainnet_usdt_perpetual.active_connections) > 0 and \
+                        self.ws_mainnet_usdt_perpetual.is_connected() == True:
+                    try:
+                        if hasattr(self.ws_mainnet_usdt_perpetual, 'ws'):
+                            self.ws_mainnet_usdt_perpetual.ws.close()
+                        self.ws_mainnet_usdt_perpetual.close()
+                    except Exception:
+                        pass
+
                     self.ws_mainnet_usdt_perpetual = None
                     time.sleep(0.1)
                     gc.collect()

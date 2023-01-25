@@ -44,7 +44,7 @@ def get_bybit_commission_rate(params) -> float:
     symbol_id = params['symbol_id']
 
     commission = None
-    if market_type == CCXT__MARKET_TYPE__LINEAR:
+    if market_type == CCXT__MARKET_TYPE__LINEAR or market_type == CCXT__MARKET_TYPE__SPOT:
         market_type_name = CCXT__MARKET_TYPES[market_type]
 
         # Load all markets from the exchange
@@ -56,7 +56,12 @@ def get_bybit_commission_rate(params) -> float:
 
         currency = get_wallet_currency(symbol_id)
         symbol_name = get_symbol_name(symbol_id)
-        selected_market_name = "{}:{}".format(symbol_name, currency)
+        if market_type == CCXT__MARKET_TYPE__LINEAR:
+            selected_market_name = "{}:{}".format(symbol_name, currency)
+        else:
+            assert market_type == CCXT__MARKET_TYPE__SPOT
+
+            selected_market_name = "{}".format(symbol_name)
 
         # Legality Check
         if selected_market_name not in markets.keys():
@@ -68,8 +73,6 @@ def get_bybit_commission_rate(params) -> float:
             max(float(selected_market['taker']),
                 float(selected_market['maker']))
         pass
-    elif market_type == CCXT__MARKET_TYPE__SPOT:
-        raise NotImplementedError()
     else:
         raise NotImplementedError()
     legality_check_not_none_obj(commission, "commission")
@@ -82,14 +85,14 @@ def get_bybit_max_leverage(params) -> float:
     '''
     # INFO: Un-serialized Params
     bt_ccxt_account_or_store = params['bt_ccxt_account_or_store']
-    market_type_name = params['market_type_name']
+    market_type = params['market_type']
     symbol_id = params['symbol_id']
     notional_value = params['notional_value']
 
     assert notional_value >= 0.0
 
     max_leverage = None
-    if market_type_name == CCXT__MARKET_TYPES[CCXT__MARKET_TYPE__LINEAR]:
+    if market_type == CCXT__MARKET_TYPE__LINEAR:
         if symbol_id.endswith("USDT"):
             '''
             Reference: https://bybit-exchange.github.io/docs/futuresV2/linear/#t-getrisklimit
@@ -115,7 +118,7 @@ def get_bybit_max_leverage(params) -> float:
             raise NotImplementedError()
         else:
             raise NotImplementedError()
-    elif market_type_name == CCXT__MARKET_TYPES[CCXT__MARKET_TYPE__SPOT]:
+    elif market_type == CCXT__MARKET_TYPE__SPOT:
         raise NotImplementedError()
     else:
         raise NotImplementedError()
@@ -129,14 +132,14 @@ def get_bybit_leverages(params) -> tuple:
     '''
     # INFO: Un-serialized Params
     bt_ccxt_account_or_store = params['bt_ccxt_account_or_store']
-    market_type_name = params['market_type_name']
+    market_type = params['market_type']
     symbol_id = params['symbol_id']
 
     leverage = None
     max_leverage = None
-    if market_type_name == CCXT__MARKET_TYPES[CCXT__MARKET_TYPE__LINEAR]:
+    if market_type == CCXT__MARKET_TYPE__LINEAR:
         response = bt_ccxt_account_or_store.exchange.fetch_positions(
-            symbols=[symbol_id], params={'type': market_type_name})
+            symbols=[symbol_id], params={'type': CCXT__MARKET_TYPES[market_type]})
         if isinstance(response, list):
             position_leverages = []
             for item in response:
@@ -148,7 +151,7 @@ def get_bybit_leverages(params) -> tuple:
             pass
 
         max_leverage = get_bybit_max_leverage(params)
-    elif market_type_name == CCXT__MARKET_TYPES[CCXT__MARKET_TYPE__SPOT]:
+    elif market_type == CCXT__MARKET_TYPE__SPOT:
         leverage = MIN_LEVERAGE
     else:
         raise NotImplementedError()
@@ -164,7 +167,7 @@ def set_bybit_leverage(params) -> None:
     '''
     # INFO: Un-serialized Params
     bt_ccxt_account_or_store = params['bt_ccxt_account_or_store']
-    market_type_name = params['market_type_name']
+    market_type = params['market_type']
     symbol_id = params['symbol_id']
     from_leverage = params['from_leverage']
     to_leverage = params['to_leverage']
@@ -174,7 +177,7 @@ def set_bybit_leverage(params) -> None:
         "from_leverage: {} == to_leverage: {}!!!".format(
             from_leverage, to_leverage)
 
-    if market_type_name == CCXT__MARKET_TYPES[CCXT__MARKET_TYPE__LINEAR]:
+    if market_type == CCXT__MARKET_TYPE__LINEAR:
         if symbol_id.endswith("USDT"):
             '''
             Reference: https://bybit-exchange.github.io/docs/linear/#t-setleverage
@@ -204,9 +207,9 @@ def set_bybit_leverage(params) -> None:
 
         frameinfo = inspect.getframeinfo(inspect.currentframe())
         msg = "{}: {} Line: {}: INFO: {}: Sync with {}: ".format(
-            market_type_name,
+            CCXT__MARKET_TYPES[market_type],
             frameinfo.function, frameinfo.lineno,
-            symbol_id, bt_ccxt_account_or_store,
+            symbol_id, str(bt_ccxt_account_or_store.exchange).lower(),
         )
         sub_msg = "Adjusted leverage from {} -> {}".format(
             from_leverage,
@@ -214,7 +217,7 @@ def set_bybit_leverage(params) -> None:
         )
         print(msg + sub_msg)
         pass
-    elif market_type_name == CCXT__MARKET_TYPES[CCXT__MARKET_TYPE__SPOT]:
+    elif market_type == CCXT__MARKET_TYPE__SPOT:
         raise NotImplementedError()
     else:
         raise NotImplementedError()

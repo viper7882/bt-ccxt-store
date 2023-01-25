@@ -53,7 +53,7 @@ def get_binance_max_leverage(params) -> int:
     '''
     # INFO: Un-serialized Params
     bt_ccxt_account_or_store = params['bt_ccxt_account_or_store']
-    market_type_name = params['market_type_name']
+    market_type = params['market_type']
     symbol_id = params['symbol_id']
     notional_value = params['notional_value']
 
@@ -64,7 +64,7 @@ def get_binance_max_leverage(params) -> int:
     leverage__dict = dict(
         timestamp=timestamp,
     )
-    if market_type_name == CCXT__MARKET_TYPES[CCXT__MARKET_TYPE__FUTURES]:
+    if market_type == CCXT__MARKET_TYPE__FUTURES:
         # Reference: https://binance-docs.github.io/apidocs/futures/en/#user-leverage-rate-user_data
         leverage__dict.update(dict(
             symbol=symbol_id,
@@ -84,7 +84,7 @@ def get_binance_max_leverage(params) -> int:
                     point_of_reference['brackets'][i]['initialLeverage'])
                 break
         pass
-    elif market_type_name == CCXT__MARKET_TYPES[CCXT__MARKET_TYPE__SPOT]:
+    elif market_type == CCXT__MARKET_TYPE__SPOT:
         raise NotImplementedError()
     else:
         raise NotImplementedError()
@@ -98,7 +98,7 @@ def get_binance_leverages(params) -> tuple:
     '''
     # INFO: Un-serialized Params
     bt_ccxt_account_or_store = params['bt_ccxt_account_or_store']
-    market_type_name = params['market_type_name']
+    market_type = params['market_type']
     symbol_id = params['symbol_id']
 
     leverage = None
@@ -107,7 +107,7 @@ def get_binance_leverages(params) -> tuple:
     leverage__dict = dict(
         timestamp=timestamp,
     )
-    if market_type_name == CCXT__MARKET_TYPES[CCXT__MARKET_TYPE__FUTURES]:
+    if market_type == CCXT__MARKET_TYPE__FUTURES:
         # Reference: https://binance-docs.github.io/apidocs/futures/en/#account-information-v2-user_data
         account_info = \
             bt_ccxt_account_or_store.exchange.fapiPrivate_get_account(
@@ -117,7 +117,7 @@ def get_binance_leverages(params) -> tuple:
                 leverage = int(account_info['positions'][i]['leverage'])
                 break
         max_leverage = get_binance_max_leverage(params)
-    elif market_type_name == CCXT__MARKET_TYPES[CCXT__MARKET_TYPE__SPOT]:
+    elif market_type == CCXT__MARKET_TYPE__SPOT:
         leverage = int(MIN_LEVERAGE)
     else:
         raise NotImplementedError()
@@ -133,7 +133,7 @@ def set_binance_leverage(params) -> None:
     '''
     # INFO: Un-serialized Params
     bt_ccxt_account_or_store = params['bt_ccxt_account_or_store']
-    market_type_name = params['market_type_name']
+    market_type = params['market_type']
     symbol_id = params['symbol_id']
     from_leverage = params['from_leverage']
     to_leverage = params['to_leverage']
@@ -149,7 +149,7 @@ def set_binance_leverage(params) -> None:
         symbol=symbol_id,
         leverage=to_leverage,
     )
-    if market_type_name == CCXT__MARKET_TYPES[CCXT__MARKET_TYPE__FUTURES]:
+    if market_type == CCXT__MARKET_TYPE__FUTURES:
         # Reference: https://binance-docs.github.io/apidocs/futures/en/#change-initial-leverage-trade
         response = \
             bt_ccxt_account_or_store.exchange.fapiPrivate_post_leverage(
@@ -161,9 +161,9 @@ def set_binance_leverage(params) -> None:
 
         frameinfo = inspect.getframeinfo(inspect.currentframe())
         msg = "{}: {} Line: {}: INFO: {}: Sync with {}: ".format(
-            market_type_name,
+            CCXT__MARKET_TYPES[market_type],
             frameinfo.function, frameinfo.lineno,
-            symbol_id, bt_ccxt_account_or_store,
+            symbol_id, str(bt_ccxt_account_or_store.exchange).lower(),
         )
         sub_msg = "Adjusted leverage from {} -> {}".format(
             from_leverage,
@@ -171,7 +171,7 @@ def set_binance_leverage(params) -> None:
         )
         print(msg + sub_msg)
         pass
-    elif market_type_name == CCXT__MARKET_TYPES[CCXT__MARKET_TYPE__SPOT]:
+    elif market_type == CCXT__MARKET_TYPE__SPOT:
         raise NotImplementedError()
     else:
         raise NotImplementedError()

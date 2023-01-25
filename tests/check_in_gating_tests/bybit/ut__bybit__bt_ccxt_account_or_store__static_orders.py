@@ -34,6 +34,9 @@ class Bybit__bt_ccxt_account_or_store__Static_Orders__TestCases(unittest.TestCas
             self.exchange_dropdown_value = BYBIT_EXCHANGE_ID
             self.isolated_toggle_switch_value = False
 
+            # INFO: Bybit exchange-specific value
+            account_type_name = "CONTRACT"
+
             # WARNING: Avoid assigning market_type to CCXT__MARKET_TYPE__SPOT and run all check in tests altogether.
             #          Doing so will cause _fetch_opened_positions_from_exchange to mix up between swap and spot market
             #          and eventually causing whole bunch of "invalid symbols" error
@@ -75,16 +78,17 @@ class Bybit__bt_ccxt_account_or_store__Static_Orders__TestCases(unittest.TestCas
 
                 ccxt_market_type_name = CCXT__MARKET_TYPES[market_type]
 
-                exchange_specific_config = {
-                    'apiKey': api_key,
-                    'secret': api_secret,
-                    'nonce': lambda: str(int(time.time() * 1000)),
-                    'enableRateLimit': enable_rate_limit,
-                    'type': ccxt_market_type_name,
+                exchange_specific_config = dict(
+                    apiKey=api_key,
+                    secret=api_secret,
+                    nonce=lambda: str(int(time.time() * 1000)),
+                    enableRateLimit=enable_rate_limit,
+                    type=ccxt_market_type_name,
 
-                    'account_alias': account_alias__dropdown_value,
-                    'account_type': market_type,
-                }
+                    account_alias=account_alias__dropdown_value,
+                    account_type=account_type_name,
+                    market_type=market_type,
+                )
 
                 account_or_store__dict = dict(
                     main_net_toggle_switch_value=self.main_net_toggle_switch_value,
@@ -353,6 +357,17 @@ class Bybit__bt_ccxt_account_or_store__Static_Orders__TestCases(unittest.TestCas
                 bt_ccxt_order__dict)
             self.hedging_entry_order = BT_CCXT_Order(**bt_ccxt_order__dict)
 
+        except Exception:
+            traceback.print_exc()
+
+    def tearDown(self):
+        try:
+            if self.bt_ccxt_account_or_store is not None:
+                if self.bt_ccxt_account_or_store.is_ws_available:
+                    self.bt_ccxt_account_or_store.close_bybit_websocket()
+
+            self.bt_ccxt_account_or_store = None
+            pass
         except Exception:
             traceback.print_exc()
 

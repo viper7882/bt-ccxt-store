@@ -2,7 +2,7 @@ import backtrader
 import datetime
 import inspect
 
-from abc import ABC
+from abc import ABC, abstractmethod
 
 from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPES
 
@@ -39,7 +39,7 @@ class Exchange_HTTP_Parser(Wecoz, ABC):
         self.market_type_name = CCXT__MARKET_TYPES[self.market_type]
 
 
-class Exchange_HTTP_Parser_Per_Symbol(Exchange_HTTP_Parser):
+class Exchange_HTTP_Parser_Per_Symbol(Exchange_HTTP_Parser, ABC):
     def __init__(self, params) -> None:
         super().__init__(params)
 
@@ -49,6 +49,10 @@ class Exchange_HTTP_Parser_Per_Symbol(Exchange_HTTP_Parser):
 
         # Legality Check
         assert isinstance(self.symbol_id, str)
+
+    @abstractmethod
+    def run(self):
+        print("ERROR: This abstract method is not implemented!!!")
 
 
 class Enhanced_Position(backtrader.Position):

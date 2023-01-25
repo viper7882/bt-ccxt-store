@@ -12,7 +12,8 @@ binance_testnet_urls = ("https://testnet.binance.vision/api", )
 
 BINANCE__SPOT__SINGLE_WS_STREAM = "wss://stream.binance.com:9443/ws"
 BINANCE__SPOT__MULTIPLE_WS_STREAM = "wss://stream.binance.com:9443/stream?streams"
-BINANCE__SPOT__HTTP_ENDPOINT_URL = f"https://api.binance.com/api/v3"
+BINANCE__SPOT__V3__HTTP_ENDPOINT_URL = "{}/api/v3".format(
+    binance_mainnet_urls[0])
 '''
 Sample output:
 {"e":"trade","E":1672339883321,"s":"ETHUSDT","t":1048851391,"p":"1197.06000000","q":"0.05400000","b":12087564073,"a":12087563306,"T":1672339883321,"m":false,"M":true}
@@ -20,7 +21,7 @@ Sample output:
 
 BINANCE__FUTURES__SINGLE_WS_STREAM = "wss://fstream.binance.com/ws"
 BINANCE__FUTURES__MULTIPLE_WS_STREAM = "wss://fstream.binance.com/stream?streams"
-BINANCE__FUTURES__HTTP_ENDPOINT_URL = f"https://fapi.binance.com/fapi/v1"
+BINANCE__FUTURES__V1__HTTP_ENDPOINT_URL = "https://fapi.binance.com/fapi/v1"
 '''
 Sample output:
 {"e":"aggTrade","E":1672532700840,"a":1558619352,"s":"BTCUSDT","p":"16531.80","q":"0.021","f":3166759076,"l":3166759076,"T":1672532700685,"m":true}

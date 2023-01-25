@@ -1,3 +1,5 @@
+import traceback
+
 import backtrader
 import datetime
 import json
@@ -46,16 +48,17 @@ class Test_Feed(unittest.TestCase):
             secret = json_data['secret']
             account_alias__dropdown_value = json_data['account_alias__dropdown_value']
 
-            self.exchange_specific_config = {
-                'apiKey': api_key,
-                'secret': secret,
-                'nonce': lambda: str(int(time.time() * 1000)),
-                'enableRateLimit': enable_rate_limit,
-                'type': ccxt_market_type_name,
+            self.exchange_specific_config = dict(
+                apiKey=api_key,
+                secret=secret,
+                nonce=lambda: str(int(time.time() * 1000)),
+                enableRateLimit=enable_rate_limit,
+                type=ccxt_market_type_name,
 
-                'account_alias': account_alias__dropdown_value,
-                'account_type': account_type_name,
-            }
+                account_alias=account_alias__dropdown_value,
+                account_type=account_type_name,
+                market_type=market_type,
+            )
 
         legality_check_not_none_obj(
             self.exchange_specific_config, "self.exchange_specific_config")
@@ -66,6 +69,19 @@ class Test_Feed(unittest.TestCase):
         self.prev_day = self.latest_utc_dt - \
             datetime.timedelta(days=self.day_delta)
 
+        self.bt_ccxt_account_or_stores = []
+
+    def tearDown(self):
+        try:
+            for bt_ccxt_account_or_store in self.bt_ccxt_account_or_stores:
+                if bt_ccxt_account_or_store.is_ws_available:
+                    bt_ccxt_account_or_store.close_bybit_websocket()
+
+            self.bt_ccxt_account_or_stores = []
+            pass
+        except Exception:
+            traceback.print_exc()
+
     @unittest.skip("Only run if required")
     def test_01__ticks_timeframe__datafeed(self):
         '''
@@ -75,7 +91,8 @@ class Test_Feed(unittest.TestCase):
             timeframe=backtrader.TimeFrame.Ticks,
         )
         finished_strategies = backtesting(
-            self.exchange_specific_config, custom__bt_ccxt_feed__dict, self.api_and_secret_file_path__dict)
+            self.exchange_specific_config, custom__bt_ccxt_feed__dict, self.api_and_secret_file_path__dict,
+            self.bt_ccxt_account_or_stores)
 
     # @unittest.skip("To be enabled")
     # @unittest.skip("Ready for regression")
@@ -91,7 +108,8 @@ class Test_Feed(unittest.TestCase):
         )
 
         finished_strategies = backtesting(
-            self.exchange_specific_config, custom__bt_ccxt_feed__dict, self.api_and_secret_file_path__dict)
+            self.exchange_specific_config, custom__bt_ccxt_feed__dict, self.api_and_secret_file_path__dict,
+            self.bt_ccxt_account_or_stores)
         self.assertEqual(finished_strategies[0].next_runs, self.day_delta)
 
     # @unittest.skip("To be enabled")
@@ -110,7 +128,8 @@ class Test_Feed(unittest.TestCase):
         )
 
         finished_strategies = backtesting(
-            self.exchange_specific_config, custom__bt_ccxt_feed__dict, self.api_and_secret_file_path__dict)
+            self.exchange_specific_config, custom__bt_ccxt_feed__dict, self.api_and_secret_file_path__dict,
+            self.bt_ccxt_account_or_stores)
         self.assertEqual(finished_strategies[0].next_runs, self.day_delta + 1)
 
     # @unittest.skip("To be enabled")
@@ -129,7 +148,8 @@ class Test_Feed(unittest.TestCase):
         )
 
         finished_strategies = backtesting(
-            self.exchange_specific_config, custom__bt_ccxt_feed__dict, self.api_and_secret_file_path__dict)
+            self.exchange_specific_config, custom__bt_ccxt_feed__dict, self.api_and_secret_file_path__dict,
+            self.bt_ccxt_account_or_stores)
         self.assertEqual(finished_strategies[0].next_runs, self.day_delta)
 
 
@@ -145,7 +165,8 @@ class TestStrategy(backtrader.Strategy):
         self.next_runs += 1
 
 
-def backtesting(exchange_specific_config, custom__bt_ccxt_feed__dict, api_and_secret_file_path__dict):
+def backtesting(exchange_specific_config, custom__bt_ccxt_feed__dict, api_and_secret_file_path__dict,
+                bt_ccxt_account_or_stores):
     cerebro = backtrader.Cerebro()
 
     cerebro.add_strategy(TestStrategy)
@@ -184,6 +205,7 @@ def backtesting(exchange_specific_config, custom__bt_ccxt_feed__dict, api_and_se
 
     bt_ccxt_account_or_store = BT_CCXT_Account_or_Store(
         **account_or_store__dict)
+    bt_ccxt_account_or_stores.append(bt_ccxt_account_or_store)
 
     commission = 0.0006
     leverage_in_percent = 50.0

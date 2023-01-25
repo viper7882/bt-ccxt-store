@@ -29,9 +29,14 @@ import threading
 
 from pprint import pprint
 
-from .bt_ccxt_account_or_store__classes import BT_CCXT_Account_or_Store
-from .bt_ccxt_expansion__classes import Enhanced_Position
-from .utils import legality_check_not_none_obj
+from ccxtbt.bt_ccxt__specifications import STANDARD_ATTRIBUTES, symbol_stationary__dict_template
+from ccxtbt.bt_ccxt_account_or_store__classes import BT_CCXT_Account_or_Store
+from ccxtbt.bt_ccxt_expansion__classes import Enhanced_Position
+from ccxtbt.exchange.binance.binance__exchange__classes import Binance_Symbol_Info__HTTP_Parser
+from ccxtbt.exchange.binance.binance__exchange__specifications import BINANCE_EXCHANGE_ID
+from ccxtbt.exchange.bybit.bybit__exchange__classes import Bybit_Symbol_Info__HTTP_Parser
+from ccxtbt.exchange.bybit.bybit__exchange__specifications import BYBIT_EXCHANGE_ID
+from ccxtbt.utils import legality_check_not_none_obj
 
 
 class Meta_Instrument(backtrader.MetaParams):
@@ -58,6 +63,7 @@ class BT_CCXT_Instrument(backtrader.with_metaclass(Meta_Instrument, object)):
         super().__init__()
 
         legality_check_not_none_obj(symbol_id, "symbol_id")
+        assert isinstance(symbol_id, str)
 
         self.symbol_id = symbol_id
         self.parent = None
@@ -70,6 +76,14 @@ class BT_CCXT_Instrument(backtrader.with_metaclass(Meta_Instrument, object)):
         self.current_thread = threading.current_thread()
         self._generation = None
         self._event_stop = False
+
+        for key in symbol_stationary__dict_template.keys():
+            if hasattr(self, key) == False:
+                setattr(self, key, None)
+
+        for standard_attribute in STANDARD_ATTRIBUTES:
+            if hasattr(self, standard_attribute) == False:
+                setattr(self, standard_attribute, None)
 
     def __repr__(self):
         return str(self)
@@ -94,63 +108,93 @@ class BT_CCXT_Instrument(backtrader.with_metaclass(Meta_Instrument, object)):
             self.ccxt_datafeeds.append(datafeed)
 
     def fetch_ohlcv(self, symbol, timeframe, since, limit):
+        assert self.symbol_id == symbol, "Instrument: {} does NOT support {}!!!".format(
+            self.symbol_id, symbol)
+        legality_check_not_none_obj(self.parent, "self.parent")
         return self.parent.fetch_ohlcv(symbol, timeframe, since, limit)
 
     def get_granularity(self, timeframe, compression):
+        legality_check_not_none_obj(self.parent, "self.parent")
         return self.parent.get_granularity(timeframe, compression)
 
     def parse_timeframe(self, granularity):
+        legality_check_not_none_obj(self.parent, "self.parent")
         return self.parent.parse_timeframe(granularity)
 
     def filter_by_since_limit(self, all_ohlcv, since, limit, key):
+        legality_check_not_none_obj(self.parent, "self.parent")
         return self.parent.filter_by_since_limit(all_ohlcv, since, limit, key)
 
     def is_ws_available(self):
+        legality_check_not_none_obj(self.parent, "self.parent")
         return self.parent.is_ws_available
 
     def get_ws_klines(self, dataname):
+        legality_check_not_none_obj(self.parent, "self.parent")
         return self.parent.fetch_ws_klines(dataname)
 
     def get_ws_active_orders(self, symbol_id):
+        assert self.symbol_id == symbol_id, "Instrument: {} does NOT support {}!!!".format(
+            self.symbol_id, symbol_id)
+        legality_check_not_none_obj(self.parent, "self.parent")
         return self.parent.ws_active_orders[symbol_id]
 
     def get_ws_conditional_orders(self, symbol_id):
+        assert self.symbol_id == symbol_id, "Instrument: {} does NOT support {}!!!".format(
+            self.symbol_id, symbol_id)
+        legality_check_not_none_obj(self.parent, "self.parent")
         return self.parent.ws_conditional_orders[symbol_id]
 
     def fetch_order_book(self, symbol):
+        assert self.symbol_id == symbol, "Instrument: {} does NOT support {}!!!".format(
+            self.symbol_id, symbol)
+        legality_check_not_none_obj(self.parent, "self.parent")
         return self.parent.fetch_order_book(symbol)
 
     def get_commission_info(self):
+        legality_check_not_none_obj(self.parent, "self.parent")
         return self.parent.get_commission_info()
 
     def fetch_order(self, order_id, symbol, params={}):
+        assert self.symbol_id == symbol, "Instrument: {} does NOT support {}!!!".format(
+            self.symbol_id, symbol)
+        legality_check_not_none_obj(self.parent, "self.parent")
         return self.parent.fetch_order(order_id, symbol, params)
 
     def get_orders(self, **kwarg):
+        legality_check_not_none_obj(self.parent, "self.parent")
         return self.parent.get_orders(**kwarg)
 
     def set_cash(self, cash):
+        legality_check_not_none_obj(self.parent, "self.parent")
         return self.parent.set_cash(cash)
 
     def get_cash(self, **kwarg):
+        legality_check_not_none_obj(self.parent, "self.parent")
         return self.parent.get_cash(**kwarg)
 
     def get_value(self, **kwarg):
+        legality_check_not_none_obj(self.parent, "self.parent")
         return self.parent.get_value(**kwarg)
 
     def set_live__capital_reservation__value(self, live__capital_reservation__value):
+        legality_check_not_none_obj(self.parent, "self.parent")
         return self.parent.set_live__capital_reservation__value(live__capital_reservation__value)
 
     def get_live__capital_reservation__value(self):
+        legality_check_not_none_obj(self.parent, "self.parent")
         return self.parent.get_live__capital_reservation__value()
 
     def get_initial__capital_reservation__value(self):
+        legality_check_not_none_obj(self.parent, "self.parent")
         return self.parent.get_initial__capital_reservation__value()
 
     def set_cash_snapshot(self):
+        legality_check_not_none_obj(self.parent, "self.parent")
         return self.parent.set_cash_snapshot()
 
     def get_cash_snapshot(self):
+        legality_check_not_none_obj(self.parent, "self.parent")
         return self.parent.get_cash_snapshot()
 
     def set__stop_running(self):
@@ -160,10 +204,16 @@ class BT_CCXT_Instrument(backtrader.with_metaclass(Meta_Instrument, object)):
         return self._event_stop
 
     def modify_order(self, order_id, symbol, type, side, amount=None, price=None, trigger_price=None, params={}):
+        assert self.symbol_id == symbol, "Instrument: {} does NOT support {}!!!".format(
+            self.symbol_id, symbol)
+        legality_check_not_none_obj(self.parent, "self.parent")
         return self.parent.modify_order(order_id, symbol, type, side, amount=amount, price=price,
                                         trigger_price=trigger_price, params=params)
 
     def fetch_ccxt_order(self, symbol_id, order_id=None, stop_order_id=None):
+        assert self.symbol_id == symbol_id, "Instrument: {} does NOT support {}!!!".format(
+            self.symbol_id, symbol_id)
+        legality_check_not_none_obj(self.parent, "self.parent")
         return self.parent.fetch_ccxt_order(symbol_id=symbol_id, order_id=order_id, stop_order_id=stop_order_id)
 
     def set__payload(self, payload):
@@ -268,6 +318,9 @@ class BT_CCXT_Instrument(backtrader.with_metaclass(Meta_Instrument, object)):
             order_intent=None,
             position_type=None,
             **kwargs):
+        assert self.symbol_id == symbol_id, "Instrument: {} does NOT support {}!!!".format(
+            self.symbol_id, symbol_id)
+        legality_check_not_none_obj(self.parent, "self.parent")
         return self.parent.buy(owner, symbol_id, datafeed, size,
                                # Optional Params
                                price=price, price_limit=price_limit,
@@ -291,6 +344,9 @@ class BT_CCXT_Instrument(backtrader.with_metaclass(Meta_Instrument, object)):
              order_intent=None,
              position_type=None,
              **kwargs):
+        assert self.symbol_id == symbol_id, "Instrument: {} does NOT support {}!!!".format(
+            self.symbol_id, symbol_id)
+        legality_check_not_none_obj(self.parent, "self.parent")
         return self.parent.sell(owner, symbol_id, datafeed, size,
                                 # Optional Params
                                 price=price, price_limit=price_limit,
@@ -362,7 +418,44 @@ class BT_CCXT_Instrument(backtrader.with_metaclass(Meta_Instrument, object)):
         return pnl_comm, pnl_in_percentage, normalized_initial_margin
 
     def get_account_alias(self):
+        legality_check_not_none_obj(self.parent, "self.parent")
         return self.parent.get_account_alias()
 
+    def get_exchange_dropdown_value(self):
+        legality_check_not_none_obj(self.parent, "self.parent")
+        return str(self.parent.exchange).lower()
+
     def get_open_orders(self):
+        legality_check_not_none_obj(self.parent, "self.parent")
         return self.parent.get_open_orders()
+
+    def populate__symbol_static_info(self):
+        exchange_dropdown_value = self.get_exchange_dropdown_value()
+        http_parser__dict = dict(
+            symbol_id=self.symbol_id,
+            market_type=self.parent.market_type,
+        )
+        if exchange_dropdown_value == BINANCE_EXCHANGE_ID:
+            http_parser = Binance_Symbol_Info__HTTP_Parser(
+                params=http_parser__dict)
+        elif exchange_dropdown_value == BYBIT_EXCHANGE_ID:
+            http_parser = Bybit_Symbol_Info__HTTP_Parser(
+                params=http_parser__dict)
+        else:
+            raise NotImplementedError()
+        http_parser.run()
+
+        # Populate symbol static info over according to symbol_stationary__dict_template
+        for key in symbol_stationary__dict_template.keys():
+            if hasattr(http_parser, key):
+                attribute_value = getattr(http_parser, key)
+                if attribute_value is not None:
+                    setattr(self, key, attribute_value)
+
+        # Populate symbol static info over according to STANDARD_ATTRIBUTES
+        for standard_attribute in STANDARD_ATTRIBUTES:
+            assert hasattr(http_parser, standard_attribute)
+            attribute_value = getattr(http_parser, standard_attribute)
+            legality_check_not_none_obj(attribute_value, "attribute_value")
+            setattr(self, standard_attribute, attribute_value)
+        pass
