@@ -7,7 +7,7 @@ import threading
 import time
 import unittest
 
-from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPES, CCXT__MARKET_TYPE__LINEAR, MAX_LIVE_EXCHANGE_RETRIES
+from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPES, CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP, MAX_LIVE_EXCHANGE_RETRIES
 from ccxtbt.bt_ccxt_account_or_store__classes import BT_CCXT_Account_or_Store
 from ccxtbt.bt_ccxt_feed__classes import BT_CCXT_Feed
 from ccxtbt.bt_ccxt_instrument__classes import BT_CCXT_Instrument
@@ -25,7 +25,7 @@ class Test_Feed(unittest.TestCase):
         self.main_net_toggle_switch_value = False
         self.exchange_dropdown_value = BYBIT_EXCHANGE_ID
 
-        market_type = CCXT__MARKET_TYPE__LINEAR
+        market_type = CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP
         ccxt_market_type_name = CCXT__MARKET_TYPES[market_type]
 
         # INFO: Bybit exchange-specific value

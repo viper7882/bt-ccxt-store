@@ -1,10 +1,8 @@
+import ccxt
 import datetime
 import inspect
 
-from time import time as timer
-
-import ccxt
-from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPES, CCXT__MARKET_TYPE__LINEAR, CCXT__MARKET_TYPE__SPOT, \
+from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPES, CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP, CCXT__MARKET_TYPE__SPOT, \
     MIN_LEVERAGE
 from ccxtbt.utils import legality_check_not_none_obj
 
@@ -34,6 +32,18 @@ def get_symbol_name(symbol_id):
     return symbol_name
 
 
+def get_ccxt_market_symbol_name(market_type, symbol_id) -> str:
+    currency = get_wallet_currency(symbol_id)
+    symbol_name = get_symbol_name(symbol_id)
+    if market_type == CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP:
+        ccxt_market_symbol_name = "{}:{}".format(symbol_name, currency)
+    else:
+        assert market_type == CCXT__MARKET_TYPE__SPOT
+
+        ccxt_market_symbol_name = "{}".format(symbol_name)
+    return ccxt_market_symbol_name
+
+
 def get_bybit_commission_rate(params) -> float:
     '''
     Exchange specific approach to obtain commission rate for market type
@@ -44,7 +54,7 @@ def get_bybit_commission_rate(params) -> float:
     symbol_id = params['symbol_id']
 
     commission = None
-    if market_type == CCXT__MARKET_TYPE__LINEAR or market_type == CCXT__MARKET_TYPE__SPOT:
+    if market_type == CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP or market_type == CCXT__MARKET_TYPE__SPOT:
         market_type_name = CCXT__MARKET_TYPES[market_type]
 
         # Load all markets from the exchange
@@ -54,20 +64,14 @@ def get_bybit_commission_rate(params) -> float:
         markets = bt_ccxt_account_or_store.exchange.load_markets(
             params=load_markets__dict)
 
-        currency = get_wallet_currency(symbol_id)
-        symbol_name = get_symbol_name(symbol_id)
-        if market_type == CCXT__MARKET_TYPE__LINEAR:
-            selected_market_name = "{}:{}".format(symbol_name, currency)
-        else:
-            assert market_type == CCXT__MARKET_TYPE__SPOT
-
-            selected_market_name = "{}".format(symbol_name)
+        ccxt_market_symbol_name = get_ccxt_market_symbol_name(
+            market_type, symbol_id)
 
         # Legality Check
-        if selected_market_name not in markets.keys():
+        if ccxt_market_symbol_name not in markets.keys():
             raise ccxt.BadSymbol()
 
-        selected_market = markets[selected_market_name]
+        selected_market = markets[ccxt_market_symbol_name]
 
         commission = \
             max(float(selected_market['taker']),
@@ -92,7 +96,7 @@ def get_bybit_max_leverage(params) -> float:
     assert notional_value >= 0.0
 
     max_leverage = None
-    if market_type == CCXT__MARKET_TYPE__LINEAR:
+    if market_type == CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP:
         if symbol_id.endswith("USDT"):
             '''
             Reference: https://bybit-exchange.github.io/docs/futuresV2/linear/#t-getrisklimit
@@ -137,7 +141,7 @@ def get_bybit_leverages(params) -> tuple:
 
     leverage = None
     max_leverage = None
-    if market_type == CCXT__MARKET_TYPE__LINEAR:
+    if market_type == CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP:
         response = bt_ccxt_account_or_store.exchange.fetch_positions(
             symbols=[symbol_id], params={'type': CCXT__MARKET_TYPES[market_type]})
         if isinstance(response, list):
@@ -177,7 +181,7 @@ def set_bybit_leverage(params) -> None:
         "from_leverage: {} == to_leverage: {}!!!".format(
             from_leverage, to_leverage)
 
-    if market_type == CCXT__MARKET_TYPE__LINEAR:
+    if market_type == CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP:
         if symbol_id.endswith("USDT"):
             '''
             Reference: https://bybit-exchange.github.io/docs/linear/#t-setleverage

@@ -10,7 +10,7 @@ import unittest
 from time import time as timer
 from pprint import pprint
 
-from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPES, CCXT__MARKET_TYPE__LINEAR, CCXT__MARKET_TYPE__SPOT, \
+from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPES, CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP, CCXT__MARKET_TYPE__SPOT, \
     MAX_LIVE_EXCHANGE_RETRIES
 from ccxtbt.bt_ccxt_account_or_store__classes import BT_CCXT_Account_or_Store
 from ccxtbt.bt_ccxt_feed__classes import BT_CCXT_Feed
@@ -41,7 +41,7 @@ class Bybit__bt_ccxt_account_or_store__Static_Orders__TestCases(unittest.TestCas
             #          Doing so will cause _fetch_opened_positions_from_exchange to mix up between swap and spot market
             #          and eventually causing whole bunch of "invalid symbols" error
             # market_type = CCXT__MARKET_TYPE__SPOT
-            market_type = CCXT__MARKET_TYPE__LINEAR
+            market_type = CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP
 
             initial__capital_reservation__value = 0.0
             leverage_in_percent = 50.0

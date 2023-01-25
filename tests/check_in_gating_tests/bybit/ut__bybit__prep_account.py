@@ -7,17 +7,12 @@ import unittest
 
 from time import time as timer
 
-from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPES, CCXT__MARKET_TYPE__LINEAR, CCXT__MARKET_TYPE__SPOT, \
-    MAX_LIVE_EXCHANGE_RETRIES
-from ccxtbt.bt_ccxt_account_or_store__classes import BT_CCXT_Account_or_Store
-from ccxtbt.bt_ccxt_instrument__classes import BT_CCXT_Instrument
-from ccxtbt.exchange.bybit.bybit__exchange__helper import get_bybit_commission_rate, get_wallet_currency
+from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP, CCXT__MARKET_TYPE__SPOT
+from ccxtbt.exchange.bybit.bybit__exchange__helper import get_wallet_currency
 from ccxtbt.exchange.bybit.bybit__exchange__specifications import BYBIT_EXCHANGE_ID
-from ccxtbt.exchange.exchange__helper import get_api_and_secret_file_path
-from ccxtbt.utils import get_time_diff, legality_check_not_none_obj
+from ccxtbt.utils import get_time_diff
 
-from check_in_gating_tests.common.test__classes import FAKE_EXCHANGE
-from check_in_gating_tests.common.test__helper import get_commission_info, ut__construct_standalone_account_or_store, \
+from check_in_gating_tests.common.test__helper import ut__construct_standalone_account_or_store, \
     ut__construct_standalone_instrument
 
 
@@ -25,8 +20,9 @@ class Binance__bt_ccxt_account_or_store__Prepare_Account__TestCases(unittest.Tes
     def setUp(self):
         try:
             self.exchange_dropdown_value = BYBIT_EXCHANGE_ID
-            self.market_types = [
-                CCXT__MARKET_TYPE__LINEAR, CCXT__MARKET_TYPE__SPOT]
+            # self.market_types = [CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP, CCXT__MARKET_TYPE__SPOT]
+            self.market_types = [CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP]
+            # self.market_types = [CCXT__MARKET_TYPE__SPOT]
 
             self.main_net_toggle_switch_value = False
             # self.main_net_toggle_switch_value = True
@@ -126,9 +122,9 @@ class Binance__bt_ccxt_account_or_store__Prepare_Account__TestCases(unittest.Tes
             for bt_ccxt_account_or_store in bt_ccxt_account_or_stores:
                 time_to_sleep = 0.0
 
-                stepping_up__leverages_in_percent = [
-                    i for i in range(0, 51, 10)]
-                for leverage_in_percent in stepping_up__leverages_in_percent:
+                stepping_down__leverages_in_percent = [
+                    i for i in range(40, -1, -10)]
+                for leverage_in_percent in stepping_down__leverages_in_percent:
                     success = bt_ccxt_account_or_store.set_leverage_in_percent(
                         leverage_in_percent)
 
@@ -139,9 +135,9 @@ class Binance__bt_ccxt_account_or_store__Prepare_Account__TestCases(unittest.Tes
                         # INFO: Delay to prevent rate limit becomes too low for next test
                         time.sleep(time_to_sleep)
 
-                stepping_down__leverages_in_percent = [
-                    i for i in range(40, -1, -10)]
-                for leverage_in_percent in stepping_down__leverages_in_percent:
+                stepping_up__leverages_in_percent = [
+                    i for i in range(10, 51, 10)]
+                for leverage_in_percent in stepping_up__leverages_in_percent:
                     success = bt_ccxt_account_or_store.set_leverage_in_percent(
                         leverage_in_percent)
 

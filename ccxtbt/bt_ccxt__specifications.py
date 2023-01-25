@@ -24,9 +24,12 @@ MIN_LEVERAGE_IN_PERCENT = MIN_TYPICAL_PERCENTAGE
 MAX_LEVERAGE_IN_PERCENT = MAX_TYPICAL_PERCENTAGE
 PERCENTAGE_LEVERAGE_STEP = 5
 
-CCXT__MARKET_TYPES = ("spot", "inverse", "linear", "futures", "options", )
-CCXT__MARKET_TYPE__SPOT, CCXT__MARKET_TYPE__INVERSE, CCXT__MARKET_TYPE__LINEAR, CCXT__MARKET_TYPE__FUTURES, \
-    CCXT__MARKET_TYPE__OPTIONS = range(len(CCXT__MARKET_TYPES))
+# Reference: https://github.com/ccxt/ccxt/wiki/Manual#market-structure
+CCXT__MARKET_TYPES = ("spot", "margin", "inverse",
+                      "swap", "future", "option", )
+CCXT__MARKET_TYPE__SPOT, CCXT__MARKET_TYPE__MARGIN, CCXT__MARKET_TYPE__INVERSE, \
+    CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP, CCXT__MARKET_TYPE__FUTURE, CCXT__MARKET_TYPE__OPTION = \
+    range(len(CCXT__MARKET_TYPES))
 
 MAINNET__API_KEY_AND_SECRET_FILE_NAME = "mainnet__api_key_and_secret.json"
 TESTNET__API_KEY_AND_SECRET_FILE_NAME = "testnet__api_key_and_secret.json"

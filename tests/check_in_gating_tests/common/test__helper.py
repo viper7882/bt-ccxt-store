@@ -2,7 +2,7 @@ import backtrader
 import json
 import time
 
-from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPES, CCXT__MARKET_TYPE__FUTURES, MAX_LIVE_EXCHANGE_RETRIES
+from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPES, CCXT__MARKET_TYPE__FUTURE, MAX_LIVE_EXCHANGE_RETRIES
 from ccxtbt.bt_ccxt_account_or_store__classes import BT_CCXT_Account_or_Store
 from ccxtbt.bt_ccxt_instrument__classes import BT_CCXT_Instrument
 
@@ -109,12 +109,7 @@ def ut__construct_standalone_account_or_store(params) -> object:
         api_secret = json_data['secret']
         account_alias__dropdown_value = json_data['account_alias__dropdown_value']
 
-        if market_type == CCXT__MARKET_TYPE__FUTURES:
-            # WARNING: The "future" entry is NOT a typo error. It is a fixed requirement by Binance
-            #          exchange. The following code is workaround to remove the extra "s".
-            ccxt_market_type_name = CCXT__MARKET_TYPES[market_type][:-1]
-        else:
-            ccxt_market_type_name = CCXT__MARKET_TYPES[market_type]
+        ccxt_market_type_name = CCXT__MARKET_TYPES[market_type]
 
         exchange_specific_config = dict(
             apiKey=api_key,
@@ -196,4 +191,4 @@ def ut__construct_standalone_instrument(params) -> None:
     instrument.set__parent(bt_ccxt_account_or_store)
     bt_ccxt_account_or_store.add__instrument(instrument)
     # INFO: We could only populate symbol static info AFTER parent has been set
-    instrument.populate__symbol_static_info()
+    instrument.post_process__after_parent_is_added()

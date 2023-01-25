@@ -58,7 +58,7 @@ class Exchange_HTTP_Parser_Per_Symbol(Exchange_HTTP_Parser, ABC):
 class Enhanced_Position(backtrader.Position):
     def __init__(self, size=0.0, price=0.0, date_and_time=None):
         super(Enhanced_Position, self).__init__(
-            size=size, price=price, date_and_time=datetime)
+            size=size, price=price, date_and_time=date_and_time)
 
         # Enhanced attributes
         # self.position_value = 0.0

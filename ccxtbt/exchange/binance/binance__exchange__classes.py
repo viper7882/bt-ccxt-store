@@ -5,7 +5,7 @@ import requests
 from pprint import pprint
 
 from ccxtbt.bt_ccxt_expansion__classes import Exchange_HTTP_Parser_Per_Symbol
-from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPE__SPOT, CCXT__MARKET_TYPE__FUTURES, MIN_LEVERAGE, \
+from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPE__SPOT, CCXT__MARKET_TYPE__FUTURE, MIN_LEVERAGE, \
     STANDARD_ATTRIBUTES, symbol_stationary__dict_template
 from ccxtbt.exchange.binance.binance__exchange__specifications import BINANCE__SPOT__V3__HTTP_ENDPOINT_URL, \
     BINANCE__EXCHANGE_INFO_ENDPOINT, BINANCE__SYMBOL_COMMAND, BINANCE__FUTURES__V1__HTTP_ENDPOINT_URL
@@ -33,7 +33,7 @@ class Binance_Symbol_Info__HTTP_Parser(Exchange_HTTP_Parser_Per_Symbol):
             # Attributes according to symbol_stationary__dict_template
             self.min_leverage = int(MIN_LEVERAGE)
             self.leverage_step = None
-        elif self.market_type == CCXT__MARKET_TYPE__FUTURES:
+        elif self.market_type == CCXT__MARKET_TYPE__FUTURE:
             '''
             Reference: https://binance-docs.github.io/apidocs/futures/en/#exchange-information
             '''

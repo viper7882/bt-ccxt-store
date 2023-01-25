@@ -29,14 +29,16 @@ import threading
 
 from pprint import pprint
 
-from ccxtbt.bt_ccxt__specifications import STANDARD_ATTRIBUTES, symbol_stationary__dict_template
+from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPE__FUTURE, CCXT__MARKET_TYPE__SPOT, STANDARD_ATTRIBUTES, \
+    symbol_stationary__dict_template
 from ccxtbt.bt_ccxt_account_or_store__classes import BT_CCXT_Account_or_Store
 from ccxtbt.bt_ccxt_expansion__classes import Enhanced_Position
 from ccxtbt.exchange.binance.binance__exchange__classes import Binance_Symbol_Info__HTTP_Parser
 from ccxtbt.exchange.binance.binance__exchange__specifications import BINANCE_EXCHANGE_ID
 from ccxtbt.exchange.bybit.bybit__exchange__classes import Bybit_Symbol_Info__HTTP_Parser
-from ccxtbt.exchange.bybit.bybit__exchange__specifications import BYBIT_EXCHANGE_ID
-from ccxtbt.utils import legality_check_not_none_obj
+from ccxtbt.exchange.bybit.bybit__exchange__specifications import BYBIT_EXCHANGE_ID, \
+    BYBIT__DERIVATIVES__DEFAULT_POSITION_MODE
+from ccxtbt.utils import capitalize_sentence, legality_check_not_none_obj
 
 
 class Meta_Instrument(backtrader.MetaParams):
@@ -84,6 +86,9 @@ class BT_CCXT_Instrument(backtrader.with_metaclass(Meta_Instrument, object)):
         for standard_attribute in STANDARD_ATTRIBUTES:
             if hasattr(self, standard_attribute) == False:
                 setattr(self, standard_attribute, None)
+
+        # Derived Attributes
+        self.exchange_dropdown_value = None
 
     def __repr__(self):
         return str(self)
@@ -429,16 +434,80 @@ class BT_CCXT_Instrument(backtrader.with_metaclass(Meta_Instrument, object)):
         legality_check_not_none_obj(self.parent, "self.parent")
         return self.parent.get_open_orders()
 
+    def post_process__after_parent_is_added(self):
+        self.exchange_dropdown_value = self.get_exchange_dropdown_value()
+        self.populate__symbol_static_info()
+        self.sync_symbol_positions()
+
+    def sync_symbol_positions(self):
+        legality_check_not_none_obj(self.parent, "self.parent")
+        if self.exchange_dropdown_value == BINANCE_EXCHANGE_ID:
+            if self.parent.market_type == CCXT__MARKET_TYPE__SPOT:
+                response = self.parent.exchange.fetch_open_orders(
+                    symbol=self.symbol_id)
+                if len(response) > 0:
+                    raise NotImplementedError()
+                pass
+            elif self.parent.market_type == CCXT__MARKET_TYPE__FUTURE:
+                balance = self.parent._get_wallet_balance()
+                point_of_reference = balance['info']['positions']
+
+                for position in point_of_reference:
+                    if position['symbol'].upper() == self.symbol_id.upper():
+                        position_side = capitalize_sentence(
+                            position['positionSide'])
+                        position_type = backtrader.Position.Position_Types.index(
+                            position_side)
+                        price = float(position['entryPrice'])
+                        size = float(position['positionAmt'])
+                        self.set_position(position_type, price, size)
+                        pass
+            else:
+                raise NotImplementedError()
+        elif self.exchange_dropdown_value == BYBIT_EXCHANGE_ID:
+            if self.symbol_id.endswith("USDT"):
+                response = self.parent.exchange.private_get_private_linear_position_list(
+                    {'symbol': self.symbol_id})
+                point_of_reference = response['result']
+            elif self.symbol_id.endswith("USD"):
+                response = self.parent.exchange.private_get_v2_private_position_list(
+                    {'symbol': self.symbol_id})
+                point_of_reference = response['result']
+            elif self.symbol_id.endswith("USDC"):
+                raise NotImplementedError()
+            else:
+                raise NotImplementedError()
+
+            for position in point_of_reference:
+                if position['symbol'].upper() == self.symbol_id.upper():
+                    position_order_based_side = position['side']
+                    position_type = backtrader.Order.Order_Types.index(
+                        position_order_based_side)
+                    price = float(position['entry_price'])
+                    size = float(position['size'])
+                    self.set_position(position_type, price, size)
+
+                    assert position['mode'] == BYBIT__DERIVATIVES__DEFAULT_POSITION_MODE
+                    pass
+            pass
+        else:
+            raise NotImplementedError()
+
+        # Dump positions
+        # pprint(self.positions)
+
     def populate__symbol_static_info(self):
-        exchange_dropdown_value = self.get_exchange_dropdown_value()
+        '''
+        We could only populate symbol static info AFTER parent has been set
+        '''
         http_parser__dict = dict(
             symbol_id=self.symbol_id,
             market_type=self.parent.market_type,
         )
-        if exchange_dropdown_value == BINANCE_EXCHANGE_ID:
+        if self.exchange_dropdown_value == BINANCE_EXCHANGE_ID:
             http_parser = Binance_Symbol_Info__HTTP_Parser(
                 params=http_parser__dict)
-        elif exchange_dropdown_value == BYBIT_EXCHANGE_ID:
+        elif self.exchange_dropdown_value == BYBIT_EXCHANGE_ID:
             http_parser = Bybit_Symbol_Info__HTTP_Parser(
                 params=http_parser__dict)
         else:

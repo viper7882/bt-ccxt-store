@@ -5,7 +5,7 @@ import unittest
 
 from time import time as timer
 
-from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPE__FUTURES, CCXT__MARKET_TYPE__SPOT
+from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPE__FUTURE, CCXT__MARKET_TYPE__SPOT
 from ccxtbt.exchange.binance.binance__exchange__specifications import BINANCE_EXCHANGE_ID
 from ccxtbt.exchange.bybit.bybit__exchange__helper import get_wallet_currency
 from ccxtbt.utils import get_time_diff
@@ -19,7 +19,8 @@ class Binance__bt_ccxt_account_or_store__Prepare_Account__TestCases(unittest.Tes
         try:
             self.exchange_dropdown_value = BINANCE_EXCHANGE_ID
             self.market_types = [
-                CCXT__MARKET_TYPE__FUTURES, CCXT__MARKET_TYPE__SPOT]
+                CCXT__MARKET_TYPE__FUTURE, CCXT__MARKET_TYPE__SPOT]
+            # self.market_types = [CCXT__MARKET_TYPE__SPOT]
 
             self.main_net_toggle_switch_value = False
             # self.main_net_toggle_switch_value = True
@@ -112,18 +113,18 @@ class Binance__bt_ccxt_account_or_store__Prepare_Account__TestCases(unittest.Tes
 
             # INFO: Run the tests
             for bt_ccxt_account_or_store in bt_ccxt_account_or_stores:
-                stepping_up__leverages_in_percent = [
-                    i for i in range(0, 51, 10)]
-                for leverage_in_percent in stepping_up__leverages_in_percent:
+                stepping_down__leverages_in_percent = [
+                    i for i in range(40, -1, -10)]
+                for leverage_in_percent in stepping_down__leverages_in_percent:
                     success = bt_ccxt_account_or_store.set_leverage_in_percent(
                         leverage_in_percent)
 
                     # Test Assertion
                     self.assertTrue(success)
 
-                stepping_down__leverages_in_percent = [
-                    i for i in range(40, -1, -10)]
-                for leverage_in_percent in stepping_down__leverages_in_percent:
+                stepping_up__leverages_in_percent = [
+                    i for i in range(10, 51, 10)]
+                for leverage_in_percent in stepping_up__leverages_in_percent:
                     success = bt_ccxt_account_or_store.set_leverage_in_percent(
                         leverage_in_percent)
 

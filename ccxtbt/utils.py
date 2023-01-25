@@ -280,3 +280,10 @@ def convert_slider_from_percent(slider_in_percent, min_value, max_value, step_si
     ret_slider_value = round_to_nearest_decimal_points(
         ret_slider_value, step_digits, step_size)
     return ret_slider_value
+
+
+def capitalize_sentence(sentences):
+    sentences = sentences.replace("_", " ")
+    words = sentences.split(" ")
+    new = " ".join([word.capitalize() for word in words])
+    return new

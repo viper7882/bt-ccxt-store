@@ -44,10 +44,11 @@ from time import time as timer
 
 from ccxtbt.exchange.binance.binance__exchange__helper import get_binance_leverages, set_binance_leverage
 from ccxtbt.exchange.binance.binance__exchange__specifications import BINANCE_EXCHANGE_ID
-from ccxtbt.exchange.bybit.bybit__exchange__helper import get_bybit_leverages, set_bybit_leverage
+from ccxtbt.exchange.bybit.bybit__exchange__helper import get_bybit_leverages, get_ccxt_market_symbol_name, \
+    set_bybit_leverage
 from ccxtbt.exchange.bybit.bybit__exchange__specifications import BYBIT_EXCHANGE_ID
-from ccxtbt.bt_ccxt__specifications import CASH_DIGITS, CCXT__MARKET_TYPES, CCXT__MARKET_TYPE__FUTURES, \
-    CCXT__MARKET_TYPE__LINEAR, MAX_LEVERAGE_IN_PERCENT, MIN_LEVERAGE, MIN_LEVERAGE_IN_PERCENT
+from ccxtbt.bt_ccxt__specifications import CASH_DIGITS, CCXT__MARKET_TYPES, CCXT__MARKET_TYPE__FUTURE, \
+    CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP, MAX_LEVERAGE_IN_PERCENT, MIN_LEVERAGE, MIN_LEVERAGE_IN_PERCENT
 from ccxtbt.bt_ccxt_order__classes import BT_CCXT_Order
 from ccxtbt.bt_ccxt_exchange__classes import BT_CCXT_Exchange
 from ccxtbt.utils import convert_slider_from_percent, legality_check_not_none_obj, \
@@ -255,7 +256,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         with self.account__thread__connectivity__lock:
             # INFO: Support for Binance below
             if str(self.exchange).lower() == BINANCE_EXCHANGE_ID:
-                fetch_balance__dict = dict(
+                self.fetch_balance__dict = dict(
                     type=config['type'],
                 )
                 self.config__api_key = config['apiKey']
@@ -278,7 +279,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                 self.is_ws_available = True
                 self.config__api_key = config['apiKey']
                 self.config__api_secret = config['secret']
-                fetch_balance__dict = {}
+                self.fetch_balance__dict = {}
 
                 self.ws_instrument_info = collections.defaultdict(tuple)
                 self.ws_klines = collections.defaultdict(tuple)
@@ -293,9 +294,10 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                 self.ws_active_orders = None
                 self.ws_conditional_orders = None
                 self.ws_positions = None
-            balance = self.exchange.fetch_balance(
-                params=fetch_balance__dict) if 'secret' in config else 0.0
 
+            balance = \
+                self.exchange.fetch_balance(
+                    params=self.fetch_balance__dict) if 'secret' in config else 0.0
             try:
                 if balance == 0 or not balance['free'][wallet_currency]:
                     self._cash = 0
@@ -333,8 +335,8 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
 
         # INFO: Support for Binance and Bybit below
         if str(self.exchange).lower() == BINANCE_EXCHANGE_ID or str(self.exchange).lower() == BYBIT_EXCHANGE_ID:
-            if self.market_type == CCXT__MARKET_TYPE__FUTURES or \
-                    self.market_type == CCXT__MARKET_TYPE__LINEAR:
+            if self.market_type == CCXT__MARKET_TYPE__FUTURE or \
+                    self.market_type == CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP:
                 for symbol_id in self.symbols_id:
                     get_leverage__dict = dict(
                         bt_ccxt_account_or_store=self,
@@ -416,14 +418,15 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
     def get_commission_info(self):
         return self.parent.get_commission_info()
 
-    def get_balance(self):
+    def get_balance(self) -> tuple:
         self._get_balance()
         self.cash = self._cash
         self.value = self._value
-        return self.cash, self.value
+        ret_value = self.cash, self.value
+        return ret_value
 
     def get_wallet_balance(self, currency, params={}):
-        balance = self.get_wallet_balance(currency, params=params)
+        balance = self._get_wallet_balance(params=params)
         try:
             cash = balance['free'][currency] if balance['free'][currency] else 0
         except KeyError:  # never funded or eg. all USD exchanged
@@ -1762,10 +1765,14 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
             for symbol_id in symbols:
                 if len(self.ws_positions[symbol_id]) == 0:
                     # Exercise the longer time route
+                    market_type = CCXT__MARKET_TYPES.index(symbol_type)
+                    ccxt_market_symbol_name = get_ccxt_market_symbol_name(
+                        market_type, symbol_id)
+
                     # Store the outdated positions first
                     self.ws_positions[symbol_id] = \
                         self._fetch_opened_positions_from_exchange(
-                            symbols=[symbol_id], params={'type': symbol_type})
+                            symbols=[ccxt_market_symbol_name], params={'type': symbol_type})
 
                 # INFO: Identify ws_position to be changed
                 positions_to_be_changed = []
@@ -2078,19 +2085,26 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         return market
 
     @retry
-    def get_wallet_balance(self, wallet_currency, params=None):
+    def _get_wallet_balance(self, params=None):
+        if params is None:
+            params = self.fetch_balance__dict
         balance = self.exchange.fetch_balance(params)
         return balance
 
-    @retry
     def _get_balance(self):
-        balance = self.exchange.fetch_balance()
+        balance = self._get_wallet_balance()
+
+        # Legality Check
+        assert self.wallet_currency in balance['free'].keys()
+        assert self.wallet_currency in balance['total'].keys()
 
         cash = balance['free'][self.wallet_currency]
         value = balance['total'][self.wallet_currency]
-        # Fix if None is returned
+
+        # Fix for scenario where None is returned
         self._cash = cash if cash else 0.0
         self._value = value if value else 0.0
+        return balance
 
     def get_position(self):
         return self._value
@@ -2423,6 +2437,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
     @retry
     def _fetch_opened_positions_from_exchange(self, symbols=None, params={}):
         assert len(symbols) == 1
+        # pprint("symbols: {}, params: {}".format(symbols, params))
         return self.exchange.fetch_positions(symbols=symbols, params=params)
 
     def _fetch_opened_positions(self, symbols=None, params={}):

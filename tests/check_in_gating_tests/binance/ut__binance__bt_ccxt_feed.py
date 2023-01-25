@@ -5,7 +5,7 @@ import threading
 import time
 import unittest
 
-from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPES, CCXT__MARKET_TYPE__FUTURES, CCXT__MARKET_TYPE__SPOT, \
+from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPES, CCXT__MARKET_TYPE__FUTURE, CCXT__MARKET_TYPE__SPOT, \
     MAX_LIVE_EXCHANGE_RETRIES
 from ccxtbt.bt_ccxt_account_or_store__classes import BT_CCXT_Account_or_Store
 from ccxtbt.bt_ccxt_feed__classes import BT_CCXT_Feed
@@ -26,7 +26,7 @@ class Test_Feed(unittest.TestCase):
         self.exchange_dropdown_value = BINANCE_EXCHANGE_ID
 
         # market_type = CCXT__MARKET_TYPE__SPOT
-        market_type = CCXT__MARKET_TYPE__FUTURES
+        market_type = CCXT__MARKET_TYPE__FUTURE
 
         enable_rate_limit = True
 
@@ -45,12 +45,7 @@ class Test_Feed(unittest.TestCase):
             secret = json_data['secret']
             account_alias__dropdown_value = json_data['account_alias__dropdown_value']
 
-            if market_type == CCXT__MARKET_TYPE__FUTURES:
-                # WARNING: The "future" entry is NOT a typo error. It is a fixed requirement by Binance exchange.
-                #          The following code is workaround to remove the extra "s".
-                ccxt_market_type_name = CCXT__MARKET_TYPES[market_type][:-1]
-            else:
-                ccxt_market_type_name = CCXT__MARKET_TYPES[market_type]
+            ccxt_market_type_name = CCXT__MARKET_TYPES[market_type]
 
             self.exchange_specific_config = dict(
                 apiKey=api_key,

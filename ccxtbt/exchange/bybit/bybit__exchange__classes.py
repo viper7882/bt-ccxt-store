@@ -5,7 +5,7 @@ import requests
 from pprint import pprint
 
 from ccxtbt.bt_ccxt_expansion__classes import Exchange_HTTP_Parser_Per_Symbol
-from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPE__SPOT, CCXT__MARKET_TYPE__LINEAR, MIN_LEVERAGE, \
+from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPE__SPOT, CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP, MIN_LEVERAGE, \
     STANDARD_ATTRIBUTES, symbol_stationary__dict_template
 from ccxtbt.exchange.bybit.bybit__exchange__specifications import BYBIT__DERIVATIVES_V2_ENDPOINT, \
     BYBIT__SPOT__HTTP_ENDPOINT_URL, BYBIT__SPOT_V3_ENDPOINT, BYBIT__SYMBOLS_COMMAND, \
@@ -33,7 +33,7 @@ class Bybit_Symbol_Info__HTTP_Parser(Exchange_HTTP_Parser_Per_Symbol):
             # Attributes according to symbol_stationary__dict_template
             self.min_leverage = MIN_LEVERAGE
             self.leverage_step = None
-        elif self.market_type == CCXT__MARKET_TYPE__LINEAR:
+        elif self.market_type == CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP:
             '''
             Reference: https://bybit-exchange.github.io/docs/futuresV2/inverse/#t-querysymbol
             '''
@@ -64,7 +64,7 @@ class Bybit_Symbol_Info__HTTP_Parser(Exchange_HTTP_Parser_Per_Symbol):
 
         if self.market_type == CCXT__MARKET_TYPE__SPOT:
             ret_code_key = 'retCode'
-        elif self.market_type == CCXT__MARKET_TYPE__LINEAR:
+        elif self.market_type == CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP:
             ret_code_key = 'ret_code'
         else:
             raise NotImplementedError()
@@ -85,7 +85,7 @@ class Bybit_Symbol_Info__HTTP_Parser(Exchange_HTTP_Parser_Per_Symbol):
 
         if self.market_type == CCXT__MARKET_TYPE__SPOT:
             point_of_reference = symbol_exchange_info['result']['list']
-        elif self.market_type == CCXT__MARKET_TYPE__LINEAR:
+        elif self.market_type == CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP:
             point_of_reference = symbol_exchange_info['result']
         else:
             raise NotImplementedError()
@@ -105,7 +105,7 @@ class Bybit_Symbol_Info__HTTP_Parser(Exchange_HTTP_Parser_Per_Symbol):
             self.qty_digits = get_digits(self.qty_step)
             self.lot_size_min_qty = float(symbol_dict['minTradeQty'])
             self.lot_size_max_qty = float(symbol_dict['maxTradeQty'])
-        elif self.market_type == CCXT__MARKET_TYPE__LINEAR:
+        elif self.market_type == CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP:
             self.symbol_tick_size = float(
                 symbol_dict['price_filter']['tick_size'])
             self.price_digits = get_digits(self.symbol_tick_size)
