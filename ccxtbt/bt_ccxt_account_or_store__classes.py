@@ -390,6 +390,9 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
     def set__parent(self, owner):
         self.parent = owner
 
+        # INFO: Run post-processing AFTER parent has been set
+        self._post_process__after_parent_is_added()
+
     def get__parent(self):
         return self.parent
 
@@ -2457,3 +2460,34 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
             ret_positions = self._fetch_opened_positions_from_exchange(
                 [symbol_id], params)
         return ret_positions
+
+    def _post_process__after_parent_is_added(self):
+        if str(self.exchange).lower() == BINANCE_EXCHANGE_ID:
+            if self.market_type == CCXT__MARKET_TYPE__FUTURE:
+                get__response = self.exchange.fapiPrivate_get_positionside_dual()
+                if get__response['dualSidePosition'] == False:
+                    set_position_mode__dict = dict(
+                        type=CCXT__MARKET_TYPES[self.market_type],
+                    )
+                    set__response = self.exchange.set_position_mode(
+                        hedged=True, params=set_position_mode__dict)
+                    # Confirmation
+                    assert set__response['msg'] == "success"
+
+                    frameinfo = inspect.getframeinfo(inspect.currentframe())
+                    msg = "{}: {} Line: {}: INFO: Sync with {}: ".format(
+                        CCXT__MARKET_TYPES[self.market_type],
+                        frameinfo.function, frameinfo.lineno,
+                        str(self.exchange).lower(),
+                    )
+                    sub_msg = "Adjusted Dual/Hedge Position Mode from {} -> {}".format(
+                        False,
+                        True,
+                    )
+                    print(msg + sub_msg)
+                    pass
+            else:
+                raise NotImplementedError()
+        else:
+            # Do nothing here
+            pass

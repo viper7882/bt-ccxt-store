@@ -78,7 +78,7 @@ def reverse_engineer__ccxt_order(bt_ccxt_order__dict):
     return bt_ccxt_order__dict
 
 
-def ut__construct_standalone_account_or_store(params) -> object:
+def ut__construct_standalone_account_or_store(params) -> tuple:
     # INFO: Un-serialized Params
     exchange_dropdown_value = params['exchange_dropdown_value']
     main_net_toggle_switch_value = params['main_net_toggle_switch_value']
@@ -93,6 +93,8 @@ def ut__construct_standalone_account_or_store(params) -> object:
 
     # INFO: Optional Params
     account_type = params.get('account_type', None)
+
+    market_type_name = CCXT__MARKET_TYPES[market_type]
 
     api_and_secret_file_path__dict = dict(
         exchange_dropdown_value=exchange_dropdown_value,
@@ -109,14 +111,12 @@ def ut__construct_standalone_account_or_store(params) -> object:
         api_secret = json_data['secret']
         account_alias__dropdown_value = json_data['account_alias__dropdown_value']
 
-        ccxt_market_type_name = CCXT__MARKET_TYPES[market_type]
-
         exchange_specific_config = dict(
             apiKey=api_key,
             secret=api_secret,
             nonce=lambda: str(int(time.time() * 1000)),
             enableRateLimit=enable_rate_limit,
-            type=ccxt_market_type_name,
+            type=market_type_name,
 
             account_alias=account_alias__dropdown_value,
             account_type=account_type,
@@ -145,7 +145,8 @@ def ut__construct_standalone_account_or_store(params) -> object:
             **account_or_store__dict)
     legality_check_not_none_obj(
         bt_ccxt_account_or_store, "bt_ccxt_account_or_store")
-    return bt_ccxt_account_or_store
+    ret_value = bt_ccxt_account_or_store, exchange_specific_config
+    return ret_value
 
 
 def ut__construct_standalone_instrument(params) -> None:
@@ -190,5 +191,3 @@ def ut__construct_standalone_instrument(params) -> None:
     instrument = BT_CCXT_Instrument(**bt_ccxt_instrument__dict)
     instrument.set__parent(bt_ccxt_account_or_store)
     bt_ccxt_account_or_store.add__instrument(instrument)
-    # INFO: We could only populate symbol static info AFTER parent has been set
-    instrument.post_process__after_parent_is_added()

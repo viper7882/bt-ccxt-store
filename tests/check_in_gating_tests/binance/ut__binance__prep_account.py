@@ -66,7 +66,7 @@ class Binance__bt_ccxt_account_or_store__Prepare_Account__TestCases(unittest.Tes
                     leverage_in_percent=leverage_in_percent,
                     wallet_currency=wallet_currency,
                 )
-                bt_ccxt_account_or_store = \
+                (bt_ccxt_account_or_store, _, ) = \
                     ut__construct_standalone_account_or_store(
                         params=construct_standalone_account_or_store__dict)
 

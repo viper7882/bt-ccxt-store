@@ -23,13 +23,13 @@ from __future__ import (absolute_import, division, print_function,
 
 import backtrader
 import collections
-import datetime
 import inspect
 import threading
 
 from pprint import pprint
 
-from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPE__FUTURE, CCXT__MARKET_TYPE__SPOT, STANDARD_ATTRIBUTES, \
+from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPES, CCXT__MARKET_TYPE__FUTURE, CCXT__MARKET_TYPE__SPOT, \
+    STANDARD_ATTRIBUTES, \
     symbol_stationary__dict_template
 from ccxtbt.bt_ccxt_account_or_store__classes import BT_CCXT_Account_or_Store
 from ccxtbt.bt_ccxt_expansion__classes import Enhanced_Position
@@ -98,6 +98,9 @@ class BT_CCXT_Instrument(backtrader.with_metaclass(Meta_Instrument, object)):
 
     def set__parent(self, owner):
         self.parent = owner
+
+        # INFO: Run post-processing AFTER parent has been set
+        self._post_process__after_parent_is_added()
 
     def get__parent(self):
         return self.parent
@@ -434,12 +437,27 @@ class BT_CCXT_Instrument(backtrader.with_metaclass(Meta_Instrument, object)):
         legality_check_not_none_obj(self.parent, "self.parent")
         return self.parent.get_open_orders()
 
-    def post_process__after_parent_is_added(self):
+    def _post_process__after_parent_is_added(self):
         self.exchange_dropdown_value = self.get_exchange_dropdown_value()
         self.populate__symbol_static_info()
         self.sync_symbol_positions()
 
-    def sync_symbol_positions(self):
+    def _get_bybit_position_list(self) -> list:
+        if self.symbol_id.endswith("USDT"):
+            response = self.parent.exchange.private_get_private_linear_position_list(
+                {'symbol': self.symbol_id})
+            point_of_reference = response['result']
+        elif self.symbol_id.endswith("USD"):
+            response = self.parent.exchange.private_get_v2_private_position_list(
+                {'symbol': self.symbol_id})
+            point_of_reference = response['result']
+        elif self.symbol_id.endswith("USDC"):
+            raise NotImplementedError()
+        else:
+            raise NotImplementedError()
+        return point_of_reference
+
+    def sync_symbol_positions(self) -> None:
         legality_check_not_none_obj(self.parent, "self.parent")
         if self.exchange_dropdown_value == BINANCE_EXCHANGE_ID:
             if self.parent.market_type == CCXT__MARKET_TYPE__SPOT:
@@ -465,18 +483,39 @@ class BT_CCXT_Instrument(backtrader.with_metaclass(Meta_Instrument, object)):
             else:
                 raise NotImplementedError()
         elif self.exchange_dropdown_value == BYBIT_EXCHANGE_ID:
-            if self.symbol_id.endswith("USDT"):
-                response = self.parent.exchange.private_get_private_linear_position_list(
-                    {'symbol': self.symbol_id})
-                point_of_reference = response['result']
-            elif self.symbol_id.endswith("USD"):
-                response = self.parent.exchange.private_get_v2_private_position_list(
-                    {'symbol': self.symbol_id})
-                point_of_reference = response['result']
-            elif self.symbol_id.endswith("USDC"):
-                raise NotImplementedError()
-            else:
-                raise NotImplementedError()
+            point_of_reference = self._get_bybit_position_list()
+
+            updated_position_mode = False
+            for position in point_of_reference:
+                if position['symbol'].upper() == self.symbol_id.upper():
+                    if position['mode'] != BYBIT__DERIVATIVES__DEFAULT_POSITION_MODE:
+                        set_position_mode__dict = dict(
+                            type=CCXT__MARKET_TYPES[self.parent.market_type],
+                        )
+                        set__response = \
+                            self.parent.exchange.set_position_mode(hedged=True, symbol=self.symbol_id,
+                                                                   params=set_position_mode__dict)
+                        # Confirmation
+                        assert set__response['ret_msg'] == "OK"
+
+                        frameinfo = inspect.getframeinfo(
+                            inspect.currentframe())
+                        msg = "{}: {} Line: {}: INFO: {}: Sync with {}: ".format(
+                            CCXT__MARKET_TYPES[self.parent.market_type],
+                            frameinfo.function, frameinfo.lineno,
+                            self.symbol_id, str(self.parent.exchange).lower(),
+                        )
+                        sub_msg = "Adjusted Dual/Hedge Position Mode from {} -> {}".format(
+                            False,
+                            True,
+                        )
+                        print(msg + sub_msg)
+                        updated_position_mode = True
+                        break
+                    pass
+
+            if updated_position_mode == True:
+                point_of_reference = self._get_bybit_position_list()
 
             for position in point_of_reference:
                 if position['symbol'].upper() == self.symbol_id.upper():
@@ -487,8 +526,6 @@ class BT_CCXT_Instrument(backtrader.with_metaclass(Meta_Instrument, object)):
                     size = float(position['size'])
                     self.set_position(position_type, price, size)
 
-                    assert position['mode'] == BYBIT__DERIVATIVES__DEFAULT_POSITION_MODE
-                    pass
             pass
         else:
             raise NotImplementedError()

@@ -1,68 +1,22 @@
-import traceback
-
 import backtrader
 import datetime
-import json
 import threading
-import time
+import traceback
 import unittest
 
-from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPES, CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP, MAX_LIVE_EXCHANGE_RETRIES
-from ccxtbt.bt_ccxt_account_or_store__classes import BT_CCXT_Account_or_Store
+from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPES, CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP, \
+    MAX_LIVE_EXCHANGE_RETRIES
 from ccxtbt.bt_ccxt_feed__classes import BT_CCXT_Feed
-from ccxtbt.bt_ccxt_instrument__classes import BT_CCXT_Instrument
 from ccxtbt.exchange.bybit.bybit__exchange__helper import get_wallet_currency
 from ccxtbt.exchange.bybit.bybit__exchange__specifications import BYBIT_EXCHANGE_ID, BYBIT_OHLCV_LIMIT
-from ccxtbt.exchange.exchange__helper import get_api_and_secret_file_path
 from ccxtbt.utils import legality_check_not_none_obj
 
-from check_in_gating_tests.common.test__classes import FAKE_EXCHANGE
-from check_in_gating_tests.common.test__helper import get_commission_info
+from check_in_gating_tests.common.test__helper import ut__construct_standalone_account_or_store, \
+    ut__construct_standalone_instrument
 
 
 class Test_Feed(unittest.TestCase):
     def setUp(self):
-        self.main_net_toggle_switch_value = False
-        self.exchange_dropdown_value = BYBIT_EXCHANGE_ID
-
-        market_type = CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP
-        ccxt_market_type_name = CCXT__MARKET_TYPES[market_type]
-
-        # INFO: Bybit exchange-specific value
-        account_type_name = "CONTRACT"
-
-        enable_rate_limit = True
-
-        self.api_and_secret_file_path__dict = dict(
-            exchange_dropdown_value=self.exchange_dropdown_value,
-            market_type=market_type,
-            main_net_toggle_switch_value=self.main_net_toggle_switch_value,
-        )
-        api_key_and_secret_full_path = get_api_and_secret_file_path(
-            **self.api_and_secret_file_path__dict)
-
-        self.exchange_specific_config = None
-        with open(api_key_and_secret_full_path, "r") as file_to_read:
-            json_data = json.load(file_to_read)
-            api_key = json_data['key']
-            secret = json_data['secret']
-            account_alias__dropdown_value = json_data['account_alias__dropdown_value']
-
-            self.exchange_specific_config = dict(
-                apiKey=api_key,
-                secret=secret,
-                nonce=lambda: str(int(time.time() * 1000)),
-                enableRateLimit=enable_rate_limit,
-                type=ccxt_market_type_name,
-
-                account_alias=account_alias__dropdown_value,
-                account_type=account_type_name,
-                market_type=market_type,
-            )
-
-        legality_check_not_none_obj(
-            self.exchange_specific_config, "self.exchange_specific_config")
-
         self.day_delta = 5
         assert self.day_delta > 1
         self.latest_utc_dt = datetime.datetime.utcnow()
@@ -91,8 +45,7 @@ class Test_Feed(unittest.TestCase):
             timeframe=backtrader.TimeFrame.Ticks,
         )
         finished_strategies = backtesting(
-            self.exchange_specific_config, custom__bt_ccxt_feed__dict, self.api_and_secret_file_path__dict,
-            self.bt_ccxt_account_or_stores)
+            custom__bt_ccxt_feed__dict, self.bt_ccxt_account_or_stores)
 
     # @unittest.skip("To be enabled")
     # @unittest.skip("Ready for regression")
@@ -108,8 +61,7 @@ class Test_Feed(unittest.TestCase):
         )
 
         finished_strategies = backtesting(
-            self.exchange_specific_config, custom__bt_ccxt_feed__dict, self.api_and_secret_file_path__dict,
-            self.bt_ccxt_account_or_stores)
+            custom__bt_ccxt_feed__dict, self.bt_ccxt_account_or_stores)
         self.assertEqual(finished_strategies[0].next_runs, self.day_delta)
 
     # @unittest.skip("To be enabled")
@@ -128,8 +80,7 @@ class Test_Feed(unittest.TestCase):
         )
 
         finished_strategies = backtesting(
-            self.exchange_specific_config, custom__bt_ccxt_feed__dict, self.api_and_secret_file_path__dict,
-            self.bt_ccxt_account_or_stores)
+            custom__bt_ccxt_feed__dict, self.bt_ccxt_account_or_stores)
         self.assertEqual(finished_strategies[0].next_runs, self.day_delta + 1)
 
     # @unittest.skip("To be enabled")
@@ -148,8 +99,7 @@ class Test_Feed(unittest.TestCase):
         )
 
         finished_strategies = backtesting(
-            self.exchange_specific_config, custom__bt_ccxt_feed__dict, self.api_and_secret_file_path__dict,
-            self.bt_ccxt_account_or_stores)
+            custom__bt_ccxt_feed__dict, self.bt_ccxt_account_or_stores)
         self.assertEqual(finished_strategies[0].next_runs, self.day_delta)
 
 
@@ -165,11 +115,22 @@ class TestStrategy(backtrader.Strategy):
         self.next_runs += 1
 
 
-def backtesting(exchange_specific_config, custom__bt_ccxt_feed__dict, api_and_secret_file_path__dict,
-                bt_ccxt_account_or_stores):
+def backtesting(custom__bt_ccxt_feed__dict, bt_ccxt_account_or_stores):
     cerebro = backtrader.Cerebro()
 
     cerebro.add_strategy(TestStrategy)
+
+    main_net_toggle_switch_value = True
+    # main_net_toggle_switch_value = False
+
+    exchange_dropdown_value = BYBIT_EXCHANGE_ID
+
+    market_type = CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP
+
+    # INFO: Bybit exchange-specific value
+    account_type_name = "CONTRACT"
+
+    enable_rate_limit = True
 
     isolated_toggle_switch_value = False
     symbol_name = 'ETH/USDT'
@@ -185,61 +146,51 @@ def backtesting(exchange_specific_config, custom__bt_ccxt_feed__dict, api_and_se
     symbols_id = [symbol_id]
     wallet_currency = get_wallet_currency(symbol_id)
 
-    account_or_store__dict = dict(
-        main_net_toggle_switch_value=api_and_secret_file_path__dict['main_net_toggle_switch_value'],
-        config=exchange_specific_config,
+    construct_standalone_account_or_store__dict = dict(
+        exchange_dropdown_value=exchange_dropdown_value,
+        main_net_toggle_switch_value=main_net_toggle_switch_value,
+        market_type=market_type,
+        symbols_id=symbols_id,
+        enable_rate_limit=enable_rate_limit,
         initial__capital_reservation__value=initial__capital_reservation__value,
         is_ohlcv_provider=is_ohlcv_provider,
-        leverage_in_percent=leverage_in_percent,
-    )
-
-    # INFO: Live-specific Params
-    account_or_store__dict.update(dict(
-        exchange_dropdown_value=api_and_secret_file_path__dict['exchange_dropdown_value'],
-        wallet_currency=wallet_currency.upper(),
-        retries=MAX_LIVE_EXCHANGE_RETRIES,
-        symbols_id=symbols_id,
         account__thread__connectivity__lock=account__thread__connectivity__lock,
-        # debug=True,
-    ))
+        leverage_in_percent=leverage_in_percent,
+        wallet_currency=wallet_currency,
 
-    bt_ccxt_account_or_store = BT_CCXT_Account_or_Store(
-        **account_or_store__dict)
+        # INFO: Optional Params
+        account_type=account_type_name,
+    )
+    (bt_ccxt_account_or_store, exchange_specific_config, ) = \
+        ut__construct_standalone_account_or_store(
+            params=construct_standalone_account_or_store__dict)
+
+    legality_check_not_none_obj(
+        exchange_specific_config, "exchange_specific_config")
     bt_ccxt_account_or_stores.append(bt_ccxt_account_or_store)
 
-    commission = 0.0006
-    leverage_in_percent = 50.0
-    get_commission_info__dict = dict(
-        symbol_id=symbol_id,
+    construct_standalone_instrument__dict = dict(
+        bt_ccxt_account_or_store=bt_ccxt_account_or_store,
         isolated_toggle_switch_value=isolated_toggle_switch_value,
         leverage_in_percent=leverage_in_percent,
-        commission=commission,
-    )
-    commission_info = get_commission_info(
-        params=get_commission_info__dict)
-
-    fake_exchange = FAKE_EXCHANGE(
-        owner=bt_ccxt_account_or_store)
-    fake_exchange.add_commission_info(commission_info)
-    bt_ccxt_account_or_store.set__parent(fake_exchange)
-
-    bt_ccxt_instrument__dict = dict(
+        market_type=market_type,
         symbol_id=symbol_id,
     )
-    instrument = BT_CCXT_Instrument(**bt_ccxt_instrument__dict)
-    instrument.set__parent(bt_ccxt_account_or_store)
-    bt_ccxt_account_or_store.add__instrument(instrument)
+    ut__construct_standalone_instrument(
+        params=construct_standalone_instrument__dict)
+    instrument = bt_ccxt_account_or_store.get__child(symbol_id)
 
     # Validate assumption made
     assert isinstance(custom__bt_ccxt_feed__dict, dict)
 
-    bt_ccxt_feed__dict = dict(exchange=api_and_secret_file_path__dict['exchange_dropdown_value'],
-                              dataname=symbol_id,
-                              ohlcv_limit=BYBIT_OHLCV_LIMIT,
-                              currency=wallet_currency,
-                              config=exchange_specific_config,
-                              retries=MAX_LIVE_EXCHANGE_RETRIES,
-                              )
+    bt_ccxt_feed__dict = dict(
+        exchange=exchange_dropdown_value,
+        dataname=symbol_id,
+        ohlcv_limit=BYBIT_OHLCV_LIMIT,
+        currency=wallet_currency,
+        config=exchange_specific_config,
+        retries=MAX_LIVE_EXCHANGE_RETRIES,
+    )
     bt_ccxt_feed__dict.update(custom__bt_ccxt_feed__dict)
     datafeed = BT_CCXT_Feed(**bt_ccxt_feed__dict)
     datafeed.set__parent(instrument)
