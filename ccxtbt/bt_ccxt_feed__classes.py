@@ -77,7 +77,7 @@ class BT_CCXT_Feed(with_metaclass(MetaCCXTFeed, DataBase)):
         ('ohlcv_limit', 20),
         # True if the klines are converted into Heiken Ashi candlesticks
         ('convert_to_heikin_ashi', False),
-        ('symbol_tick_size', None),
+        ('tick_size', None),
         ('price_digits', None),
         ('dataname', None),
         ('drop_newest', False),
@@ -102,7 +102,7 @@ class BT_CCXT_Feed(with_metaclass(MetaCCXTFeed, DataBase)):
 
         # Legality Check
         if self.p.convert_to_heikin_ashi:
-            assert self.p.symbol_tick_size is not None
+            assert self.p.tick_size is not None
             assert self.p.price_digits is not None
 
     def __repr__(self):
@@ -260,7 +260,7 @@ class BT_CCXT_Feed(with_metaclass(MetaCCXTFeed, DataBase)):
                 df.columns = CCXT_DATA_COLUMNS[:-1]
 
                 df_ha = get_ha_bars(df, self.p.price_digits,
-                                    self.p.symbol_tick_size)
+                                    self.p.tick_size)
 
                 ohlcv_list = df_ha.values.tolist()
                 # print("{} Line: {}: {}: {}: AFTER: ohlcv_list[-1]: ".format(

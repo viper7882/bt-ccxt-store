@@ -1,3 +1,4 @@
+import backtrader
 import decimal
 import inspect
 import datetime
@@ -7,6 +8,9 @@ import numpy as np
 import pandas as pd
 
 from time import time as timer
+
+from ccxtbt.exchange.binance.binance__exchange__specifications import BINANCE_EXCHANGE_ID
+from ccxtbt.exchange.bybit.bybit__exchange__specifications import BYBIT_EXCHANGE_ID
 
 from .bt_ccxt__specifications import CCXT_DATA_COLUMNS, OPEN_COL, HIGH_COL, LOW_COL, CLOSE_COL, VOLUME_COL, \
     DATE_TIME_FORMAT_WITH_MS_PRECISION
@@ -45,7 +49,7 @@ def get_strftime(dt, date_format):
     return str(dt.strftime(date_format))
 
 
-def get_ha_bars(df, price_digits, symbol_tick_size):
+def get_ha_bars(df, price_digits, tick_size):
     '''
     Heiken Ashi bars
     (Partially correct) Credits: https://towardsdatascience.com/how-to-calculate-heikin-ashi-candles-in-python-for-trading-cff7359febd7
@@ -89,7 +93,7 @@ def get_ha_bars(df, price_digits, symbol_tick_size):
     #       identical with TradingView
     df_ha[columns_to_process] = \
         df_ha[columns_to_process].apply(lambda x: round_to_nearest_decimal_points(x, price_digits + 1,
-                                                                                  symbol_tick_size / 2))
+                                                                                  tick_size / 2))
     return df_ha
 
 
@@ -206,7 +210,7 @@ def get_time_diff(start):
     return hours, minutes, seconds
 
 
-def get_ccxt_order_id(order):
+def get_ccxt_order_id(exchange, order):
     ccxt_order_id = None
     if isinstance(order, dict):
         if 'id' in order.keys():
@@ -226,10 +230,18 @@ def get_ccxt_order_id(order):
                 if isinstance(order.ccxt_order, dict):
                     if 'id' in order.ccxt_order.keys():
                         ccxt_order_id = order.ccxt_order['id']
-                    elif 'stop_order_id' in order.ccxt_order['info'].keys():
-                        ccxt_order_id = order.ccxt_order['info']['stop_order_id']
-                    elif 'order_id' in order.ccxt_order['info'].keys():
-                        ccxt_order_id = order.ccxt_order['info']['order_id']
+
+                    if str(exchange).lower() == BINANCE_EXCHANGE_ID:
+                        raise NotImplementedError(
+                            "{} exchange is yet to be supported!!!".format(str(exchange).lower()))
+                    elif str(exchange).lower() == BYBIT_EXCHANGE_ID:
+                        if 'stop_order_id' in order.ccxt_order['info'].keys():
+                            ccxt_order_id = order.ccxt_order['info']['stop_order_id']
+                        elif 'order_id' in order.ccxt_order['info'].keys():
+                            ccxt_order_id = order.ccxt_order['info']['order_id']
+                    else:
+                        raise NotImplementedError(
+                            "{} exchange is yet to be supported!!!".format(str(exchange).lower()))
                 else:
                     # Validate assumption made
                     assert isinstance(order.ccxt_order, object)
@@ -287,3 +299,89 @@ def capitalize_sentence(sentences):
     words = sentences.split(" ")
     new = " ".join([word.capitalize() for word in words])
     return new
+
+
+def get_order_exit_price_and_queue(position_type, ask, bid):
+    if position_type not in range(len(backtrader.Position.Position_Types)):
+        raise ValueError("{}: {} position_type must be one of {}!!!".format(
+            inspect.currentframe(), position_type, range(len(backtrader.Position.Position_Types))))
+
+    legality_check_not_none_obj(ask, "ask")
+    legality_check_not_none_obj(bid, "bid")
+
+    if position_type == backtrader.Position.LONG_POSITION:
+        exit_price = ask
+    else:
+        # Validate assumption made
+        assert position_type == backtrader.Position.SHORT_POSITION
+
+        exit_price = bid
+    return exit_price
+
+
+def get_order_entry_price_without_queue(position_type, ask, bid, disable_message=False, function=None, lineno=None):
+    '''
+    WARNING: This API is created to accelerate the queue time of limit order in unit test. Logically this should not
+             be used for production. Use at your own risk!
+             The impact is that this will bring the [Entry] Price nearer to TP price.
+    '''
+    # INFO: Swapped the ask and bid to accelerate the queue time
+    entry_price = get_order_exit_price_and_queue(position_type, ask, bid)
+
+    if disable_message == False:
+        legality_check_not_none_obj(function, "function")
+        legality_check_not_none_obj(lineno, "lineno")
+
+        print("{} Line: {}: INFO: Accelerated the [Entry] Price of {} @ {} for {} position_type to "
+              "guarantee immediate position entrance".format(
+                  function, lineno,
+                  entry_price, "Ask" if entry_price == ask else "Bid", backtrader.Position.Position_Types[
+                      position_type],
+              ))
+    return entry_price
+
+
+def get_order_entry_price_and_queue(position_type, ask, bid):
+    '''
+    WARNING: This API will bring the [Entry] Price nearer to SL price.
+    '''
+    if position_type not in range(len(backtrader.Position.Position_Types)):
+        raise ValueError("{}: {} position_type must be one of {}!!!".format(
+            inspect.currentframe(), position_type, range(len(backtrader.Position.Position_Types))))
+
+    legality_check_not_none_obj(ask, "ask")
+    legality_check_not_none_obj(bid, "bid")
+
+    if position_type == backtrader.Position.LONG_POSITION:
+        entry_price = bid
+    else:
+        # Validate assumption made
+        assert position_type == backtrader.Position.SHORT_POSITION
+
+        entry_price = ask
+    return entry_price
+
+
+def get_order_exit_price_without_queue(position_type, ask, bid, disable_message=False, function=None, lineno=None):
+    '''
+    WARNING: This API is created to accelerate the queue time of limit order. Practical use case of this API is to
+             address positions closure issue when we are in hedged positions, one position got closed whereas another
+             position remains opened.
+    '''
+    # INFO: Swapped the ask and bid to accelerate the queue time
+    exit_price = get_order_entry_price_and_queue(position_type, ask, bid)
+
+    if disable_message == False:
+        legality_check_not_none_obj(function, "function")
+        legality_check_not_none_obj(lineno, "lineno")
+
+        # INFO: Print out message to inform user
+        print("{} Line: {}: INFO: Accelerated the [Exit] Price of {} @ {} for {} position_type to "
+              "guarantee immediate position closure".format(
+                  function,
+                  lineno,
+                  exit_price, "Ask" if exit_price == ask else "Bid", backtrader.Position.Position_Types[
+                      position_type],
+              ))
+
+    return exit_price

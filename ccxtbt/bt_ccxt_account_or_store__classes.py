@@ -43,12 +43,14 @@ from pprint import pprint
 from time import time as timer
 
 from ccxtbt.exchange.binance.binance__exchange__helper import get_binance_leverages, set_binance_leverage
-from ccxtbt.exchange.binance.binance__exchange__specifications import BINANCE_EXCHANGE_ID
+from ccxtbt.exchange.binance.binance__exchange__specifications import BINANCE_EXCHANGE_ID, \
+    BINANCE__FUTURES__DEFAULT_DUAL_POSITION_MODE
 from ccxtbt.exchange.bybit.bybit__exchange__helper import get_bybit_leverages, get_ccxt_market_symbol_name, \
     set_bybit_leverage
 from ccxtbt.exchange.bybit.bybit__exchange__specifications import BYBIT_EXCHANGE_ID
 from ccxtbt.bt_ccxt__specifications import CASH_DIGITS, CCXT__MARKET_TYPES, CCXT__MARKET_TYPE__FUTURE, \
-    CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP, MAX_LEVERAGE_IN_PERCENT, MIN_LEVERAGE, MIN_LEVERAGE_IN_PERCENT
+    CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP, CCXT__MARKET_TYPE__SPOT, MAX_LEVERAGE_IN_PERCENT, MIN_LEVERAGE, \
+    MIN_LEVERAGE_IN_PERCENT
 from ccxtbt.bt_ccxt_order__classes import BT_CCXT_Order
 from ccxtbt.bt_ccxt_exchange__classes import BT_CCXT_Exchange
 from ccxtbt.utils import convert_slider_from_percent, legality_check_not_none_obj, \
@@ -215,7 +217,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         legality_check_not_none_obj(self.account__thread__connectivity__lock,
                                     "self.account__thread__connectivity__lock")
         if self.market_type not in range(len(CCXT__MARKET_TYPES)):
-            raise RuntimeError("{}: {} market_type must be one of {}!!!".format(
+            raise ValueError("{}: {} market_type must be one of {}!!!".format(
                 inspect.currentframe(), self.market_type, range(len(CCXT__MARKET_TYPES))))
 
         self.parent = None
@@ -418,8 +420,13 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         legality_check_not_none_obj(instrument, "instrument")
         return instrument
 
+    def add_commission_info(self, commission_info):
+        raise NotImplementedError(
+            "This method should be implemented in instrument instead!!!")
+
     def get_commission_info(self):
-        return self.parent.get_commission_info()
+        raise NotImplementedError(
+            "This method should be implemented in instrument instead!!!")
 
     def get_balance(self) -> tuple:
         self._get_balance()
@@ -730,8 +737,8 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                 print(msg + sub_msg)
                 pass
 
-    def _submit(self, owner, datafeed, execution_type, side, amount, price, position_type, ordering_type, order_intent,
-                simulated, params):
+    def _submit(self, owner, symbol_id, datafeed, execution_type, side, amount, price, position_type, ordering_type,
+                order_intent, simulated, params):
         if amount == 0.0 or price == 0.0:
             # do not allow failing orders
             msg = "{} Line: {}: ERROR: Invalid Price: {} x Size: {}!!!".format(
@@ -743,26 +750,83 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
             print(msg)
             return None
 
+        # CCXT requires the market type name to be specified correctly
+        assert 'type' in params.keys()
+        if params['type'] not in CCXT__MARKET_TYPES:
+            raise RuntimeError("{}: {} type must be one of {}!!!".format(
+                inspect.currentframe(), params['type'], CCXT__MARKET_TYPES))
+        market_type = CCXT__MARKET_TYPES.index(params['type'])
+
+        if order_intent not in range(len(backtrader.Order.Order_Intents)):
+            raise ValueError("{} order_intent must be one of {}!!!".format(
+                order_intent, range(len(backtrader.Order.Order_Intents))))
+
         execution_type_name = self.parent.order_types.get(
             execution_type) if execution_type else 'market'
 
-        if datafeed:
-            created = int(datafeed.datetime.datetime(0).timestamp()*1000)
-            symbol_id = params['params']['symbol']
+        if datafeed is not None:
+            created = int(datafeed.datetime.datetime(0).timestamp() * 1000)
         else:
             # INFO: Use the current UTC datetime
-            utc_dt = datetime.datetime.utcnow()
-            created = int(utc_dt.timestamp()*1000)
-            symbol_id = params['params']['symbol']
-            # INFO: Remove symbol name from params
-            params['params'].pop('symbol', None)
+            created = int(datetime.datetime.utcnow().timestamp() * 1000)
+            if 'params' in params.keys():
+                if 'symbol' in params['params'].keys():
+                    # INFO: Remove symbol name from params
+                    params['params'].pop('symbol', None)
 
         # Extract CCXT specific params if passed to the order
         order_params = params['params'] if 'params' in params else params
         start = timer()
+
         # all params are exchange specific: https://github.com/ccxt/ccxt/wiki/Manual#custom-order-params
-        # Add timestamp of order creation for backtesting
-        order_params['created'] = created
+        # Exchange will likely fail if the following entries are sent
+        REMOVE__FOR__SPOT_MARKET = ('histnotify', '_checksubmit', )
+        for attribute in REMOVE__FOR__SPOT_MARKET:
+            order_params.pop(attribute)
+
+        # TODO: User to perform exchange-specific parameter customization here
+        if str(self.exchange).lower() == BINANCE_EXCHANGE_ID:
+            if market_type == CCXT__MARKET_TYPE__SPOT:
+                '''
+                Reference: https://binance-docs.github.io/apidocs/spot/en/#new-order-trade
+                '''
+                # Include timestamp
+                order_params['timestamp'] = int(
+                    datetime.datetime.now().timestamp() * 1000)
+                pass
+            elif market_type == CCXT__MARKET_TYPE__FUTURE:
+                '''
+                Reference: https://binance-docs.github.io/apidocs/futures/en/#new-order-trade
+                '''
+                order_params.update(dict(
+                    # Binance requires positionSide to be sent in Hedge Mode
+                    positionSide=backtrader.Position.Position_Types[position_type].upper(
+                    ),
+                ))
+            else:
+                raise NotImplementedError()
+            pass
+        elif str(self.exchange).lower() == BYBIT_EXCHANGE_ID:
+            if market_type == CCXT__MARKET_TYPE__SPOT:
+                raise NotImplementedError()
+            elif market_type == CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP:
+                if order_intent == backtrader.Order.Entry_Order:
+                    if 'reduce_only' in order_params.keys():
+                        assert order_params['reduce_only'] == False
+                    else:
+                        order_params['reduce_only'] = False
+                elif order_intent == backtrader.Order.Exit_Order:
+                    if 'reduce_only' in order_params.keys():
+                        assert order_params['reduce_only'] == True
+                    else:
+                        order_params['reduce_only'] = True
+                else:
+                    raise NotImplementedError()
+            else:
+                raise NotImplementedError()
+            pass
+        else:
+            pass
 
         if self.debug:
             # TODO: Debug use
@@ -791,14 +855,44 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         #       process the order, inclusive of providing websocket response.
         time.sleep(0.1)
 
-        if 'stop_order_id' in ret_ord['info'].keys():
-            order_id = None
-            stop_order_id = ret_ord['id']
-            order_type_name = 'Conditional'
+        # Perform exchange-specific parameter extraction here
+        order_type_name = None
+        if str(self.exchange).lower() == BINANCE_EXCHANGE_ID:
+            if market_type == CCXT__MARKET_TYPE__SPOT:
+                assert 'stopPrice' in ret_ord.keys()
+                if ret_ord['stopPrice'] is not None and float(ret_ord['stopPrice']) != 0.0:
+                    order_id = None
+                    stop_order_id = ret_ord['info']['orderId']
+                    order_type_name = 'Conditional'
+                else:
+                    order_id = ret_ord['info']['orderId']
+                    stop_order_id = None
+                    order_type_name = 'Active'
+            elif market_type == CCXT__MARKET_TYPE__FUTURE:
+                assert 'stopPrice' in ret_ord['info'].keys()
+                if float(ret_ord['info']['stopPrice']) != 0.0:
+                    order_id = None
+                    stop_order_id = ret_ord['info']['orderId']
+                    order_type_name = 'Conditional'
+                else:
+                    order_id = ret_ord['info']['orderId']
+                    stop_order_id = None
+                    order_type_name = 'Active'
+            else:
+                raise NotImplementedError()
+            pass
+        elif str(self.exchange).lower() == BYBIT_EXCHANGE_ID:
+            if 'stop_order_id' in ret_ord['info'].keys():
+                order_id = None
+                stop_order_id = ret_ord['id']
+                order_type_name = 'Conditional'
+            else:
+                order_id = ret_ord['id']
+                stop_order_id = None
+                order_type_name = 'Active'
         else:
-            order_id = ret_ord['id']
-            stop_order_id = None
-            order_type_name = 'Active'
+            raise NotImplementedError()
+        legality_check_not_none_obj(order_type_name, "order_type_name")
 
         # TODO: Debug use
         if self.debug:
@@ -821,8 +915,9 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
             pass
 
         start = timer()
-        ccxt_order = self.fetch_ccxt_order(
-            symbol_id, order_id=order_id, stop_order_id=stop_order_id)
+        ccxt_order = \
+            self.fetch_ccxt_order(
+                symbol_id, order_id=order_id, stop_order_id=stop_order_id)
         if self.debug:
             _, minutes, seconds = get_time_diff(start)
             frameinfo = inspect.getframeinfo(inspect.currentframe())
@@ -857,41 +952,59 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         # INFO: Exposed simulated so that we could proceed with order without running cerebro
         bt_ccxt_order__dict = dict(
             owner=owner,
+            exchange_name=str(self.exchange).lower(),
             symbol_id=symbol_id,
-            datafeed=datafeed,
             ccxt_order=ccxt_order,
             execution_type=execution_type,
             position_type=position_type,
             ordering_type=ordering_type,
             order_intent=order_intent,
         )
+        if datafeed is not None:
+            # Assign the datafeed since it exists
+            bt_ccxt_order__dict.update(dict(
+                datafeed=datafeed,
+            ))
+        else:
+            # Turn on simulated should there is no datafeed
+            bt_ccxt_order__dict.update(dict(
+                simulated=True,
+            ))
         order = BT_CCXT_Order(**bt_ccxt_order__dict)
 
         # Check if the exchange order is NOT closed
         if ccxt_order[self.parent.mappings['closed_order']['key']] != self.parent.mappings['closed_order']['value']:
             # Mark order as submitted
             order.submit()
-            order = self.add__commission_info(order)
+            instrument = self.get__child(order.p.symbol_id)
+            commission_info = instrument.get_commission_info()
+            order.add_commission_info(commission_info)
             self.notify(order)
         self.open_orders.append(order)
         return order
 
     def get_exchange_order_intent(self, ccxt_order):
         exchange_order_intent = None
-        # WARNING: The following code could be Bybit-specific
-        if 'reduce_only' in ccxt_order['info'].keys():
-            # Validate assumption made
-            assert isinstance(ccxt_order['info']['reduce_only'], bool)
-
-            if ccxt_order['info']['reduce_only'] == False:
-                exchange_order_intent = backtrader.Order.Entry_Order
-            else:
+        if str(self.exchange).lower() == BINANCE_EXCHANGE_ID:
+            raise NotImplementedError(
+                "{} exchange is yet to be supported!!!".format(str(self.exchange).lower()))
+        elif str(self.exchange).lower() == BYBIT_EXCHANGE_ID:
+            if 'reduce_only' in ccxt_order['info'].keys():
                 # Validate assumption made
-                assert ccxt_order['info']['reduce_only'] == True
+                assert isinstance(ccxt_order['info']['reduce_only'], bool)
 
-                exchange_order_intent = backtrader.Order.Exit_Order
+                if ccxt_order['info']['reduce_only'] == False:
+                    exchange_order_intent = backtrader.Order.Entry_Order
+                else:
+                    # Validate assumption made
+                    assert ccxt_order['info']['reduce_only'] == True
+
+                    exchange_order_intent = backtrader.Order.Exit_Order
+            else:
+                raise NotImplementedError()
         else:
-            raise NotImplementedError()
+            raise NotImplementedError(
+                "{} exchange is yet to be supported!!!".format(str(self.exchange).lower()))
         return exchange_order_intent
 
     def fetch_ccxt_order(self, symbol_id, order_id=None, stop_order_id=None):
@@ -907,22 +1020,27 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
 
         start = timer()
         ccxt_order = None
+
+        # CCXT Market Type is explicitly required
+        params = dict(
+            type=self.market_type_name,
+        )
         # INFO: Due to nature of order is processed async, the order could not be found immediately right after
         #       order is opened. Hence, perform retry to confirm if that's the case.
         for retry_no in range(self.max_retry):
             try:
                 if stop_order_id is not None:
                     # Conditional Order
-                    params = dict(
+                    params.update(dict(
                         stop_order_id=stop_order_id,
-                    )
+                    ))
                     ccxt_order = \
                         self.fetch_order(
                             order_id=None, symbol_id=symbol_id, params=params)
                 else:
                     # Active Order
                     ccxt_order = self.fetch_order(
-                        order_id=order_id, symbol_id=symbol_id)
+                        order_id=order_id, symbol_id=symbol_id, params=params)
 
                 if ccxt_order is not None:
                     if stop_order_id is not None:
@@ -982,12 +1100,6 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                                                          int(minutes), seconds))
         return ccxt_order
 
-    def add__commission_info(self, order):
-        # Get commission_info object for the datafeed
-        commission_info = self.get_commission_info()
-        order.add_commission_info(commission_info)
-        return order
-
     def execute(self, order, price, spread_in_ticks=1, dt_in_float=None, skip_notification=False):
         # Legality Check
         legality_check_not_none_obj(order, "order")
@@ -1001,17 +1113,17 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         assert isinstance(skip_notification, bool)
 
         datafeed = order.datafeed
+        if datafeed is not None:
+            position_timestamp_dt = datafeed.datetime.datetime(0)
+        else:
+            # INFO: Use the current UTC datetime
+            position_timestamp_dt = datetime.datetime.utcnow()
 
         # Legality Check
-        legality_check_not_none_obj(datafeed, "datafeed")
-
-        datafeed_dt = datafeed.datetime.datetime(0)
-
-        # Legality Check
-        assert isinstance(datafeed_dt, datetime.datetime)
+        assert isinstance(position_timestamp_dt, datetime.datetime)
 
         if order.ccxt_order is None:
-            ccxt_order_id = get_ccxt_order_id(order)
+            ccxt_order_id = get_ccxt_order_id(self.exchange, order)
             legality_check_not_none_obj(
                 order.ordering_type, "order.ordering_type")
 
@@ -1069,262 +1181,267 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                 self.notify(order)
             return
 
-        # Get commission_info object for the datafeed
-        commission_info = self.get_commission_info()
+        instrument = self.get__child(order.p.symbol_id)
+        commission_info = instrument.get_commission_info()
+        order.add_commission_info(commission_info)
 
         # Adjust position with operation size
         # Real execution with date
-        for ccxt_instrument in self.ccxt_instruments:
-            if ccxt_instrument.symbol_id == order.symbol_id:
-                original_position = ccxt_instrument.get_position(
-                    order.position_type, clone=True)
-                position = ccxt_instrument.get_position(
-                    order.position_type, clone=False)
-                pprice_orig = position.price
+        original_position = \
+            instrument.get_position(order.position_type, clone=True)
+        position = \
+            instrument.get_position(order.position_type, clone=False)
+        pprice_orig = position.price
 
-                # Do a real position update
-                position_size, position_average_price, opened, closed = position.update(
-                    size, price, datafeed_dt)
-                position_size = \
-                    round_to_nearest_decimal_points(
-                        position_size, commission_info.qty_digits, commission_info.qty_step)
-                position_average_price = \
-                    round_to_nearest_decimal_points(position_average_price, commission_info.price_digits,
-                                                    commission_info.symbol_tick_size)
-                opened = round_to_nearest_decimal_points(
-                    opened, commission_info.qty_digits, commission_info.qty_step)
-                closed = round_to_nearest_decimal_points(
-                    closed, commission_info.qty_digits, commission_info.qty_step)
+        # Do a real position update
+        position_size, position_average_price, opened, closed = position.update(
+            size, price, position_timestamp_dt)
+        position_size = \
+            round_to_nearest_decimal_points(
+                position_size, commission_info.qty_digits, commission_info.qty_step)
+        position_average_price = \
+            round_to_nearest_decimal_points(position_average_price, commission_info.price_digits,
+                                            commission_info.tick_size)
+        opened = round_to_nearest_decimal_points(
+            opened, commission_info.qty_digits, commission_info.qty_step)
+        closed = round_to_nearest_decimal_points(
+            closed, commission_info.qty_digits, commission_info.qty_step)
 
-                # split commission between closed and opened
-                closed_commission = 0.0
-                if closed:
-                    if order.ccxt_order['fee'] is not None:
-                        if order.ccxt_order['fee']['cost'] is not None:
-                            closed_commission = order.ccxt_order['fee']['cost']
+        # split commission between closed and opened
+        closed_commission = 0.0
+        if closed:
+            if order.ccxt_order['fee'] is not None:
+                if order.ccxt_order['fee']['cost'] is not None:
+                    closed_commission = order.ccxt_order['fee']['cost']
 
-                    if closed_commission == 0.0:
-                        closed_commission = commission_info.get_commission_rate(
-                            closed, price)
+            if closed_commission == 0.0:
+                closed_commission = commission_info.get_commission_rate(
+                    closed, price)
 
-                opened_commission = 0.0
-                if opened:
-                    if order.ccxt_order['fee'] is not None:
-                        if order.ccxt_order['fee']['cost'] is not None:
-                            opened_commission = order.ccxt_order['fee']['cost']
+        opened_commission = 0.0
+        if opened:
+            if order.ccxt_order['fee'] is not None:
+                if order.ccxt_order['fee']['cost'] is not None:
+                    opened_commission = order.ccxt_order['fee']['cost']
 
-                    if opened_commission == 0.0:
-                        opened_commission = commission_info.get_commission_rate(
-                            opened, price)
+            if opened_commission == 0.0:
+                opened_commission = commission_info.get_commission_rate(
+                    opened, price)
 
-                closed_value = commission_info.get_value_size(
-                    -closed, pprice_orig)
-                opened_value = commission_info.get_value_size(opened, price)
+        closed_value = commission_info.get_value_size(
+            -closed, pprice_orig)
+        opened_value = commission_info.get_value_size(opened, price)
 
-                # The internal broker_or_exchange calc should yield the same result
-                if closed:
-                    profit_and_loss_amount = commission_info.profit_and_loss(
-                        -closed, pprice_orig, price)
-                else:
-                    profit_and_loss_amount = 0.0
+        # The internal broker_or_exchange calc should yield the same result
+        if closed:
+            profit_and_loss_amount = commission_info.profit_and_loss(
+                -closed, pprice_orig, price)
+        else:
+            profit_and_loss_amount = 0.0
 
-                # Need to simulate a margin, but it plays no role, because it is
-                # controlled by a real broker_or_exchange. Let's set the price of the item
-                margin = datafeed.close[0]
+        # Need to simulate a margin, but it plays no role, because it is
+        # controlled by a real broker_or_exchange. Let's set the price of the item
+        if datafeed is not None:
+            margin = datafeed.close[0]
+        else:
+            margin = price
 
-                if dt_in_float is None:
-                    execute_dt = datafeed.datetime[0]
-                else:
-                    execute_dt = dt_in_float
-                assert isinstance(execute_dt, float)
+        if dt_in_float is None:
+            if datafeed is not None:
+                execute_dt = datafeed.datetime[0]
+            else:
+                execute_dt = backtrader.date2num(position_timestamp_dt)
+        else:
+            execute_dt = dt_in_float
+        assert isinstance(execute_dt, float)
 
-                # Legality Check
-                flag_as_error = False
-                if price <= 0.0:
-                    flag_as_error = True
-                elif abs(opened) == 0.0 and abs(closed) == 0.0:
-                    flag_as_error = True
+        # Legality Check
+        flag_as_error = False
+        if price <= 0.0:
+            flag_as_error = True
+        elif abs(opened) == 0.0 and abs(closed) == 0.0:
+            flag_as_error = True
 
-                if flag_as_error == True:
-                    ccxt_order_id = get_ccxt_order_id(order)
-                    raise ValueError(
-                        "{}: order id: \'{}\': Both {:.{}f} x opened:{:.{}f}/closed:{:.{}f} of "
-                        "must be positive!!!".format(
-                            inspect.currentframe(),
-                            ccxt_order_id,
-                            price, commission_info.price_digits,
-                            opened, commission_info.qty_digits,
-                            closed, commission_info.qty_digits,
-                        ))
+        if flag_as_error == True:
+            ccxt_order_id = get_ccxt_order_id(self.exchange, order)
+            raise ValueError(
+                "{}: order id: \'{}\': Both {:.{}f} x opened:{:.{}f}/closed:{:.{}f} of "
+                "must be positive!!!".format(
+                    inspect.currentframe(),
+                    ccxt_order_id,
+                    price, commission_info.price_digits,
+                    opened, commission_info.qty_digits,
+                    closed, commission_info.qty_digits,
+                ))
 
-                # Execute and notify the order
-                order.execute(execute_dt,
-                              size, price,
-                              closed, closed_value, closed_commission,
-                              opened, opened_value, opened_commission,
-                              margin, profit_and_loss_amount, spread_in_ticks,
-                              position_size, position_average_price)
+        # Execute and notify the order
+        order.execute(execute_dt,
+                      size, price,
+                      closed, closed_value, closed_commission,
+                      opened, opened_value, opened_commission,
+                      margin, profit_and_loss_amount, spread_in_ticks,
+                      position_size, position_average_price)
 
-                # INFO: size and price could deviate from its original value due to floating point precision error. The
-                #       following codes are to provide remedy for that situation.
-                order.executed.size = \
-                    round_to_nearest_decimal_points(order.executed.size, commission_info.qty_digits,
-                                                    commission_info.qty_step)
-                order.executed.price = \
-                    round_to_nearest_decimal_points(order.executed.price, commission_info.price_digits,
-                                                    commission_info.symbol_tick_size)
+        # INFO: size and price could deviate from its original value due to floating point precision error. The
+        #       following codes are to provide remedy for that situation.
+        order.executed.size = \
+            round_to_nearest_decimal_points(order.executed.size, commission_info.qty_digits,
+                                            commission_info.qty_step)
+        order.executed.price = \
+            round_to_nearest_decimal_points(order.executed.price, commission_info.price_digits,
+                                            commission_info.tick_size)
 
-                # Legality Check
-                throws_out_error = False
-                sub_error_msg = None
-                if abs(order.executed.size) != abs(order.size):
-                    sub_error_msg = \
-                        " abs(order.executed.size): {:.{}f} != Exchange's abs(size): {:.{}f}!!!".format(
-                            abs(order.executed.size), commission_info.qty_digits,
-                            abs(order.size), commission_info.qty_digits,
-                        )
-                    throws_out_error = True
-
-                if abs(order.executed.filled_size) != order.filled:
-                    sub_error_msg = \
-                        " abs(order.executed.filled_size): {:.{}f} != Exchange's filled: {:.{}f}!!!".format(
-                            abs(order.executed.filled_size), commission_info.qty_digits,
-                            order.filled, commission_info.qty_digits,
-                        )
-                    throws_out_error = True
-
-                if abs(order.executed.remaining_size) != order.remaining:
-                    sub_error_msg = \
-                        " abs(order.executed.remaining_size): {:.{}f} != Exchange's remaining: {:.{}f}!!!".format(
-                            abs(order.executed.remaining_size), commission_info.qty_digits,
-                            order.remaining, commission_info.qty_digits,
-                        )
-                    throws_out_error = True
-
-                if throws_out_error == True:
-                    msg_type = "ERROR"
-                else:
-                    msg_type = "DEBUG"
-
-                frameinfo = inspect.getframeinfo(inspect.currentframe())
-                msg = "{} Line: {}: {}: ".format(
-                    frameinfo.function, frameinfo.lineno,
-                    msg_type,
+        # Legality Check
+        throws_out_error = False
+        sub_error_msg = None
+        if abs(order.executed.size) != abs(order.size):
+            sub_error_msg = \
+                " abs(order.executed.size): {:.{}f} != Exchange's abs(size): {:.{}f}!!!".format(
+                    abs(order.executed.size), commission_info.qty_digits,
+                    abs(order.size), commission_info.qty_digits,
                 )
+            throws_out_error = True
 
-                # sub_msg = "order.ccxt_order:"
-                # print(msg + sub_msg)
-                # print(json.dumps(order.ccxt_order, indent=self.indent))
-                #
-                # sub_msg = "order:"
-                # print(msg + sub_msg)
-                # pprint(order)
-                #
-                # sub_msg = "pre-position:"
-                # print(msg + sub_msg)
-                # pprint(original_position)
-                #
-                # sub_msg = "post-position:"
-                # print(msg + sub_msg)
-                # pprint(position)
-                #
-                # if throws_out_error == False:
-                #     sub_msg = \
-                #         "abs(order.executed.filled_size): {:.{}f} vs Exchange's filled: {:.{}f}".format(
-                #             abs(order.executed.filled_size), commission_info.qty_digits,
-                #             order.filled, commission_info.qty_digits,
-                #         )
-                #     print(msg + sub_msg)
-                #
-                #     sub_msg = \
-                #         "abs(order.executed.remaining_size): {:.{}f} vs Exchange's remaining: {:.{}f}".format(
-                #             abs(order.executed.remaining_size), commission_info.qty_digits,
-                #             order.remaining, commission_info.qty_digits,
-                #         )
-                #     print(msg + sub_msg)
+        if abs(order.executed.filled_size) != order.filled:
+            sub_error_msg = \
+                " abs(order.executed.filled_size): {:.{}f} != Exchange's filled: {:.{}f}!!!".format(
+                    abs(order.executed.filled_size), commission_info.qty_digits,
+                    order.filled, commission_info.qty_digits,
+                )
+            throws_out_error = True
 
-                if throws_out_error == True:
-                    legality_check_not_none_obj(sub_error_msg, "sub_error_msg")
-                    error_msg = "{}:".format(
-                        inspect.currentframe(),
+        if abs(order.executed.remaining_size) != order.remaining:
+            sub_error_msg = \
+                " abs(order.executed.remaining_size): {:.{}f} != Exchange's remaining: {:.{}f}!!!".format(
+                    abs(order.executed.remaining_size), commission_info.qty_digits,
+                    order.remaining, commission_info.qty_digits,
+                )
+            throws_out_error = True
+
+        if throws_out_error == True:
+            msg_type = "ERROR"
+        else:
+            msg_type = "DEBUG"
+
+        frameinfo = inspect.getframeinfo(inspect.currentframe())
+        msg = "{} Line: {}: {}: ".format(
+            frameinfo.function, frameinfo.lineno,
+            msg_type,
+        )
+
+        # sub_msg = "order.ccxt_order:"
+        # print(msg + sub_msg)
+        # print(json.dumps(order.ccxt_order, indent=self.indent))
+        #
+        # sub_msg = "order:"
+        # print(msg + sub_msg)
+        # pprint(order)
+        #
+        # sub_msg = "pre-position:"
+        # print(msg + sub_msg)
+        # pprint(original_position)
+        #
+        # sub_msg = "post-position:"
+        # print(msg + sub_msg)
+        # pprint(position)
+        #
+        # if throws_out_error == False:
+        #     sub_msg = \
+        #         "abs(order.executed.filled_size): {:.{}f} vs Exchange's filled: {:.{}f}".format(
+        #             abs(order.executed.filled_size), commission_info.qty_digits,
+        #             order.filled, commission_info.qty_digits,
+        #         )
+        #     print(msg + sub_msg)
+        #
+        #     sub_msg = \
+        #         "abs(order.executed.remaining_size): {:.{}f} vs Exchange's remaining: {:.{}f}".format(
+        #             abs(order.executed.remaining_size), commission_info.qty_digits,
+        #             order.remaining, commission_info.qty_digits,
+        #         )
+        #     print(msg + sub_msg)
+
+        if throws_out_error == True:
+            legality_check_not_none_obj(sub_error_msg, "sub_error_msg")
+            error_msg = "{}:".format(
+                inspect.currentframe(),
+            )
+            raise ValueError(error_msg + sub_error_msg)
+
+        order.add_commission_info(commission_info)
+        if skip_notification == False:
+            self.notify(order)
+
+        # Legality Check
+        throws_out_error = False
+        sub_error_msg = None
+        if order.symbol_id.endswith("USDT"):
+            if order.position_type == backtrader.Position.LONG_POSITION:
+                if position_size < 0.0:
+                    sub_error_msg = \
+                        "For {} position, size: {:.{}f} must be zero or positive!!!".format(
+                            backtrader.Position.Position_Types[order.position_type],
+                            position_size, commission_info.qty_digits,
+                        )
+                    throws_out_error = True
+            else:
+                # Validate assumption made
+                assert order.position_type == backtrader.Position.SHORT_POSITION
+
+                if position_size > 0.0:
+                    sub_error_msg = \
+                        "For {} position, size: {:.{}f} must be zero or negative!!!".format(
+                            backtrader.Position.Position_Types[order.position_type],
+                            position_size, commission_info.qty_digits,
+                        )
+                    throws_out_error = True
+
+            if throws_out_error == True:
+                legality_check_not_none_obj(
+                    sub_error_msg, "sub_error_msg")
+                frameinfo = inspect.getframeinfo(
+                    inspect.currentframe())
+                msg = "{} Line: {}: ERROR: ".format(
+                    frameinfo.function, frameinfo.lineno,
+                )
+                sub_msg = "order.ccxt_order:"
+                print(msg + sub_msg)
+                print(json.dumps(order.ccxt_order, indent=self.indent))
+
+                msg = "{} Line: {}: INFO: ".format(
+                    frameinfo.function, frameinfo.lineno,
+                )
+                sub_msg = "pre-position:"
+                print(msg + sub_msg)
+                pprint(original_position)
+
+                msg = "{} Line: {}: DEBUG: ".format(
+                    frameinfo.function, frameinfo.lineno,
+                )
+                sub_msg = "post-position:"
+                print(msg + sub_msg)
+                pprint(position)
+
+                msg = "{} Line: {}: INFO: ".format(
+                    frameinfo.function, frameinfo.lineno,
+                )
+                ccxt_order_id = get_ccxt_order_id(self.exchange, order)
+                sub_msg = \
+                    "order id: \'{}\': price: {:.{}f} x opened:{:.{}f}/closed:{:.{}f}, size: {:.{}f}".format(
+                        ccxt_order_id,
+                        price, commission_info.price_digits,
+                        opened, commission_info.qty_digits,
+                        closed, commission_info.qty_digits,
+                        size, commission_info.qty_digits,
                     )
-                    raise ValueError(error_msg + sub_error_msg)
+                print(msg + sub_msg)
 
-                order.add_commission_info(commission_info)
-                if skip_notification == False:
-                    self.notify(order)
-
-                # Legality Check
-                throws_out_error = False
-                sub_error_msg = None
-                if order.symbol_id.endswith("USDT"):
-                    if order.position_type == backtrader.Position.LONG_POSITION:
-                        if position_size < 0.0:
-                            sub_error_msg = \
-                                "For {} position, size: {:.{}f} must be zero or positive!!!".format(
-                                    backtrader.Position.Position_Types[order.position_type],
-                                    position_size, commission_info.qty_digits,
-                                )
-                            throws_out_error = True
-                    else:
-                        # Validate assumption made
-                        assert order.position_type == backtrader.Position.SHORT_POSITION
-
-                        if position_size > 0.0:
-                            sub_error_msg = \
-                                "For {} position, size: {:.{}f} must be zero or negative!!!".format(
-                                    backtrader.Position.Position_Types[order.position_type],
-                                    position_size, commission_info.qty_digits,
-                                )
-                            throws_out_error = True
-
-                    if throws_out_error == True:
-                        legality_check_not_none_obj(
-                            sub_error_msg, "sub_error_msg")
-                        frameinfo = inspect.getframeinfo(
-                            inspect.currentframe())
-                        msg = "{} Line: {}: ERROR: ".format(
-                            frameinfo.function, frameinfo.lineno,
-                        )
-                        sub_msg = "order.ccxt_order:"
-                        print(msg + sub_msg)
-                        print(json.dumps(order.ccxt_order, indent=self.indent))
-
-                        msg = "{} Line: {}: INFO: ".format(
-                            frameinfo.function, frameinfo.lineno,
-                        )
-                        sub_msg = "pre-position:"
-                        print(msg + sub_msg)
-                        pprint(original_position)
-
-                        msg = "{} Line: {}: DEBUG: ".format(
-                            frameinfo.function, frameinfo.lineno,
-                        )
-                        sub_msg = "post-position:"
-                        print(msg + sub_msg)
-                        pprint(position)
-
-                        msg = "{} Line: {}: INFO: ".format(
-                            frameinfo.function, frameinfo.lineno,
-                        )
-                        ccxt_order_id = get_ccxt_order_id(order)
-                        sub_msg = \
-                            "order id: \'{}\': price: {:.{}f} x opened:{:.{}f}/closed:{:.{}f}, size: {:.{}f}".format(
-                                ccxt_order_id,
-                                price, commission_info.price_digits,
-                                opened, commission_info.qty_digits,
-                                closed, commission_info.qty_digits,
-                                size, commission_info.qty_digits,
-                            )
-                        print(msg + sub_msg)
-
-                        error_msg = "{}:".format(
-                            inspect.currentframe(),
-                        )
-                        raise ValueError(error_msg + sub_error_msg)
-                else:
-                    raise NotImplementedError(
-                        "symbol_id: {} is yet to be supported!!!".format(order.symbol_id))
+                error_msg = "{}:".format(
+                    inspect.currentframe(),
+                )
+                raise ValueError(error_msg + sub_error_msg)
+        else:
+            raise NotImplementedError(
+                "symbol_id: {} is yet to be supported!!!".format(order.symbol_id))
 
     def buy(self, owner, symbol_id, datafeed, size,
             # Optional Params
@@ -1344,8 +1461,8 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         legality_check_not_none_obj(order_intent, "order_intent")
         legality_check_not_none_obj(position_type, "position_type")
 
-        return self._submit(owner, datafeed, execution_type, 'buy', size, price, position_type, ordering_type,
-                            order_intent, simulated, kwargs)
+        return self._submit(owner, symbol_id, datafeed, execution_type, 'buy', size, price, position_type,
+                            ordering_type, order_intent, simulated, kwargs)
 
     def sell(self, owner, symbol_id, datafeed, size,
              # Optional Params
@@ -1365,8 +1482,8 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         legality_check_not_none_obj(order_intent, "order_intent")
         legality_check_not_none_obj(position_type, "position_type")
 
-        return self._submit(owner, datafeed, execution_type, 'sell', size, price, position_type, ordering_type,
-                            order_intent, simulated, kwargs)
+        return self._submit(owner, symbol_id, datafeed, execution_type, 'sell', size, price, position_type,
+                            ordering_type, order_intent, simulated, kwargs)
 
     def cancel(self, order):
         oID = order.ccxt_order['id']
@@ -2109,7 +2226,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         self._value = value if value else 0.0
         return balance
 
-    def get_position(self):
+    def get_value(self):
         return self._value
 
     @retry
@@ -2210,14 +2327,15 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
             if order is None:
                 # Exercise the longer time route @ Active Order
                 order = self._fetch_order_from_exchange(
-                    conditional_oid, symbol_id)
+                    conditional_oid, symbol_id, params)
         # If we are looking for Active Order
         else:
             # Validate assumption made
             legality_check_not_none_obj(order_id, "order_id")
 
             # Exercise the longer time route @ Active Order
-            order = self._fetch_order_from_exchange(order_id, symbol_id)
+            order = self._fetch_order_from_exchange(
+                order_id, symbol_id, params)
 
         # INFO: It is OK to have order is None here
         return order
@@ -2465,12 +2583,12 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         if str(self.exchange).lower() == BINANCE_EXCHANGE_ID:
             if self.market_type == CCXT__MARKET_TYPE__FUTURE:
                 get__response = self.exchange.fapiPrivate_get_positionside_dual()
-                if get__response['dualSidePosition'] == False:
+                if get__response['dualSidePosition'] != BINANCE__FUTURES__DEFAULT_DUAL_POSITION_MODE:
                     set_position_mode__dict = dict(
                         type=CCXT__MARKET_TYPES[self.market_type],
                     )
                     set__response = self.exchange.set_position_mode(
-                        hedged=True, params=set_position_mode__dict)
+                        hedged=BINANCE__FUTURES__DEFAULT_DUAL_POSITION_MODE, params=set_position_mode__dict)
                     # Confirmation
                     assert set__response['msg'] == "success"
 
@@ -2482,12 +2600,40 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                     )
                     sub_msg = "Adjusted Dual/Hedge Position Mode from {} -> {}".format(
                         False,
-                        True,
+                        BINANCE__FUTURES__DEFAULT_DUAL_POSITION_MODE,
                     )
                     print(msg + sub_msg)
                     pass
+            elif self.market_type == CCXT__MARKET_TYPE__SPOT:
+                # Do nothing here
+                pass
             else:
                 raise NotImplementedError()
         else:
             # Do nothing here
             pass
+
+    @retry
+    def _get_orderbook(self, symbol_id):
+        return self.exchange.fetchOrderBook(symbol=symbol_id)
+
+    def get_orderbook(self, symbol_id):
+        response = self._get_orderbook(symbol_id=symbol_id)
+        '''
+        Sample response:
+        {'asks': [[0.06398, 13.0],
+                  [0.064, 644.0],
+                  .
+                  .
+                  .
+                  [0.08939, 232861.0],
+                  [0.0895, 458091.0]],
+         'bids': [[0.06397, 1689.0],
+                  [0.0638, 859.0],
+                  .
+                  .
+                  .
+                  [0.06205, 452512.0],
+                  [0.06203, 208200.0]],
+        '''
+        return response

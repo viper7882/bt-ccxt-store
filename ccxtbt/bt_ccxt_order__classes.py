@@ -26,12 +26,14 @@ import datetime
 import inspect
 import json
 
-from .utils import dump_obj
+from ccxtbt.exchange.binance.binance__exchange__specifications import BINANCE_EXCHANGE_ID
+from ccxtbt.exchange.bybit.bybit__exchange__specifications import BYBIT_EXCHANGE_ID
 
 
 class BT_CCXT_Order(backtrader.OrderBase):
     params = dict(
         ccxt_order=None,
+        exchange_name=None,
         symbol_id=None,
         position_type=None,
         ordering_type=None,
@@ -39,82 +41,116 @@ class BT_CCXT_Order(backtrader.OrderBase):
     )
 
     def __init__(self):
+        # Legality Check
+        assert isinstance(self.p.ccxt_order, object)
+        assert isinstance(self.p.exchange_name, str)
+        assert isinstance(self.p.symbol_id, str)
+
+        if self.p.position_type not in range(len(backtrader.Position.Position_Types)):
+            raise ValueError("{}: {} position_type must be one of {}!!!".format(
+                inspect.currentframe(), self.p.position_type, range(len(backtrader.Position.Position_Types))))
+
+        if self.p.ordering_type not in range(len(self.Ordering_Types)):
+            raise ValueError("{} ordering_type must be one of {}!!!".format(
+                self.p.ordering_type, range(len(self.Ordering_Types))))
+
+        if self.p.order_intent not in range(len(self.Order_Intents)):
+            raise ValueError("{} order_intent must be one of {}!!!".format(
+                self.p.order_intent, range(len(self.Order_Intents))))
+
         self.executed_fills = []
         self.extract_from_ccxt_order(self.p.ccxt_order)
         self.indent = 4
 
         super(BT_CCXT_Order, self).__init__()
 
-        # Legality Check
-        if self.p.symbol_id.endswith("USDT"):
-            stop_out = False
-            if 'position_idx' in self.ccxt_order['info'].keys():
-                '''
-                0-One-Way Mode
-                1-Buy side of both side mode
-                2-Sell side of both side mode
-                '''
-                throws_out_error = False
-                if self.p.position_type == backtrader.Position.LONG_POSITION:
-                    if int(self.ccxt_order['info']['position_idx']) != 1:
-                        throws_out_error = True
+        if self.p.exchange_name == BYBIT_EXCHANGE_ID or self.p.exchange_name == BINANCE_EXCHANGE_ID:
+            # Legality Check
+            if self.p.symbol_id.endswith("USDT"):
+                stop_out = False
+                if 'position_idx' in self.ccxt_order['info'].keys():
+                    '''
+                    0-One-Way Mode
+                    1-Buy side of both side mode
+                    2-Sell side of both side mode
+                    '''
+                    throws_out_error = False
+                    point_of_reference = self.ccxt_order['info']['position_idx']
+                    if self.p.position_type == backtrader.Position.LONG_POSITION:
+                        if int(point_of_reference) != 1:
+                            throws_out_error = True
+                    else:
+                        # Validate assumption made
+                        assert self.p.position_type == backtrader.Position.SHORT_POSITION
+
+                        if int(point_of_reference) != 2:
+                            throws_out_error = True
+
+                    if throws_out_error == True:
+                        frameinfo = inspect.getframeinfo(
+                            inspect.currentframe())
+                        msg = "{} Line: {}: ERROR: {}: {}: For {} position vs position_idx: {}, ccxt_order:".format(
+                            frameinfo.function, frameinfo.lineno,
+                            self.ref,
+                            datetime.datetime.now().isoformat().replace(
+                                "T", " ")[:-3],
+                            backtrader.Position.Position_Types[self.p.position_type],
+                            point_of_reference,
+                        )
+                        print(msg)
+                        print(json.dumps(self.ccxt_order, indent=self.indent))
+                        stop_out = True
+
+                if self.p.exchange_name == BINANCE_EXCHANGE_ID:
+                    reduce_only_key = 'reduceOnly'
+                elif self.p.exchange_name == BYBIT_EXCHANGE_ID:
+                    reduce_only_key = 'reduce_only'
                 else:
+                    raise NotImplementedError(
+                        "{} exchange is yet to be supported!!!".format(self.p.exchange_name))
+
+                if reduce_only_key in self.ccxt_order['info'].keys():
+                    point_of_reference = self.ccxt_order['info'][reduce_only_key]
                     # Validate assumption made
-                    assert self.p.position_type == backtrader.Position.SHORT_POSITION
+                    assert isinstance(point_of_reference, bool)
 
-                    if int(self.ccxt_order['info']['position_idx']) != 2:
-                        throws_out_error = True
+                    throws_out_error = False
 
-                if throws_out_error == True:
-                    frameinfo = inspect.getframeinfo(inspect.currentframe())
-                    msg = "{} Line: {}: ERROR: {}: {}: For {} position vs position_idx: {}, ccxt_order:".format(
-                        frameinfo.function, frameinfo.lineno,
-                        self.ref,
-                        datetime.datetime.now().isoformat().replace(
-                            "T", " ")[:-3],
-                        backtrader.Position.Position_Types[self.p.position_type],
-                        self.ccxt_order['info']['position_idx'],
-                    )
-                    print(msg)
-                    print(json.dumps(self.ccxt_order, indent=self.indent))
-                    stop_out = True
+                    if self.p.order_intent == backtrader.Order.Entry_Order:
+                        if point_of_reference != False:
+                            throws_out_error = True
+                    else:
+                        # Validate assumption made
+                        assert self.p.order_intent == backtrader.Order.Exit_Order
 
-            if 'reduce_only' in self.ccxt_order['info'].keys():
-                # Validate assumption made
-                assert isinstance(self.ccxt_order['info']['reduce_only'], bool)
+                        if point_of_reference != True:
+                            throws_out_error = True
 
-                throws_out_error = False
+                    if throws_out_error == True:
+                        frameinfo = inspect.getframeinfo(
+                            inspect.currentframe())
+                        msg = "{} Line: {}: ERROR: {}: {}: For {} order_intent vs {}: {}, ccxt_order:".format(
+                            frameinfo.function, frameinfo.lineno,
+                            self.ref,
+                            datetime.datetime.now().isoformat().replace(
+                                "T", " ")[:-3],
+                            self.order_intent_name(),
+                            reduce_only_key,
+                            point_of_reference,
+                        )
+                        print(msg)
+                        print(json.dumps(self.ccxt_order, indent=self.indent))
+                        stop_out = True
 
-                if self.p.order_intent == backtrader.Order.Entry_Order:
-                    if self.ccxt_order['info']['reduce_only'] != False:
-                        throws_out_error = True
-                else:
-                    # Validate assumption made
-                    assert self.p.order_intent == backtrader.Order.Exit_Order
-
-                    if self.ccxt_order['info']['reduce_only'] != True:
-                        throws_out_error = True
-
-                if throws_out_error == True:
-                    frameinfo = inspect.getframeinfo(inspect.currentframe())
-                    msg = "{} Line: {}: ERROR: {}: {}: For {} order_intent vs reduce_only: {}, ccxt_order:".format(
-                        frameinfo.function, frameinfo.lineno,
-                        self.ref,
-                        datetime.datetime.now().isoformat().replace(
-                            "T", " ")[:-3],
-                        self.order_intent_name(),
-                        self.ccxt_order['info']['reduce_only'],
-                    )
-                    print(msg)
-                    print(json.dumps(self.ccxt_order, indent=self.indent))
-                    stop_out = True
-
-            if stop_out == True:
-                raise RuntimeError(
-                    "Abort due to at least one error is found...")
+                if stop_out == True:
+                    raise RuntimeError(
+                        "Abort due to at least one error is found...")
+            else:
+                raise NotImplementedError(
+                    "symbol_id: {} is yet to be supported!!!".format(self.p.symbol_id))
         else:
             raise NotImplementedError(
-                "symbol_id: {} is yet to be supported!!!".format(self.p.symbol_id))
+                "{} exchange is yet to be supported!!!".format(self.p.exchange_name))
 
     def extract_from_ccxt_order(self, ccxt_order):
         self.ccxt_order = ccxt_order
@@ -161,18 +197,30 @@ class BT_CCXT_Order(backtrader.OrderBase):
         else:
             self.remaining = 0.0
 
-        # WARNING: The following code could be Bybit-specific
-        if 'order_status' in ccxt_order['info'].keys():
-            if ccxt_order['info']['order_status'] is not None:
-                if ccxt_order['info']['order_status'].lower() == "triggered":
-                    self.triggered = True
+        if ccxt_order['stopPrice'] is not None:
+            if float(ccxt_order['stopPrice']) != 0.0:
+                if self.p.exchange_name == BINANCE_EXCHANGE_ID:
+                    if 'status' in ccxt_order['info'].keys():
+                        if ccxt_order['info']['status'] is not None:
+                            if ccxt_order['info']['status'].upper() != "NEW":
+                                self.triggered = True
+                    pass
+                elif self.p.exchange_name == BYBIT_EXCHANGE_ID:
+                    if 'order_status' in ccxt_order['info'].keys():
+                        if ccxt_order['info']['order_status'] is not None:
+                            if ccxt_order['info']['order_status'].lower() == "triggered":
+                                self.triggered = True
+                else:
+                    raise NotImplementedError(
+                        "{} exchange is yet to be supported!!!".format(self.p.exchange_name))
 
     def __repr__(self):
         return str(self)
 
     def __str__(self):
         tojoin = list()
-        tojoin.append('datafeed: {}'.format(self.p.datafeed._name))
+        if self.p.datafeed is not None:
+            tojoin.append('datafeed: {}'.format(self.p.datafeed._name))
         tojoin.append('id: \'{}\''.format(self.ccxt_id))
         tojoin.append('{}: Position'.format(
             backtrader.Position.Position_Types[self.p.position_type]))

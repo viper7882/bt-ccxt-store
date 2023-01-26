@@ -18,8 +18,8 @@ class Binance__bt_ccxt_account_or_store__Prepare_Account__TestCases(unittest.Tes
     def setUp(self):
         try:
             self.exchange_dropdown_value = BINANCE_EXCHANGE_ID
-            self.market_types = [
-                CCXT__MARKET_TYPE__FUTURE, CCXT__MARKET_TYPE__SPOT]
+            self.market_types = \
+                [CCXT__MARKET_TYPE__FUTURE, CCXT__MARKET_TYPE__SPOT]
             # self.market_types = [CCXT__MARKET_TYPE__SPOT]
 
             self.main_net_toggle_switch_value = False

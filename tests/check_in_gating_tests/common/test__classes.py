@@ -6,15 +6,14 @@ from ccxtbt.utils import get_digits, truncate
 class FAKE_EXCHANGE(object):
     def __init__(self, owner):
         self.owner = owner
-
-    def add_commission_info(self, commission_info):
-        self.commission_info = commission_info
-
-    def get_commission_info(self):
-        return self.commission_info
+        self.accounts_or_stores = []
 
     def get_ohlcv_provider__account_or_store(self):
         return self.owner
+
+    def add__account_or_store(self, account_or_store):
+        if account_or_store not in self.accounts_or_stores:
+            self.accounts_or_stores.append(account_or_store)
 
 
 class FAKE_COMMISSION_INFO(object):
@@ -23,13 +22,12 @@ class FAKE_COMMISSION_INFO(object):
         for key, val in params.items():
             setattr(self, key, val)
 
-        if self.symbol_id == "ETHUSDT":
-            self.symbol_tick_size = 0.05
-            self.price_digits = get_digits(self.symbol_tick_size)
-            self.qty_step = 0.01
-            self.qty_digits = get_digits(self.qty_step)
-        else:
-            raise NotImplementedError()
+        # Alias
+        STANDARD_ATTRIBUTES = ['tick_size',
+                               'price_digits', 'qty_step', 'qty_digits']
+        for standard_attribute in STANDARD_ATTRIBUTES:
+            setattr(self, standard_attribute, getattr(
+                self.instrument, standard_attribute))
 
     def get_value_size(self, size, price):
         '''
@@ -39,7 +37,8 @@ class FAKE_COMMISSION_INFO(object):
         '''
         valuesize = 0.0
         if size:
-            valuesize = truncate(abs(size) * price, VALUE_DIGITS)
+            valuesize = truncate(
+                abs(size) * price, self.instrument.value_digits)
         return valuesize
 
     def _get_commission_rate(self, size, price, pseudoexec):
@@ -53,7 +52,7 @@ class FAKE_COMMISSION_INFO(object):
         assert isinstance(price, float)
         if ((pseudoexec == False) and (price <= 0.0)):
             raise ValueError("Price: {:.{}f} cannot be zero or negative! Size is {:.{}f}, pseudoexec: {}"
-                             .format(price, self.price_digits, size, self.qty_digits, pseudoexec))
+                             .format(price, self.instrument.price_digits, size, self.instrument.qty_digits, pseudoexec))
 
         # Order Cost: https://help.bybit.com/hc/en-us/articles/900000169703-Order-Cost-USDT-Contract-
         commission_in_coin_refer = truncate(
@@ -64,3 +63,26 @@ class FAKE_COMMISSION_INFO(object):
         '''Calculates the commission of an operation at a given price
         '''
         return self._get_commission_rate(size, price, pseudoexec=True)
+
+    def profit_and_loss(self, size, price, new_price):
+        '''
+        Return actual profit and loss a position has
+
+            size (int): amount to update the position size
+                size < 0: A sell operation has taken place
+                size > 0: A buy operation has taken place
+        '''
+        profit_and_loss_amount = 0.0
+        if size:
+            if new_price and price and new_price != price:
+                # Reference: https://help.bybit.com/hc/en-us/articles/900000630066-P-L-calculations-USDT-Contract-
+                # INFO: Unrealized P&L
+                if size > 0:
+                    # Buy operation
+                    profit_and_loss_amount = truncate(
+                        size * (new_price - price), self.instrument.value_digits)
+                else:
+                    # Sell operation
+                    profit_and_loss_amount = truncate(
+                        abs(size) * (price - new_price), self.instrument.value_digits)
+        return profit_and_loss_amount

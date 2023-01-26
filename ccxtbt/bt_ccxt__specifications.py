@@ -44,9 +44,23 @@ symbol_stationary__dict_template = dict(
     symbol_id=None,
     symbol_name=None,
 
+    # Transaction Fee
     taker_fee=None,
     maker_fee=None,
+
+    # Price
     tick_size=None,
+    price_digits=None,
+
+    # Lot size
+    qty_step=None,
+    min_qty=None,
+    max_qty=None,
+    qty_digits=None,
+
+    # Cost/Value
+    min_notional=None,
+    value_digits=None,
 
     # Leverage
     min_leverage=None,
@@ -54,12 +68,4 @@ symbol_stationary__dict_template = dict(
 
     # Risk Limit
     risk_limit=None,  # To be filled with risk_limit__dict_template should it exists
-
-    # Lot size
-    lot_size_qty_step=None,
-    lot_size_min_qty=None,
-    lot_size_max_qty=None,
 )
-
-STANDARD_ATTRIBUTES = ['symbol_tick_size',
-                       'price_digits', 'qty_step', 'qty_digits']

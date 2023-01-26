@@ -32,7 +32,7 @@ class Exchange_HTTP_Parser(Wecoz, ABC):
 
         # Legality Check
         if self.market_type not in range(len(CCXT__MARKET_TYPES)):
-            raise RuntimeError("{}: {} market_type must be one of {}!!!".format(
+            raise ValueError("{}: {} market_type must be one of {}!!!".format(
                 inspect.currentframe(),
                 self.market_type, range(len(CCXT__MARKET_TYPES))))
 

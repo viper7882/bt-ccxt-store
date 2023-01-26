@@ -1,28 +1,22 @@
 import backtrader
 import datetime
 import inspect
-import json
 import threading
-import time
 import traceback
 import unittest
 
 from time import time as timer
 from pprint import pprint
 
-from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPES, CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP, CCXT__MARKET_TYPE__SPOT, \
-    MAX_LIVE_EXCHANGE_RETRIES
-from ccxtbt.bt_ccxt_account_or_store__classes import BT_CCXT_Account_or_Store
+from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP, CCXT__MARKET_TYPE__SPOT
 from ccxtbt.bt_ccxt_feed__classes import BT_CCXT_Feed
-from ccxtbt.bt_ccxt_instrument__classes import BT_CCXT_Instrument
 from ccxtbt.bt_ccxt_order__classes import BT_CCXT_Order
 from ccxtbt.exchange.bybit.bybit__exchange__specifications import BYBIT_EXCHANGE_ID, BYBIT_OHLCV_LIMIT
 from ccxtbt.exchange.bybit.bybit__exchange__helper import get_wallet_currency
-from ccxtbt.exchange.exchange__helper import get_api_and_secret_file_path
-from ccxtbt.utils import get_time_diff, legality_check_not_none_obj
+from ccxtbt.utils import get_time_diff
 
-from check_in_gating_tests.common.test__classes import FAKE_EXCHANGE
-from check_in_gating_tests.common.test__helper import get_commission_info, handle_datafeed, reverse_engineer__ccxt_order
+from check_in_gating_tests.common.test__helper import ut__construct_standalone_account_or_store, \
+    ut__construct_standalone_instrument, ut_handle_datafeed, reverse_engineer__ccxt_order
 
 
 class Bybit__bt_ccxt_account_or_store__Static_Orders__TestCases(unittest.TestCase):
@@ -40,322 +34,290 @@ class Bybit__bt_ccxt_account_or_store__Static_Orders__TestCases(unittest.TestCas
             # WARNING: Avoid assigning market_type to CCXT__MARKET_TYPE__SPOT and run all check in tests altogether.
             #          Doing so will cause _fetch_opened_positions_from_exchange to mix up between swap and spot market
             #          and eventually causing whole bunch of "invalid symbols" error
-            # market_type = CCXT__MARKET_TYPE__SPOT
             market_type = CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP
 
-            initial__capital_reservation__value = 0.0
-            leverage_in_percent = 50.0
-            is_ohlcv_provider = False
-            enable_rate_limit = True
-            account__thread__connectivity__lock = threading.Lock()
+            self.initial__capital_reservation__value = 0.0
+            self.leverage_in_percent = 50.0
+            self.is_ohlcv_provider = False
+            self.enable_rate_limit = True
+            self.account__thread__connectivity__lock = threading.Lock()
+
             self.symbol_id = "ETHUSDT"
-            symbols_id = [self.symbol_id]
+            self.symbols_id = [self.symbol_id]
+            self.wallet_currency = get_wallet_currency(self.symbols_id[0])
 
-            api_and_secret_file_path__dict = dict(
-                exchange_dropdown_value=self.exchange_dropdown_value,
+            enable_rate_limit = self.enable_rate_limit
+            initial__capital_reservation__value = self.initial__capital_reservation__value
+            is_ohlcv_provider = self.is_ohlcv_provider
+            account__thread__connectivity__lock = self.account__thread__connectivity__lock
+            leverage_in_percent = self.leverage_in_percent
+            main_net_toggle_switch_value = self.main_net_toggle_switch_value
+            exchange_dropdown_value = self.exchange_dropdown_value
+            isolated_toggle_switch_value = self.isolated_toggle_switch_value
+            wallet_currency = self.wallet_currency
+
+            # INFO: Construct the components
+            construct_standalone_account_or_store__dict = dict(
+                exchange_dropdown_value=exchange_dropdown_value,
+                main_net_toggle_switch_value=main_net_toggle_switch_value,
                 market_type=market_type,
-                main_net_toggle_switch_value=self.main_net_toggle_switch_value,
-            )
-            api_key_and_secret_full_path = get_api_and_secret_file_path(
-                **api_and_secret_file_path__dict)
-
-            commission = 0.0006
-            leverage_in_percent = 50.0
-            get_commission_info__dict = dict(
-                symbol_id=self.symbol_id,
-                isolated_toggle_switch_value=self.isolated_toggle_switch_value,
+                symbols_id=self.symbols_id,
+                enable_rate_limit=enable_rate_limit,
+                initial__capital_reservation__value=initial__capital_reservation__value,
+                is_ohlcv_provider=is_ohlcv_provider,
+                account__thread__connectivity__lock=account__thread__connectivity__lock,
                 leverage_in_percent=leverage_in_percent,
-                commission=commission,
+                wallet_currency=wallet_currency,
             )
-            commission_info = get_commission_info(
-                params=get_commission_info__dict)
+            (self.bt_ccxt_account_or_store, _, ) = \
+                ut__construct_standalone_account_or_store(
+                    params=construct_standalone_account_or_store__dict)
 
-            with open(api_key_and_secret_full_path, "r") as file_to_read:
-                json_data = json.load(file_to_read)
-                api_key = json_data['key']
-                api_secret = json_data['secret']
-                account_alias__dropdown_value = json_data['account_alias__dropdown_value']
-
-                ccxt_market_type_name = CCXT__MARKET_TYPES[market_type]
-
-                exchange_specific_config = dict(
-                    apiKey=api_key,
-                    secret=api_secret,
-                    nonce=lambda: str(int(time.time() * 1000)),
-                    enableRateLimit=enable_rate_limit,
-                    type=ccxt_market_type_name,
-
-                    account_alias=account_alias__dropdown_value,
-                    account_type=account_type_name,
-                    market_type=market_type,
-                )
-
-                account_or_store__dict = dict(
-                    main_net_toggle_switch_value=self.main_net_toggle_switch_value,
-                    config=exchange_specific_config,
-                    initial__capital_reservation__value=initial__capital_reservation__value,
-                    is_ohlcv_provider=is_ohlcv_provider,
+            for symbol_id in self.symbols_id:
+                construct_standalone_instrument__dict = dict(
+                    bt_ccxt_account_or_store=self.bt_ccxt_account_or_store,
+                    isolated_toggle_switch_value=isolated_toggle_switch_value,
                     leverage_in_percent=leverage_in_percent,
+                    market_type=market_type,
+                    symbol_id=symbol_id,
                 )
+                instrument = \
+                    ut__construct_standalone_instrument(
+                        params=construct_standalone_instrument__dict)
+                commission_info = instrument.get_commission_info()
 
-                wallet_currency = get_wallet_currency(self.symbol_id)
-                # INFO: Live-specific Params
-                account_or_store__dict.update(dict(
-                    exchange_dropdown_value=self.exchange_dropdown_value,
-                    wallet_currency=wallet_currency.upper(),
-                    retries=MAX_LIVE_EXCHANGE_RETRIES,
-                    symbols_id=symbols_id,
-                    account__thread__connectivity__lock=account__thread__connectivity__lock,
+                # INFO: Create Long and Short datafeeds
+                convert_to_heikin_ashi = False
+                drop_newest = True
+                historical = False
+                granularity_compression = 1
+                granularity_timeframe = backtrader.TimeFrame.Minutes
 
-                    # # TODO: Debug Use
+                # TODO: User to customize the entries below
+                self.primary_entry_price = 1193.55
+                self.primary_entry_qty = -1.03
+
+                self.hedging_entry_price = 1195.4
+                self.hedging_entry_qty = 1.78
+
+                start_date = \
+                    datetime.datetime.utcnow() - datetime.timedelta(minutes=granularity_compression + 1)
+
+                datafeed__dict = dict(
+                    dataname=symbol_id,
+                    timeframe=granularity_timeframe,
+                    compression=granularity_compression,
+                    ohlcv_limit=BYBIT_OHLCV_LIMIT,
+
+                    convert_to_heikin_ashi=convert_to_heikin_ashi,
+                    tick_size=commission_info.tick_size,
+                    price_digits=commission_info.price_digits,
+
+                    fromdate=start_date,
+                    drop_newest=drop_newest,
+
+                    # INFO: If historical is True, the strategy will not enter into next()
+                    historical=historical,
+
                     # debug=True,
+                )
+                datafeed__dict.update(dict(
+                    name="Long",
                 ))
+                self.long_bb_data = BT_CCXT_Feed(**datafeed__dict)
+                self.long_bb_data.set__parent(instrument)
+                ut_handle_datafeed(self.long_bb_data,
+                                   price=self.hedging_entry_price)
 
-                self.bt_ccxt_account_or_store = BT_CCXT_Account_or_Store(
-                    **account_or_store__dict)
+                datafeed__dict.update(dict(
+                    name="Short",
+                ))
+                self.short_bb_data = BT_CCXT_Feed(**datafeed__dict)
+                self.short_bb_data.set__parent(instrument)
+                ut_handle_datafeed(self.short_bb_data,
+                                   price=self.primary_entry_price)
 
-                fake_exchange = FAKE_EXCHANGE(
-                    owner=self.bt_ccxt_account_or_store)
-                fake_exchange.add_commission_info(commission_info)
-                self.bt_ccxt_account_or_store.set__parent(fake_exchange)
-
-            legality_check_not_none_obj(
-                self.bt_ccxt_account_or_store, "self.bt_ccxt_account_or_store")
-
-            bt_ccxt_instrument__dict = dict(
-                symbol_id=self.symbol_id,
-            )
-            instrument = BT_CCXT_Instrument(**bt_ccxt_instrument__dict)
-            instrument.set__parent(self.bt_ccxt_account_or_store)
-            self.bt_ccxt_account_or_store.add__instrument(instrument)
-
-            # INFO: Create Long and Short datafeeds
-            convert_to_heikin_ashi = False
-            drop_newest = True
-            historical = False
-            granularity_compression = 1
-            granularity_timeframe = backtrader.TimeFrame.Minutes
-
-            # TODO: User to customize the entries below
-            self.primary_entry_price = 1193.55
-            self.primary_entry_qty = -1.03
-
-            self.hedging_entry_price = 1195.4
-            self.hedging_entry_qty = 1.78
-
-            start_date = datetime.datetime.utcnow(
-            ) - datetime.timedelta(minutes=granularity_compression + 1)
-
-            datafeed__dict = dict(
-                dataname=self.symbol_id,
-                timeframe=granularity_timeframe,
-                compression=granularity_compression,
-                ohlcv_limit=BYBIT_OHLCV_LIMIT,
-
-                convert_to_heikin_ashi=convert_to_heikin_ashi,
-                symbol_tick_size=commission_info.symbol_tick_size,
-                price_digits=commission_info.price_digits,
-
-                fromdate=start_date,
-                drop_newest=drop_newest,
-
-                # INFO: If historical is True, the strategy will not enter into next()
-                historical=historical,
-
-                # # TODO: Debug Use
-                # debug=True,
-            )
-            datafeed__dict.update(dict(
-                name="Long",
-            ))
-            self.long_bb_data = BT_CCXT_Feed(**datafeed__dict)
-            self.long_bb_data.set__parent(instrument)
-            handle_datafeed(self.long_bb_data, price=self.hedging_entry_price)
-
-            datafeed__dict.update(dict(
-                name="Short",
-            ))
-            self.short_bb_data = BT_CCXT_Feed(**datafeed__dict)
-            self.short_bb_data.set__parent(instrument)
-            handle_datafeed(self.short_bb_data, price=self.primary_entry_price)
-
-            primary_entry__ccxt_order = \
-                {
-                    "info": {
-                        "order_id": "41992e55-3ed8-4ea0-80f6-085a36e73d86",
-                        "last_exec_price": "1193.55",
-                        "cum_exec_qty": "{}".format(abs(self.primary_entry_qty)),
-                        "cum_exec_value": "1229.3565",
-                        "cum_exec_fee": "0.7376139",
-                        "user_id": "660978",
-                        "symbol": "ETHUSDT",
-                        "side": "Sell",
-                        "order_type": "Limit",
-                        "time_in_force": "GoodTillCancel",
-                        "order_status": "Filled",
-                        "tp_trigger_by": "UNKNOWN",
-                        "sl_trigger_by": "UNKNOWN",
-                        "price": "{}".format(self.primary_entry_price),
-                        "qty": "{}".format(abs(self.primary_entry_qty)),
-                        "order_link_id": "",
-                        "reduce_only": False,
-                        "close_on_trigger": False,
-                        "take_profit": "0",
-                        "stop_loss": "0",
-                        "created_time": "2022-12-28T11:55:13Z",
-                        "updated_time": "2022-12-28T11:55:13Z"
-                    },
-                    "id": "41992e55-3ed8-4ea0-80f6-085a36e73d86",
-                    "clientOrderId": None,
-                    "timestamp": 1672228513000,
-                    "datetime": "2022-12-28T11:55:13.000Z",
-                    "lastTradeTimestamp": 1672228513000,
-                    "symbol": "ETH/USDT:USDT",
-                    "type": "limit",
-                    "timeInForce": "GTC",
-                    "postOnly": False,
-                    "side": "sell",
-                    "price": self.primary_entry_price,
-                    "stopPrice": None,
-                    "amount": abs(self.primary_entry_qty),
-                    "cost": 1229.3565,
-                    "average": self.primary_entry_price,
-                    "filled": abs(self.primary_entry_qty),
-                    "remaining": 0.0,
-                    "status": "closed",
-                    "fee": {
-                        "cost": 0.7376139,
-                        "currency": "USDT"
-                    },
-                    "trades": [],
-                    "fees": [
-                        {
+                primary_entry__ccxt_order = \
+                    {
+                        "info": {
+                            "order_id": "41992e55-3ed8-4ea0-80f6-085a36e73d86",
+                            "last_exec_price": "1193.55",
+                            "cum_exec_qty": "{}".format(abs(self.primary_entry_qty)),
+                            "cum_exec_value": "1229.3565",
+                            "cum_exec_fee": "0.7376139",
+                            "user_id": "660978",
+                            "symbol": "ETHUSDT",
+                            "side": "Sell",
+                            "order_type": "Limit",
+                            "time_in_force": "GoodTillCancel",
+                            "order_status": "Filled",
+                            "tp_trigger_by": "UNKNOWN",
+                            "sl_trigger_by": "UNKNOWN",
+                            "price": "{}".format(self.primary_entry_price),
+                            "qty": "{}".format(abs(self.primary_entry_qty)),
+                            "order_link_id": "",
+                            "reduce_only": False,
+                            "close_on_trigger": False,
+                            "take_profit": "0",
+                            "stop_loss": "0",
+                            "created_time": "2022-12-28T11:55:13Z",
+                            "updated_time": "2022-12-28T11:55:13Z"
+                        },
+                        "id": "41992e55-3ed8-4ea0-80f6-085a36e73d86",
+                        "clientOrderId": None,
+                        "timestamp": 1672228513000,
+                        "datetime": "2022-12-28T11:55:13.000Z",
+                        "lastTradeTimestamp": 1672228513000,
+                        "symbol": "ETH/USDT:USDT",
+                        "type": "limit",
+                        "timeInForce": "GTC",
+                        "postOnly": False,
+                        "side": "sell",
+                        "price": self.primary_entry_price,
+                        "stopPrice": None,
+                        "amount": abs(self.primary_entry_qty),
+                        "cost": 1229.3565,
+                        "average": self.primary_entry_price,
+                        "filled": abs(self.primary_entry_qty),
+                        "remaining": 0.0,
+                        "status": "closed",
+                        "fee": {
                             "cost": 0.7376139,
                             "currency": "USDT"
-                        }
-                    ]
-                }
+                        },
+                        "trades": [],
+                        "fees": [
+                            {
+                                "cost": 0.7376139,
+                                "currency": "USDT"
+                            }
+                        ]
+                    }
 
-            bt_ccxt_order__dict = dict(
-                owner=self,
-                position_type=backtrader.Position.SHORT_POSITION,
-                datafeed=self.short_bb_data,
-                ccxt_order=primary_entry__ccxt_order,
-                symbol_id=self.symbol_id,
-            )
-            bt_ccxt_order__dict = reverse_engineer__ccxt_order(
-                bt_ccxt_order__dict)
-            self.primary_entry_order = BT_CCXT_Order(**bt_ccxt_order__dict)
+                bt_ccxt_order__dict = dict(
+                    owner=self,
+                    exchange_name=str(
+                        self.bt_ccxt_account_or_store.exchange).lower(),
+                    symbol_id=symbol_id,
+                    position_type=backtrader.Position.SHORT_POSITION,
+                    datafeed=self.short_bb_data,
+                    ccxt_order=primary_entry__ccxt_order,
+                )
+                bt_ccxt_order__dict = reverse_engineer__ccxt_order(
+                    self.bt_ccxt_account_or_store.exchange, bt_ccxt_order__dict)
+                self.primary_entry_order = BT_CCXT_Order(**bt_ccxt_order__dict)
 
-            offset_entry__ccxt_order = \
-                {
-                    "info": {
-                        "stop_order_id": "823f4c52-2be2-4fb2-9231-fd3281733e5f",
-                        "trigger_price": "{}".format(self.hedging_entry_price),
-                        "base_price": "1193.55",
-                        "trigger_by": "LastPrice",
-                        "user_id": "660978",
-                        "symbol": "ETHUSDT",
-                        "side": "Buy",
-                        "order_type": "Limit",
-                        "time_in_force": "GoodTillCancel",
-                        "order_status": "Untriggered",
-                        "tp_trigger_by": "UNKNOWN",
-                        "sl_trigger_by": "UNKNOWN",
-                        "price": "{}".format(self.hedging_entry_price),
-                        "qty": "{}".format(abs(self.primary_entry_qty)),
-                        "order_link_id": "",
-                        "reduce_only": False,
-                        "close_on_trigger": False,
-                        "take_profit": "0",
-                        "stop_loss": "0",
-                        "created_time": "2022-12-28T11:55:14Z",
-                        "updated_time": "2022-12-28T14:50:47Z"
-                    },
-                    "id": "823f4c52-2be2-4fb2-9231-fd3281733e5f",
-                    "clientOrderId": None,
-                    "timestamp": 1672228514000,
-                    "datetime": "2022-12-28T11:55:14.000Z",
-                    "lastTradeTimestamp": 1672239047000,
-                    "symbol": "ETH/USDT:USDT",
-                    "type": "limit",
-                    "timeInForce": "GTC",
-                    "postOnly": False,
-                    "side": "buy",
-                    "price": self.hedging_entry_price,
-                    "stopPrice": "{}".format(self.hedging_entry_price),
-                    "amount": abs(self.primary_entry_qty),
-                    "cost": None,
-                    "average": None,
-                    "filled": None,
-                    "remaining": None,
-                    "status": "open",
-                    "fee": None,
-                    "trades": [],
-                    "fees": []
-                }
+                offset_entry__ccxt_order = \
+                    {
+                        "info": {
+                            "stop_order_id": "823f4c52-2be2-4fb2-9231-fd3281733e5f",
+                            "trigger_price": "{}".format(self.hedging_entry_price),
+                            "base_price": "1193.55",
+                            "trigger_by": "LastPrice",
+                            "user_id": "660978",
+                            "symbol": "ETHUSDT",
+                            "side": "Buy",
+                            "order_type": "Limit",
+                            "time_in_force": "GoodTillCancel",
+                            "order_status": "Untriggered",
+                            "tp_trigger_by": "UNKNOWN",
+                            "sl_trigger_by": "UNKNOWN",
+                            "price": "{}".format(self.hedging_entry_price),
+                            "qty": "{}".format(abs(self.primary_entry_qty)),
+                            "order_link_id": "",
+                            "reduce_only": False,
+                            "close_on_trigger": False,
+                            "take_profit": "0",
+                            "stop_loss": "0",
+                            "created_time": "2022-12-28T11:55:14Z",
+                            "updated_time": "2022-12-28T14:50:47Z"
+                        },
+                        "id": "823f4c52-2be2-4fb2-9231-fd3281733e5f",
+                        "clientOrderId": None,
+                        "timestamp": 1672228514000,
+                        "datetime": "2022-12-28T11:55:14.000Z",
+                        "lastTradeTimestamp": 1672239047000,
+                        "symbol": "ETH/USDT:USDT",
+                        "type": "limit",
+                        "timeInForce": "GTC",
+                        "postOnly": False,
+                        "side": "buy",
+                        "price": self.hedging_entry_price,
+                        "stopPrice": "{}".format(self.hedging_entry_price),
+                        "amount": abs(self.primary_entry_qty),
+                        "cost": None,
+                        "average": None,
+                        "filled": None,
+                        "remaining": None,
+                        "status": "open",
+                        "fee": None,
+                        "trades": [],
+                        "fees": []
+                    }
 
-            # INFO: The later CCXT order that has been updated with new size which will be returned by exchange
-            self.hedging_entry__ccxt_order = \
-                {
-                    "info": {
-                        "stop_order_id": "823f4c52-2be2-4fb2-9231-fd3281733e5f",
-                        "trigger_price": "{}".format(self.hedging_entry_price),
-                        "base_price": "1193.55",
-                        "trigger_by": "LastPrice",
-                        "user_id": "660978",
-                        "symbol": "ETHUSDT",
-                        "side": "Buy",
-                        "order_type": "Limit",
-                        "time_in_force": "GoodTillCancel",
-                        "order_status": "Filled",
-                        "tp_trigger_by": "UNKNOWN",
-                        "sl_trigger_by": "UNKNOWN",
-                        "price": "{}".format(self.hedging_entry_price),
-                        "qty": "{}".format(abs(self.hedging_entry_qty)),
-                        "order_link_id": "",
-                        "reduce_only": False,
-                        "close_on_trigger": False,
-                        "take_profit": "0",
-                        "stop_loss": "0",
-                        "created_time": "2022-12-28T11:55:14Z",
-                        "updated_time": "2022-12-28T14:50:47Z"
-                    },
-                    "id": "823f4c52-2be2-4fb2-9231-fd3281733e5f",
-                    "clientOrderId": None,
-                    "timestamp": 1672228514000,
-                    "datetime": "2022-12-28T11:55:14.000Z",
-                    "lastTradeTimestamp": 1672239047000,
-                    "symbol": "ETH/USDT:USDT",
-                    "type": "limit",
-                    "timeInForce": "GTC",
-                    "postOnly": False,
-                    "side": "buy",
-                    "price": self.hedging_entry_price,
-                    "stopPrice": "{}".format(self.hedging_entry_price),
-                    "amount": abs(self.hedging_entry_qty),
-                    "cost": None,
-                    "average": None,
-                    "filled": None,
-                    "remaining": None,
-                    "status": "closed",
-                    "fee": None,
-                    "trades": [],
-                    "fees": []
-                }
+                # INFO: The later CCXT order that has been updated with new size which will be returned by exchange
+                self.hedging_entry__ccxt_order = \
+                    {
+                        "info": {
+                            "stop_order_id": "823f4c52-2be2-4fb2-9231-fd3281733e5f",
+                            "trigger_price": "{}".format(self.hedging_entry_price),
+                            "base_price": "1193.55",
+                            "trigger_by": "LastPrice",
+                            "user_id": "660978",
+                            "symbol": "ETHUSDT",
+                            "side": "Buy",
+                            "order_type": "Limit",
+                            "time_in_force": "GoodTillCancel",
+                            "order_status": "Filled",
+                            "tp_trigger_by": "UNKNOWN",
+                            "sl_trigger_by": "UNKNOWN",
+                            "price": "{}".format(self.hedging_entry_price),
+                            "qty": "{}".format(abs(self.hedging_entry_qty)),
+                            "order_link_id": "",
+                            "reduce_only": False,
+                            "close_on_trigger": False,
+                            "take_profit": "0",
+                            "stop_loss": "0",
+                            "created_time": "2022-12-28T11:55:14Z",
+                            "updated_time": "2022-12-28T14:50:47Z"
+                        },
+                        "id": "823f4c52-2be2-4fb2-9231-fd3281733e5f",
+                        "clientOrderId": None,
+                        "timestamp": 1672228514000,
+                        "datetime": "2022-12-28T11:55:14.000Z",
+                        "lastTradeTimestamp": 1672239047000,
+                        "symbol": "ETH/USDT:USDT",
+                        "type": "limit",
+                        "timeInForce": "GTC",
+                        "postOnly": False,
+                        "side": "buy",
+                        "price": self.hedging_entry_price,
+                        "stopPrice": "{}".format(self.hedging_entry_price),
+                        "amount": abs(self.hedging_entry_qty),
+                        "cost": None,
+                        "average": None,
+                        "filled": None,
+                        "remaining": None,
+                        "status": "closed",
+                        "fee": None,
+                        "trades": [],
+                        "fees": []
+                    }
 
-            # INFO: Ideal situation
-            bt_ccxt_order__dict = dict(
-                owner=self,
-                position_type=backtrader.Position.LONG_POSITION,
-                datafeed=self.long_bb_data,
-                ccxt_order=offset_entry__ccxt_order,
-                # ccxt_order=hedging_entry__ccxt_order,
-                symbol_id=self.symbol_id,
-            )
-            bt_ccxt_order__dict = reverse_engineer__ccxt_order(
-                bt_ccxt_order__dict)
-            self.hedging_entry_order = BT_CCXT_Order(**bt_ccxt_order__dict)
+                # INFO: Ideal situation
+                bt_ccxt_order__dict = dict(
+                    owner=self,
+                    exchange_name=str(
+                        self.bt_ccxt_account_or_store.exchange).lower(),
+                    symbol_id=symbol_id,
+                    position_type=backtrader.Position.LONG_POSITION,
+                    datafeed=self.long_bb_data,
+                    ccxt_order=offset_entry__ccxt_order,
+                    # ccxt_order=hedging_entry__ccxt_order,
+                )
+                bt_ccxt_order__dict = reverse_engineer__ccxt_order(
+                    self.bt_ccxt_account_or_store.exchange, bt_ccxt_order__dict)
+                self.hedging_entry_order = BT_CCXT_Order(**bt_ccxt_order__dict)
 
         except Exception:
             traceback.print_exc()

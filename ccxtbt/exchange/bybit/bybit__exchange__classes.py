@@ -5,8 +5,8 @@ import requests
 from pprint import pprint
 
 from ccxtbt.bt_ccxt_expansion__classes import Exchange_HTTP_Parser_Per_Symbol
-from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPE__SPOT, CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP, MIN_LEVERAGE, \
-    STANDARD_ATTRIBUTES, symbol_stationary__dict_template
+from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPE__SPOT, CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP, \
+    MIN_LEVERAGE, symbol_stationary__dict_template
 from ccxtbt.exchange.bybit.bybit__exchange__specifications import BYBIT__DERIVATIVES_V2_ENDPOINT, \
     BYBIT__SPOT__HTTP_ENDPOINT_URL, BYBIT__SPOT_V3_ENDPOINT, BYBIT__SYMBOLS_COMMAND, \
     BINANCE__USDT__DERIVATIVES__HTTP_ENDPOINT_URL
@@ -55,10 +55,6 @@ class Bybit_Symbol_Info__HTTP_Parser(Exchange_HTTP_Parser_Per_Symbol):
             if hasattr(self, key) == False:
                 setattr(self, key, None)
 
-        for standard_attribute in STANDARD_ATTRIBUTES:
-            if hasattr(self, standard_attribute) == False:
-                setattr(self, standard_attribute, None)
-
     def run(self):
         symbol_exchange_info = requests.get(self.exchange_info_url).json()
 
@@ -99,27 +95,28 @@ class Bybit_Symbol_Info__HTTP_Parser(Exchange_HTTP_Parser_Per_Symbol):
         assert symbol_dict['name'].upper() == self.symbol_id.upper()
 
         if self.market_type == CCXT__MARKET_TYPE__SPOT:
-            self.symbol_tick_size = float(symbol_dict['minPricePrecision'])
-            self.price_digits = get_digits(self.symbol_tick_size)
+            self.tick_size = float(symbol_dict['minPricePrecision'])
+            self.price_digits = get_digits(self.tick_size)
             self.qty_step = float(symbol_dict['basePrecision'])
             self.qty_digits = get_digits(self.qty_step)
-            self.lot_size_min_qty = float(symbol_dict['minTradeQty'])
-            self.lot_size_max_qty = float(symbol_dict['maxTradeQty'])
+            self.min_qty = float(symbol_dict['minTradeQty'])
+            self.max_qty = float(symbol_dict['maxTradeQty'])
+            pass
         elif self.market_type == CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP:
-            self.symbol_tick_size = float(
+            self.tick_size = float(
                 symbol_dict['price_filter']['tick_size'])
-            self.price_digits = get_digits(self.symbol_tick_size)
+            self.price_digits = get_digits(self.tick_size)
             self.qty_step = float(symbol_dict['lot_size_filter']['qty_step'])
             self.qty_digits = get_digits(self.qty_step)
-            self.lot_size_min_qty = float(
-                symbol_dict['lot_size_filter']['min_trading_qty'])
-            self.lot_size_max_qty = float(
-                symbol_dict['lot_size_filter']['max_trading_qty'])
+            self.min_qty = \
+                float(symbol_dict['lot_size_filter']['min_trading_qty'])
+            self.max_qty = \
+                float(symbol_dict['lot_size_filter']['max_trading_qty'])
+            pass
         else:
             raise NotImplementedError()
 
-        # Attributes according to symbol_stationary__dict_template
-        # Alias
-        self.tick_size = self.symbol_tick_size
-        self.lot_size_qty_step = self.qty_step
+        # There is no min_notional imposed by Bybit at the moment
+        self.min_notional = None
+        self.value_digits = max(self.price_digits, self.qty_digits)
         pass

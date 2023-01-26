@@ -120,8 +120,6 @@ class BT_CCXT_Exchange(backtrader.with_metaclass(backtrader.MetaSingleton, objec
                 pass
 
         self.account_or_store = None
-        self.commission_info = dict()
-
         self.accounts_or_stores = []
 
     def set__child(self, account_or_store):
@@ -138,14 +136,7 @@ class BT_CCXT_Exchange(backtrader.with_metaclass(backtrader.MetaSingleton, objec
 
     def add__account_or_store(self, account_or_store):
         if account_or_store not in self.accounts_or_stores:
-            account_or_store.add_commission_info(self.commission_info)
             self.accounts_or_stores.append(account_or_store)
-
-    def add_commission_info(self, commission_info):
-        self.commission_info = commission_info
-
-    def get_commission_info(self):
-        return self.commission_info
 
     def get_ohlcv_provider__account_or_store(self):
         ohlcv_provider__account_or_store = None

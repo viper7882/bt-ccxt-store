@@ -28,8 +28,8 @@ import threading
 
 from pprint import pprint
 
-from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPES, CCXT__MARKET_TYPE__FUTURE, CCXT__MARKET_TYPE__SPOT, \
-    STANDARD_ATTRIBUTES, \
+from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPES, CCXT__MARKET_TYPE__FUTURE, \
+    CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP, CCXT__MARKET_TYPE__SPOT, \
     symbol_stationary__dict_template
 from ccxtbt.bt_ccxt_account_or_store__classes import BT_CCXT_Account_or_Store
 from ccxtbt.bt_ccxt_expansion__classes import Enhanced_Position
@@ -70,6 +70,7 @@ class BT_CCXT_Instrument(backtrader.with_metaclass(Meta_Instrument, object)):
         self.symbol_id = symbol_id
         self.parent = None
         self.ccxt_datafeeds = []
+        self.commission_info = dict()
 
         # INFO: Switch positions to exercise Enhanced Position instead
         self.positions = collections.defaultdict(Enhanced_Position)
@@ -82,10 +83,6 @@ class BT_CCXT_Instrument(backtrader.with_metaclass(Meta_Instrument, object)):
         for key in symbol_stationary__dict_template.keys():
             if hasattr(self, key) == False:
                 setattr(self, key, None)
-
-        for standard_attribute in STANDARD_ATTRIBUTES:
-            if hasattr(self, standard_attribute) == False:
-                setattr(self, standard_attribute, None)
 
         # Derived Attributes
         self.exchange_dropdown_value = None
@@ -105,6 +102,12 @@ class BT_CCXT_Instrument(backtrader.with_metaclass(Meta_Instrument, object)):
     def get__parent(self):
         return self.parent
 
+    def add_commission_info(self, commission_info):
+        self.commission_info = commission_info
+
+    def get_commission_info(self):
+        return self.commission_info
+
     def add__datafeed(self, datafeed):
         found_datafeed = False
         for ccxt_datafeed in self.ccxt_datafeeds:
@@ -114,6 +117,20 @@ class BT_CCXT_Instrument(backtrader.with_metaclass(Meta_Instrument, object)):
 
         if found_datafeed == False:
             self.ccxt_datafeeds.append(datafeed)
+
+    def get__datafeed(self, datafeed_name):
+        ccxt_datafeed = None
+        found_datafeed = False
+        for ccxt_datafeed in self.ccxt_datafeeds:
+            if datafeed_name == ccxt_datafeed._name:
+                found_datafeed = True
+                break
+
+        if found_datafeed == False:
+            raise RuntimeError("{}: {} datafeed_name NOT found!!!".format(
+                inspect.currentframe(), datafeed_name))
+        legality_check_not_none_obj(ccxt_datafeed, "ccxt_datafeed")
+        return ccxt_datafeed
 
     def fetch_ohlcv(self, symbol, timeframe, since, limit):
         assert self.symbol_id == symbol, "Instrument: {} does NOT support {}!!!".format(
@@ -158,10 +175,6 @@ class BT_CCXT_Instrument(backtrader.with_metaclass(Meta_Instrument, object)):
             self.symbol_id, symbol)
         legality_check_not_none_obj(self.parent, "self.parent")
         return self.parent.fetch_order_book(symbol)
-
-    def get_commission_info(self):
-        legality_check_not_none_obj(self.parent, "self.parent")
-        return self.parent.get_commission_info()
 
     def fetch_order(self, order_id, symbol, params={}):
         assert self.symbol_id == symbol, "Instrument: {} does NOT support {}!!!".format(
@@ -315,9 +328,9 @@ class BT_CCXT_Instrument(backtrader.with_metaclass(Meta_Instrument, object)):
         if permit_position_update == True:
             self.positions[position_type].set(size, price)
 
-    def buy(self, owner, symbol_id, datafeed, size,
+    def buy(self, owner, symbol_id, size,
             # Optional Params
-            price=None, price_limit=None,
+            datafeed=None, price=None, price_limit=None,
             execution_type=None, valid=None, tradeid=0, oco=None,
             trailing_amount=None, trailing_percent=None,
             parent=None, transmit=True,
@@ -341,9 +354,9 @@ class BT_CCXT_Instrument(backtrader.with_metaclass(Meta_Instrument, object)):
                                position_type=position_type,
                                **kwargs)
 
-    def sell(self, owner, symbol_id, datafeed, size,
+    def sell(self, owner, symbol_id, size,
              # Optional Params
-             price=None, price_limit=None,
+             datafeed=None, price=None, price_limit=None,
              execution_type=None, valid=None, tradeid=0, oco=None,
              trailing_amount=None, trailing_percent=None,
              parent=None, transmit=True,
@@ -461,10 +474,9 @@ class BT_CCXT_Instrument(backtrader.with_metaclass(Meta_Instrument, object)):
         legality_check_not_none_obj(self.parent, "self.parent")
         if self.exchange_dropdown_value == BINANCE_EXCHANGE_ID:
             if self.parent.market_type == CCXT__MARKET_TYPE__SPOT:
-                response = self.parent.exchange.fetch_open_orders(
-                    symbol=self.symbol_id)
-                if len(response) > 0:
-                    raise NotImplementedError()
+                # Spot account does not have any position as the orders are meant to convert from one currency to
+                # another currency. Basically it is an account to exchange currency, not meant for trading using
+                # position.
                 pass
             elif self.parent.market_type == CCXT__MARKET_TYPE__FUTURE:
                 balance = self.parent._get_wallet_balance()
@@ -478,54 +490,60 @@ class BT_CCXT_Instrument(backtrader.with_metaclass(Meta_Instrument, object)):
                             position_side)
                         price = float(position['entryPrice'])
                         size = float(position['positionAmt'])
-                        self.set_position(position_type, price, size)
+                        self.set_position(position_type, size, price)
                         pass
             else:
                 raise NotImplementedError()
         elif self.exchange_dropdown_value == BYBIT_EXCHANGE_ID:
-            point_of_reference = self._get_bybit_position_list()
-
-            updated_position_mode = False
-            for position in point_of_reference:
-                if position['symbol'].upper() == self.symbol_id.upper():
-                    if position['mode'] != BYBIT__DERIVATIVES__DEFAULT_POSITION_MODE:
-                        set_position_mode__dict = dict(
-                            type=CCXT__MARKET_TYPES[self.parent.market_type],
-                        )
-                        set__response = \
-                            self.parent.exchange.set_position_mode(hedged=True, symbol=self.symbol_id,
-                                                                   params=set_position_mode__dict)
-                        # Confirmation
-                        assert set__response['ret_msg'] == "OK"
-
-                        frameinfo = inspect.getframeinfo(
-                            inspect.currentframe())
-                        msg = "{}: {} Line: {}: INFO: {}: Sync with {}: ".format(
-                            CCXT__MARKET_TYPES[self.parent.market_type],
-                            frameinfo.function, frameinfo.lineno,
-                            self.symbol_id, str(self.parent.exchange).lower(),
-                        )
-                        sub_msg = "Adjusted Dual/Hedge Position Mode from {} -> {}".format(
-                            False,
-                            True,
-                        )
-                        print(msg + sub_msg)
-                        updated_position_mode = True
-                        break
-                    pass
-
-            if updated_position_mode == True:
+            if self.parent.market_type == CCXT__MARKET_TYPE__SPOT:
+                # Spot account does not have any position as the orders are meant to convert from one currency to
+                # another currency. Basically it is an account to exchange currency, not meant for trading using
+                # position.
+                pass
+            elif self.parent.market_type == CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP:
                 point_of_reference = self._get_bybit_position_list()
 
-            for position in point_of_reference:
-                if position['symbol'].upper() == self.symbol_id.upper():
-                    position_order_based_side = position['side']
-                    position_type = backtrader.Order.Order_Types.index(
-                        position_order_based_side)
-                    price = float(position['entry_price'])
-                    size = float(position['size'])
-                    self.set_position(position_type, price, size)
+                updated_position_mode = False
+                for position in point_of_reference:
+                    if position['symbol'].upper() == self.symbol_id.upper():
+                        if position['mode'] != BYBIT__DERIVATIVES__DEFAULT_POSITION_MODE:
+                            set_position_mode__dict = dict(
+                                type=CCXT__MARKET_TYPES[self.parent.market_type],
+                            )
+                            set__response = \
+                                self.parent.exchange.set_position_mode(hedged=True, symbol=self.symbol_id,
+                                                                       params=set_position_mode__dict)
+                            # Confirmation
+                            assert set__response['ret_msg'] == "OK"
 
+                            frameinfo = inspect.getframeinfo(
+                                inspect.currentframe())
+                            msg = "{}: {} Line: {}: INFO: {}: Sync with {}: ".format(
+                                CCXT__MARKET_TYPES[self.parent.market_type],
+                                frameinfo.function, frameinfo.lineno,
+                                self.symbol_id, str(
+                                    self.parent.exchange).lower(),
+                            )
+                            sub_msg = "Adjusted Dual/Hedge Position Mode from {} -> {}".format(
+                                False,
+                                True,
+                            )
+                            print(msg + sub_msg)
+                            updated_position_mode = True
+                            break
+                        pass
+
+                if updated_position_mode == True:
+                    point_of_reference = self._get_bybit_position_list()
+
+                for position in point_of_reference:
+                    if position['symbol'].upper() == self.symbol_id.upper():
+                        position_order_based_side = position['side']
+                        position_type = backtrader.Order.Order_Types.index(
+                            position_order_based_side)
+                        price = float(position['entry_price'])
+                        size = float(position['size'])
+                        self.set_position(position_type, size, price)
             pass
         else:
             raise NotImplementedError()
@@ -557,11 +575,31 @@ class BT_CCXT_Instrument(backtrader.with_metaclass(Meta_Instrument, object)):
                 attribute_value = getattr(http_parser, key)
                 if attribute_value is not None:
                     setattr(self, key, attribute_value)
-
-        # Populate symbol static info over according to STANDARD_ATTRIBUTES
-        for standard_attribute in STANDARD_ATTRIBUTES:
-            assert hasattr(http_parser, standard_attribute)
-            attribute_value = getattr(http_parser, standard_attribute)
-            legality_check_not_none_obj(attribute_value, "attribute_value")
-            setattr(self, standard_attribute, attribute_value)
         pass
+
+    def get_orderbook_prices(self) -> tuple:
+        legality_check_not_none_obj(self.parent, "self.parent")
+        orderbook = self.parent.get_orderbook(symbol_id=self.symbol_id)
+        asks = []
+        bids = []
+        for ask, bid in zip(orderbook['asks'], orderbook['bids']):
+            assert isinstance(ask[0], float)
+            assert isinstance(bid[0], float)
+            asks.append(ask[0])
+            bids.append(bid[0])
+        return asks, bids
+
+    def get_orderbook_price_by_offset(self, offset) -> tuple:
+        legality_check_not_none_obj(self.parent, "self.parent")
+        orderbook = self.parent.get_orderbook(symbol_id=self.symbol_id)
+
+        # Legality Check
+        assert offset < len(orderbook['asks'])
+        assert offset >= -len(orderbook['asks'])
+
+        ask = orderbook['asks'][offset][0]
+        bid = orderbook['bids'][offset][0]
+
+        assert isinstance(ask, float)
+        assert isinstance(bid, float)
+        return ask, bid
