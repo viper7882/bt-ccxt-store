@@ -16,7 +16,7 @@ class Binance_Symbol_Info__HTTP_Parser(Exchange_HTTP_Parser_Per_Symbol):
     def __init__(self, params):
         super().__init__(params)
 
-        # INFO: Obtain symbol step size
+        # Obtain symbol step size
         if self.market_type == CCXT__MARKET_TYPE__SPOT:
             '''
             Reference: https://binance-docs.github.io/apidocs/spot/en/#exchange-information

@@ -3,15 +3,14 @@ import datetime
 import threading
 import unittest
 
-from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPES, CCXT__MARKET_TYPE__FUTURE, CCXT__MARKET_TYPE__SPOT, \
-    MAX_LIVE_EXCHANGE_RETRIES
+from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPE__FUTURE, CCXT__MARKET_TYPE__SPOT, \
+    DEFAULT__INITIAL__CAPITAL_RESERVATION__VALUE, DEFAULT__LEVERAGE_IN_PERCENT, MAX_LIVE_EXCHANGE_RETRIES
 from ccxtbt.bt_ccxt_feed__classes import BT_CCXT_Feed
 from ccxtbt.exchange.binance.binance__exchange__specifications import BINANCE_EXCHANGE_ID, BINANCE_OHLCV_LIMIT
 from ccxtbt.exchange.bybit.bybit__exchange__helper import get_wallet_currency
 from ccxtbt.utils import legality_check_not_none_obj
 
-from check_in_gating_tests.common.test__helper import ut__construct_standalone_account_or_store, \
-    ut__construct_standalone_instrument
+from ccxtbt.bt_ccxt_expansion__helper import construct_standalone_account_or_store, construct_standalone_instrument
 
 
 class Test_Feed(unittest.TestCase):
@@ -115,10 +114,10 @@ def backtesting(custom__bt_ccxt_feed__dict):
     symbol_name = 'ETH/USDT'
     symbol_id = symbol_name.replace("/", "")
 
-    initial__capital_reservation__value = 0.0
-    leverage_in_percent = 50.0
+    initial__capital_reservation__value = DEFAULT__INITIAL__CAPITAL_RESERVATION__VALUE
+    leverage_in_percent = DEFAULT__LEVERAGE_IN_PERCENT
 
-    # INFO: Set to True if websocket feed is required. E.g. Ticks data
+    # Set to True if websocket feed is required. E.g. Ticks data
     is_ohlcv_provider = True
 
     account__thread__connectivity__lock = threading.Lock()
@@ -128,17 +127,18 @@ def backtesting(custom__bt_ccxt_feed__dict):
     construct_standalone_account_or_store__dict = dict(
         exchange_dropdown_value=exchange_dropdown_value,
         main_net_toggle_switch_value=main_net_toggle_switch_value,
+        isolated_toggle_switch_value=isolated_toggle_switch_value,
+        leverage_in_percent=leverage_in_percent,
         market_type=market_type,
         symbols_id=symbols_id,
         enable_rate_limit=enable_rate_limit,
         initial__capital_reservation__value=initial__capital_reservation__value,
         is_ohlcv_provider=is_ohlcv_provider,
         account__thread__connectivity__lock=account__thread__connectivity__lock,
-        leverage_in_percent=leverage_in_percent,
         wallet_currency=wallet_currency,
     )
     (bt_ccxt_account_or_store, exchange_specific_config, ) = \
-        ut__construct_standalone_account_or_store(
+        construct_standalone_account_or_store(
             params=construct_standalone_account_or_store__dict)
 
     legality_check_not_none_obj(
@@ -146,12 +146,10 @@ def backtesting(custom__bt_ccxt_feed__dict):
 
     construct_standalone_instrument__dict = dict(
         bt_ccxt_account_or_store=bt_ccxt_account_or_store,
-        isolated_toggle_switch_value=isolated_toggle_switch_value,
-        leverage_in_percent=leverage_in_percent,
         market_type=market_type,
         symbol_id=symbol_id,
     )
-    ut__construct_standalone_instrument(
+    construct_standalone_instrument(
         params=construct_standalone_instrument__dict)
     instrument = bt_ccxt_account_or_store.get__child(symbol_id)
 
@@ -164,7 +162,7 @@ def backtesting(custom__bt_ccxt_feed__dict):
         ohlcv_limit=BINANCE_OHLCV_LIMIT,
         currency=wallet_currency,
         config=exchange_specific_config,
-        retries=MAX_LIVE_EXCHANGE_RETRIES,
+        max_retries=MAX_LIVE_EXCHANGE_RETRIES,
     )
     bt_ccxt_feed__dict.update(custom__bt_ccxt_feed__dict)
     datafeed = BT_CCXT_Feed(**bt_ccxt_feed__dict)

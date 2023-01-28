@@ -8,15 +8,16 @@ import unittest
 from time import time as timer
 from pprint import pprint
 
-from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP, CCXT__MARKET_TYPE__SPOT
+from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP, CCXT__MARKET_TYPE__SPOT, \
+    DEFAULT__INITIAL__CAPITAL_RESERVATION__VALUE, DEFAULT__LEVERAGE_IN_PERCENT
 from ccxtbt.bt_ccxt_feed__classes import BT_CCXT_Feed
 from ccxtbt.bt_ccxt_order__classes import BT_CCXT_Order
 from ccxtbt.exchange.bybit.bybit__exchange__specifications import BYBIT_EXCHANGE_ID, BYBIT_OHLCV_LIMIT
 from ccxtbt.exchange.bybit.bybit__exchange__helper import get_wallet_currency
 from ccxtbt.utils import get_time_diff
 
-from check_in_gating_tests.common.test__helper import ut__construct_standalone_account_or_store, \
-    ut__construct_standalone_instrument, ut_handle_datafeed, reverse_engineer__ccxt_order
+from check_in_gating_tests.common.test__helper import ut_handle_datafeed, reverse_engineer__ccxt_order
+from ccxtbt.bt_ccxt_expansion__helper import construct_standalone_account_or_store, construct_standalone_instrument
 
 
 class Bybit__bt_ccxt_account_or_store__Static_Orders__TestCases(unittest.TestCase):
@@ -28,16 +29,13 @@ class Bybit__bt_ccxt_account_or_store__Static_Orders__TestCases(unittest.TestCas
             self.exchange_dropdown_value = BYBIT_EXCHANGE_ID
             self.isolated_toggle_switch_value = False
 
-            # INFO: Bybit exchange-specific value
-            account_type_name = "CONTRACT"
-
             # WARNING: Avoid assigning market_type to CCXT__MARKET_TYPE__SPOT and run all check in tests altogether.
             #          Doing so will cause _fetch_opened_positions_from_exchange to mix up between swap and spot market
             #          and eventually causing whole bunch of "invalid symbols" error
             market_type = CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP
 
-            self.initial__capital_reservation__value = 0.0
-            self.leverage_in_percent = 50.0
+            self.initial__capital_reservation__value = DEFAULT__INITIAL__CAPITAL_RESERVATION__VALUE
+            self.leverage_in_percent = DEFAULT__LEVERAGE_IN_PERCENT
             self.is_ohlcv_provider = False
             self.enable_rate_limit = True
             self.account__thread__connectivity__lock = threading.Lock()
@@ -56,37 +54,36 @@ class Bybit__bt_ccxt_account_or_store__Static_Orders__TestCases(unittest.TestCas
             isolated_toggle_switch_value = self.isolated_toggle_switch_value
             wallet_currency = self.wallet_currency
 
-            # INFO: Construct the components
+            # Construct the components
             construct_standalone_account_or_store__dict = dict(
                 exchange_dropdown_value=exchange_dropdown_value,
                 main_net_toggle_switch_value=main_net_toggle_switch_value,
+                isolated_toggle_switch_value=isolated_toggle_switch_value,
+                leverage_in_percent=leverage_in_percent,
                 market_type=market_type,
                 symbols_id=self.symbols_id,
                 enable_rate_limit=enable_rate_limit,
                 initial__capital_reservation__value=initial__capital_reservation__value,
                 is_ohlcv_provider=is_ohlcv_provider,
                 account__thread__connectivity__lock=account__thread__connectivity__lock,
-                leverage_in_percent=leverage_in_percent,
                 wallet_currency=wallet_currency,
             )
             (self.bt_ccxt_account_or_store, _, ) = \
-                ut__construct_standalone_account_or_store(
+                construct_standalone_account_or_store(
                     params=construct_standalone_account_or_store__dict)
 
             for symbol_id in self.symbols_id:
                 construct_standalone_instrument__dict = dict(
                     bt_ccxt_account_or_store=self.bt_ccxt_account_or_store,
-                    isolated_toggle_switch_value=isolated_toggle_switch_value,
-                    leverage_in_percent=leverage_in_percent,
                     market_type=market_type,
                     symbol_id=symbol_id,
                 )
                 instrument = \
-                    ut__construct_standalone_instrument(
+                    construct_standalone_instrument(
                         params=construct_standalone_instrument__dict)
                 commission_info = instrument.get_commission_info()
 
-                # INFO: Create Long and Short datafeeds
+                # Create Long and Short datafeeds
                 convert_to_heikin_ashi = False
                 drop_newest = True
                 historical = False
@@ -116,7 +113,7 @@ class Bybit__bt_ccxt_account_or_store__Static_Orders__TestCases(unittest.TestCas
                     fromdate=start_date,
                     drop_newest=drop_newest,
 
-                    # INFO: If historical is True, the strategy will not enter into next()
+                    # If historical is True, the strategy will not enter into next()
                     historical=historical,
 
                     # debug=True,
@@ -255,7 +252,7 @@ class Bybit__bt_ccxt_account_or_store__Static_Orders__TestCases(unittest.TestCas
                         "fees": []
                     }
 
-                # INFO: The later CCXT order that has been updated with new size which will be returned by exchange
+                # The later CCXT order that has been updated with new size which will be returned by exchange
                 self.hedging_entry__ccxt_order = \
                     {
                         "info": {
@@ -304,7 +301,7 @@ class Bybit__bt_ccxt_account_or_store__Static_Orders__TestCases(unittest.TestCas
                         "fees": []
                     }
 
-                # INFO: Ideal situation
+                # Ideal situation
                 bt_ccxt_order__dict = dict(
                     owner=self,
                     exchange_name=str(
@@ -431,7 +428,7 @@ class Bybit__bt_ccxt_account_or_store__Static_Orders__TestCases(unittest.TestCas
             self.bt_ccxt_account_or_store.execute(
                 self.primary_entry_order, current_price)
 
-            # INFO: Mimicking actual situation in exchange due to modification of hedging size
+            # Mimicking actual situation in exchange due to modification of hedging size
             self.hedging_entry_order.extract_from_ccxt_order(
                 self.hedging_entry__ccxt_order)
             self.hedging_entry_order.executed.remaining_size = self.hedging_entry_qty

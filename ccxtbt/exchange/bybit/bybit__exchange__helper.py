@@ -48,7 +48,7 @@ def get_bybit_commission_rate(params) -> float:
     '''
     Exchange specific approach to obtain commission rate for market type
     '''
-    # INFO: Un-serialized Params
+    # Un-serialized Params
     bt_ccxt_account_or_store = params['bt_ccxt_account_or_store']
     market_type = params['market_type']
     symbol_id = params['symbol_id']
@@ -87,7 +87,7 @@ def get_bybit_max_leverage(params) -> float:
     '''
     Exchange specific approach to obtain leverage for symbol
     '''
-    # INFO: Un-serialized Params
+    # Un-serialized Params
     bt_ccxt_account_or_store = params['bt_ccxt_account_or_store']
     market_type = params['market_type']
     symbol_id = params['symbol_id']
@@ -134,7 +134,7 @@ def get_bybit_leverages(params) -> tuple:
     '''
     Exchange specific approach to obtain leverage for symbol
     '''
-    # INFO: Un-serialized Params
+    # Un-serialized Params
     bt_ccxt_account_or_store = params['bt_ccxt_account_or_store']
     market_type = params['market_type']
     symbol_id = params['symbol_id']
@@ -169,7 +169,7 @@ def set_bybit_leverage(params) -> None:
     '''
     Exchange specific approach to configure leverage for symbol
     '''
-    # INFO: Un-serialized Params
+    # Un-serialized Params
     bt_ccxt_account_or_store = params['bt_ccxt_account_or_store']
     market_type = params['market_type']
     symbol_id = params['symbol_id']
@@ -192,10 +192,10 @@ def set_bybit_leverage(params) -> None:
                 sell_leverage=to_leverage,
             ))
 
-            # INFO: Confirmation
+            # Confirmation
             assert response and response['ret_code'] == "0"
         elif symbol_id.endswith("USD") or symbol_id.endswith("USDC"):
-            # INFO: leverage should be intended for inverse perpetual
+            # leverage should be intended for inverse perpetual
             '''
             Reference: https://bybit-exchange.github.io/docs/inverse/#t-setleverage
             '''
@@ -204,7 +204,7 @@ def set_bybit_leverage(params) -> None:
                 leverage=to_leverage,
                 leverage_only=True,
             ))
-            # INFO: Confirmation
+            # Confirmation
             assert response and response['ret_code'] == "0"
         else:
             raise NotImplementedError()

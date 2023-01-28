@@ -28,7 +28,7 @@ class CustomStrategy(bt.Strategy):
         if status == data.LIVE:
             self.log("LIVE DATA - Ready to trade")
         else:
-            # INFO: At this moment of time, there is no data available yet. Hence there is no data.datetime.
+            # At this moment of time, there is no data available yet. Hence there is no data.datetime.
             # If run self.log("NOT LIVE - {}".format(self.status)), will get IndexError: array index out of range
             print("[{}] NOT LIVE but {}".format(
                 dt.datetime.utcnow().strftime(DEFAULT_DATE_TIME_FORMAT), self.status))

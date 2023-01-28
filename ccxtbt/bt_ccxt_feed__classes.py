@@ -33,9 +33,9 @@ import backtrader as bt
 from backtrader.feed import DataBase
 from backtrader.utils.py3 import with_metaclass
 
-from .bt_ccxt__specifications import CCXT_DATA_COLUMNS
-from .bt_ccxt_instrument__classes import BT_CCXT_Instrument
-from .utils import get_ha_bars
+from ccxtbt.bt_ccxt__specifications import CCXT_DATA_COLUMNS, MAX_LIVE_EXCHANGE_RETRIES, MIN_LIVE_EXCHANGE_RETRIES
+from ccxtbt.bt_ccxt_instrument__classes import BT_CCXT_Instrument
+from ccxtbt.utils import get_ha_bars, legality_check_not_none_obj
 
 
 class MetaCCXTFeed(DataBase.__class__):
@@ -75,6 +75,8 @@ class BT_CCXT_Feed(with_metaclass(MetaCCXTFeed, DataBase)):
         ('backfill_start', False),  # do backfilling at the start
         ('fetch_ohlcv_params', {}),
         ('ohlcv_limit', 20),
+        ('min_retries', MIN_LIVE_EXCHANGE_RETRIES),
+        ('max_retries', MAX_LIVE_EXCHANGE_RETRIES),
         # True if the klines are converted into Heiken Ashi candlesticks
         ('convert_to_heikin_ashi', False),
         ('tick_size', None),
@@ -136,16 +138,16 @@ class BT_CCXT_Feed(with_metaclass(MetaCCXTFeed, DataBase)):
                     ret_value = self._load_ticks()
                     return ret_value
                 else:
-                    # INFO: Fix to address slow loading time after enter into LIVE state.
+                    # Fix to address slow loading time after enter into LIVE state.
                     if len(self._data) == 0:
-                        # INFO: Only call _fetch_ohlcv when self._data is fully consumed as it will cause execution
+                        # Only call _fetch_ohlcv when self._data is fully consumed as it will cause execution
                         #       inefficiency due to network latency. Furthermore, it is extremely inefficiency to fetch
                         #       an amount of bars but only load one bar at a given time.
                         self._fetch_ohlcv()
                     ret = self._load_ohlcv()
 
                     if self.p.ut__halt_if_no_ohlcv:
-                        # INFO: For unit test, we must halt the state machine so that we could continue to the next
+                        # For unit test, we must halt the state machine so that we could continue to the next
                         #       test case
                         if ret is None:
                             ret = False
@@ -184,22 +186,49 @@ class BT_CCXT_Feed(with_metaclass(MetaCCXTFeed, DataBase)):
                         self._state = self._LIVE_STATE
                         self.put_notification(self.LIVE)
 
-    def retry_fetch_ohlcv(self, symbol_id, timeframe, fetch_since, limit, max_retries):
-        for num_retries in range(max_retries):
+    def retry_fetch_ohlcv(self, granularity_dropdown_value, since, until):
+        legality_check_not_none_obj(self.instrument, "self.instrument")
+
+        # Validate assumption made
+        assert isinstance(granularity_dropdown_value, str)
+
+        timeframe_duration_in_seconds = self.instrument.parse_timeframe(
+            granularity_dropdown_value)
+        timeframe_duration_in_ms = timeframe_duration_in_seconds * 1000
+        time_delta = self.p.ohlcv_limit * timeframe_duration_in_ms
+
+        all_ohlcv = []
+        fetch_since = since
+        while fetch_since < until:
             try:
                 ohlcv = self.instrument.fetch_ohlcv(
-                    symbol=symbol_id,
-                    timeframe=timeframe,
+                    symbol=self.instrument.symbol_id,
+                    timeframe=granularity_dropdown_value,
                     since=fetch_since,
-                    limit=limit)
-                return ohlcv
-            except Exception:
-                if num_retries == max_retries - 1:
-                    raise ValueError('Failed to fetch', timeframe,
-                                     symbol_id, 'klines in', max_retries, 'attempts')
+                    until=until,
+                    limit=self.p.ohlcv_limit)
+            except Exception as error:
+                raise RuntimeError("{}: Failed to fetch {} {} klines!!!".format(
+                    error,
+                    granularity_dropdown_value, self.instrument.symbol_id,
+                ))
 
-    def _fetch_ohlcv(self, fromdate=None, todate=None, max_retries=300):
+            if len(ohlcv) == 0:
+                break
+
+            # Update to since value after the most recent ohlcv
+            fetch_since = ohlcv[-1][0] + 1
+            all_ohlcv += ohlcv
+
+        ohlcv = self.instrument.parent.exchange.filter_by_since_limit(
+            all_ohlcv, since, limit=None, key=0)
+        # Filter off excessive data should there is any
+        ohlcv = [entry for i, entry in enumerate(ohlcv) if ohlcv[i][0] < until]
+        return ohlcv
+
+    def _fetch_ohlcv(self, fromdate=None, todate=None):
         """Fetch OHLCV data into self._data queue"""
+        legality_check_not_none_obj(self.instrument, "self.instrument")
         granularity = self.instrument.get_granularity(
             self._timeframe, self._compression)
 
@@ -222,33 +251,12 @@ class BT_CCXT_Feed(with_metaclass(MetaCCXTFeed, DataBase)):
             until = int((datetime.datetime.utcnow() - datetime.datetime(1970, 1, 1)
                          ).total_seconds() * 1000)
 
-        limit = self.p.ohlcv_limit
-
-        timeframe_duration_in_seconds = self.instrument.parse_timeframe(
-            granularity)
-        timeframe_duration_in_ms = timeframe_duration_in_seconds * 1000
-        time_delta = limit * timeframe_duration_in_ms
-        all_ohlcv = []
-        fetch_since = since
-        while fetch_since < until:
-            ohlcv = self.retry_fetch_ohlcv(
-                self.p.dataname, granularity, fetch_since, limit, max_retries)
-            if len(ohlcv) == 0:
-                break
-            fetch_since = (
-                ohlcv[-1][0] + 1) if len(ohlcv) else (fetch_since + time_delta)
-            all_ohlcv += ohlcv
-
-        ohlcv_list = self.instrument.filter_by_since_limit(
-            all_ohlcv, since, limit=None, key=0)
-        # Filter off excessive data should there is any
-        ohlcv_list = [entry for i, entry in enumerate(
-            ohlcv_list) if ohlcv_list[i][0] < until]
+        ohlcv_list = self.retry_fetch_ohlcv(granularity, since, until)
 
         # Check to see if dropping the latest candle will help with
         # exchanges which return partial data
         if self.p.drop_newest:
-            # INFO: Begin to drop the newest if we only have more than one ohlcv
+            # Begin to drop the newest if we only have more than one ohlcv
             if len(ohlcv_list) > 1:
                 del ohlcv_list[-1]
 
@@ -256,7 +264,7 @@ class BT_CCXT_Feed(with_metaclass(MetaCCXTFeed, DataBase)):
             if len(ohlcv_list) > 0:
                 df = pd.DataFrame(ohlcv_list)
 
-                # INFO: Configure the columns to be CCXT
+                # Configure the columns to be CCXT
                 df.columns = CCXT_DATA_COLUMNS[:-1]
 
                 df_ha = get_ha_bars(df, self.p.price_digits,
@@ -276,7 +284,7 @@ class BT_CCXT_Feed(with_metaclass(MetaCCXTFeed, DataBase)):
             tstamp = ohlcv[0]
 
             # if prev_tstamp is not None and self._ts_delta is None:
-            #     # INFO: Record down the TS delta so that it can be used to increment TS
+            #     # Record down the TS delta so that it can be used to increment TS
             #     self._ts_delta = tstamp - prev_tstamp
 
             if self.p.debug:
@@ -298,7 +306,7 @@ class BT_CCXT_Feed(with_metaclass(MetaCCXTFeed, DataBase)):
             try:
                 (tstamp, ohlcv) = self.instrument.get_ws_klines(self.p.dataname)
 
-                # INFO: If there is an update
+                # If there is an update
                 if tstamp > self._last_ws_ts:
                     self._last_ws_ts = tstamp
 
@@ -342,8 +350,8 @@ class BT_CCXT_Feed(with_metaclass(MetaCCXTFeed, DataBase)):
             self.lines.low[0] = nearest_bid
             self.lines.close[0] = nearest_bid
 
-            # INFO: Volume below is not an actual value provided by most exchange
-            # INFO: Consuming average volume is probably a better way to go
+            # Volume below is not an actual value provided by most exchange
+            # Consuming average volume is probably a better way to go
             self.lines.volume[0] = (
                 nearest_bid_volume + nearest_ask_volume) / 2
 

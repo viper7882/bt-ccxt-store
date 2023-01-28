@@ -7,6 +7,7 @@ import math
 import numpy as np
 import pandas as pd
 
+from pprint import pprint
 from time import time as timer
 
 from ccxtbt.exchange.binance.binance__exchange__specifications import BINANCE_EXCHANGE_ID
@@ -81,7 +82,7 @@ def get_ha_bars(df, price_digits, tick_size):
             min(df[CCXT_DATA_COLUMNS[LOW_COL]][i], df_ha[CCXT_DATA_COLUMNS[OPEN_COL]][i],
                 df_ha[CCXT_DATA_COLUMNS[CLOSE_COL]][i])
 
-    # INFO: Remove the first row if uncomment the line below
+    # Remove the first row if uncomment the line below
     # df_ha = df_ha.iloc[1:, :]
 
     columns_to_process = [CCXT_DATA_COLUMNS[OPEN_COL],
@@ -89,7 +90,7 @@ def get_ha_bars(df, price_digits, tick_size):
                           CCXT_DATA_COLUMNS[LOW_COL],
                           CCXT_DATA_COLUMNS[CLOSE_COL]]
 
-    # INFO: The following formula has been reviewed side by side with TradingView using 1 minute chart, it is about 95%
+    # The following formula has been reviewed side by side with TradingView using 1 minute chart, it is about 95%
     #       identical with TradingView
     df_ha[columns_to_process] = \
         df_ha[columns_to_process].apply(lambda x: round_to_nearest_decimal_points(x, price_digits + 1,
@@ -126,7 +127,7 @@ def dump_ohlcv(function, lineno, data_name, ohlcv_list):
         msg += "{}: {}, ".format(CCXT_DATA_COLUMNS[CLOSE_COL], kline_close)
         msg += "{}: {}, ".format(CCXT_DATA_COLUMNS[VOLUME_COL], kline_volume)
 
-        # INFO: Strip ", " from the string
+        # Strip ", " from the string
         print(msg[:-2])
 
 
@@ -159,7 +160,7 @@ def round_to_nearest_decimal_points(x, prec, base):
                 new_numbers.append(
                     round(base * round(float(number)/base), prec))
             else:
-                # INFO: For NaN, just remain as it is
+                # For NaN, just remain as it is
                 new_numbers.append(number)
 
         # Create series form a list
@@ -189,7 +190,7 @@ def dump_obj(obj, name="obj"):
     Credits: https://stackoverflow.com/questions/192109/is-there-a-built-in-function-to-print-all-the-current-properties-and-values-of-a?rq=1
     Credits: https://stackoverflow.com/questions/21542753/dir-without-built-in-methods
     '''
-    # INFO: Exclude built-in methods
+    # Exclude built-in methods
     attribute_list = [attr for attr in dir(obj) if not attr.startswith('__')]
     for attribute in attribute_list:
         print("{}.{} = {}".format(name, attribute, getattr(obj, attribute)))
@@ -279,7 +280,7 @@ def convert_slider_from_percent(slider_in_percent, min_value, max_value, step_si
     assert slider_in_percent >= 0.0
 
     if slider_in_percent > 0.0:
-        # INFO: We zero-based the formula below to counter for easier leverage calculation where 50.0% => 50.0,
+        # We zero-based the formula below to counter for easier leverage calculation where 50.0% => 50.0,
         #       50.0% => 25 etc.
         ret_slider_value = slider_in_percent * max_value / 100.0
 
@@ -325,7 +326,7 @@ def get_order_entry_price_without_queue(position_type, ask, bid, disable_message
              be used for production. Use at your own risk!
              The impact is that this will bring the [Entry] Price nearer to TP price.
     '''
-    # INFO: Swapped the ask and bid to accelerate the queue time
+    # Swapped the ask and bid to accelerate the queue time
     entry_price = get_order_exit_price_and_queue(position_type, ask, bid)
 
     if disable_message == False:
@@ -368,14 +369,14 @@ def get_order_exit_price_without_queue(position_type, ask, bid, disable_message=
              address positions closure issue when we are in hedged positions, one position got closed whereas another
              position remains opened.
     '''
-    # INFO: Swapped the ask and bid to accelerate the queue time
+    # Swapped the ask and bid to accelerate the queue time
     exit_price = get_order_entry_price_and_queue(position_type, ask, bid)
 
     if disable_message == False:
         legality_check_not_none_obj(function, "function")
         legality_check_not_none_obj(lineno, "lineno")
 
-        # INFO: Print out message to inform user
+        # Print out message to inform user
         print("{} Line: {}: INFO: Accelerated the [Exit] Price of {} @ {} for {} position_type to "
               "guarantee immediate position closure".format(
                   function,
@@ -385,3 +386,29 @@ def get_order_exit_price_without_queue(position_type, ask, bid, disable_message=
               ))
 
     return exit_price
+
+
+def screen_dataframe_for_duplicated_index(params):
+    df = params['df']
+
+    if len(df.index) >= 2:
+        # Default index
+        if df.index.dtype == np.int64:
+            # Create a copy of dataframe
+            cloned_df = df.copy()
+            cloned_df.set_index(cloned_df.columns[0], inplace=True)
+            point_of_reference = cloned_df
+            pass
+        # Custom index
+        else:
+            point_of_reference = df
+
+        # Making a bool series and capture duplicated indices
+        df_with_duplicated_index = point_of_reference[point_of_reference.index.duplicated(
+        )]
+        if len(df_with_duplicated_index) > 0:
+            print("size: {}, df_with_duplicated_index head and tail: ".format(
+                len(df_with_duplicated_index)))
+            pprint(df_with_duplicated_index.head(10))
+            pprint(df_with_duplicated_index.tail(10))
+            raise RuntimeError("Duplicated index rows are prohibited!!!")

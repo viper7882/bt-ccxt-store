@@ -10,7 +10,7 @@ def get_binance_commission_rate(params) -> float:
     '''
     Exchange specific approach to obtain commission rate for market type
     '''
-    # INFO: Un-serialized Params
+    # Un-serialized Params
     bt_ccxt_account_or_store = params['bt_ccxt_account_or_store']
     market_type = params['market_type']
     symbol_id = params['symbol_id']
@@ -49,7 +49,7 @@ def get_binance_max_leverage(params) -> int:
     '''
     Exchange specific approach to obtain leverage for symbol
     '''
-    # INFO: Un-serialized Params
+    # Un-serialized Params
     bt_ccxt_account_or_store = params['bt_ccxt_account_or_store']
     market_type = params['market_type']
     symbol_id = params['symbol_id']
@@ -94,7 +94,7 @@ def get_binance_leverages(params) -> tuple:
     '''
     Exchange specific approach to obtain leverage for symbol
     '''
-    # INFO: Un-serialized Params
+    # Un-serialized Params
     bt_ccxt_account_or_store = params['bt_ccxt_account_or_store']
     market_type = params['market_type']
     symbol_id = params['symbol_id']
@@ -129,7 +129,7 @@ def set_binance_leverage(params) -> None:
     '''
     Exchange specific approach to configure leverage for symbol
     '''
-    # INFO: Un-serialized Params
+    # Un-serialized Params
     bt_ccxt_account_or_store = params['bt_ccxt_account_or_store']
     market_type = params['market_type']
     symbol_id = params['symbol_id']
@@ -153,7 +153,7 @@ def set_binance_leverage(params) -> None:
             bt_ccxt_account_or_store.exchange.fapiPrivate_post_leverage(
                 params=leverage__dict)
 
-        # INFO: Confirmation
+        # Confirmation
         assert response['symbol'] == symbol_id
         assert response['leverage'] == str(to_leverage)
 

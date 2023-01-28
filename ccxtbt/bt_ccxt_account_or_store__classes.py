@@ -125,7 +125,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                         raise
 
                     if isinstance(e, ExchangeError):
-                        # INFO: Extract the exchange name from the exception
+                        # Extract the exchange name from the exception
                         json_error = e.args[0].replace(
                             str(self.exchange).lower() + " ", "")
                         exchange_error_dict = json.loads(json_error)
@@ -151,7 +151,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                                 '''
                                 break
 
-                            # INFO: Print out warning regarding the response received from ExchangeError
+                            # Print out warning regarding the response received from ExchangeError
                             frameinfo = inspect.getframeinfo(
                                 inspect.currentframe())
                             msg = "{} Line: {}: INFO: {}: {}/{}: ".format(
@@ -168,7 +168,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                             )
 
                             # Credits: https://stackoverflow.com/questions/3419984/print-to-the-same-line-and-not-a-new-line
-                            # INFO: Print on the same line without newline, customized accordingly to cater for our requirement
+                            # Print on the same line without newline, customized accordingly to cater for our requirement
                             print("\r" + msg + sub_msg, end="")
 
                     pass
@@ -177,18 +177,18 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
 
     def __init__(self, exchange_dropdown_value, wallet_currency, config, retries, symbols_id,
                  main_net_toggle_switch_value, initial__capital_reservation__value, is_ohlcv_provider,
-                 account__thread__connectivity__lock, leverage_in_percent, debug=False):
+                 account__thread__connectivity__lock, isolated_toggle_switch_value, leverage_in_percent, debug=False):
         super().__init__()
 
         # WARNING: Must rename to init2 here or else it will cause
         #          TypeError: BT_CCXT_Account_or_Store.init() missing 7 required positional arguments:
         self.init2(exchange_dropdown_value, wallet_currency, config, retries, symbols_id, main_net_toggle_switch_value,
                    initial__capital_reservation__value, is_ohlcv_provider, account__thread__connectivity__lock,
-                   leverage_in_percent, debug)
+                   isolated_toggle_switch_value, leverage_in_percent, debug)
 
     def init2(self, exchange_dropdown_value, wallet_currency, config, retries, symbols_id, main_net_toggle_switch_value,
               initial__capital_reservation__value, is_ohlcv_provider, account__thread__connectivity__lock,
-              leverage_in_percent, debug=False):
+              isolated_toggle_switch_value, leverage_in_percent, debug=False):
         # Legality Check
         assert isinstance(retries, int)
         assert isinstance(symbols_id, list)
@@ -196,6 +196,9 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         assert isinstance(initial__capital_reservation__value, int) or \
             isinstance(initial__capital_reservation__value, float)
         assert isinstance(is_ohlcv_provider, bool)
+        assert isinstance(isolated_toggle_switch_value, bool)
+        assert isinstance(leverage_in_percent, int) or \
+            isinstance(leverage_in_percent, float)
 
         # Alias
         self.wallet_currency = wallet_currency
@@ -206,6 +209,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         self.retries = retries
         self.symbols_id = symbols_id
         self.main_net_toggle_switch_value = main_net_toggle_switch_value
+        self.isolated_toggle_switch_value = isolated_toggle_switch_value
         self._initial__capital_reservation__value = initial__capital_reservation__value
         self._live__capital_reservation__value = initial__capital_reservation__value
         self.is_ohlcv_provider = is_ohlcv_provider
@@ -241,22 +245,22 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         self.open_orders = list()
         self.indent = 4  # For pretty printing dictionaries
 
-        # INFO: 30 seconds of retry
+        # 30 seconds of retry
         self.max_retry = 30 * 10
 
-        # INFO: Track the partially_filled_earlier status
+        # Track the partially_filled_earlier status
         self.partially_filled_earlier = None
 
-        # INFO: Invoke websocket if available
+        # Invoke websocket if available
         self.is_ws_available = False
         self.ws_mainnet_usdt_perpetual = None
         self.ws_usdt_perpetual = None
         self.twm = None
 
-        # INFO: For sensitive section, apply thread-safe locking mechanism to guarantee connection is completely
+        # For sensitive section, apply thread-safe locking mechanism to guarantee connection is completely
         #       established before moving on to another thread
         with self.account__thread__connectivity__lock:
-            # INFO: Support for Binance below
+            # Support for Binance below
             if str(self.exchange).lower() == BINANCE_EXCHANGE_ID:
                 self.fetch_balance__dict = dict(
                     type=config['type'],
@@ -276,7 +280,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                 #
                 # self.establish_binance_websocket()
                 pass
-            # INFO: Support for Bybit below
+            # Support for Bybit below
             elif str(self.exchange).lower() == BYBIT_EXCHANGE_ID:
                 self.is_ws_available = True
                 self.config__api_key = config['apiKey']
@@ -316,7 +320,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
             except KeyError:
                 self._value = 0
 
-        # INFO: It is crucial to initialize leverage here
+        # It is crucial to initialize leverage here
         self.set_leverage_in_percent(leverage_in_percent)
 
     def set_leverage_in_percent(self, leverage_in_percent, position_value=0.0):
@@ -335,7 +339,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         success = True
         self.leverage_in_percent = leverage_in_percent
 
-        # INFO: Support for Binance and Bybit below
+        # Support for Binance and Bybit below
         if str(self.exchange).lower() == BINANCE_EXCHANGE_ID or str(self.exchange).lower() == BYBIT_EXCHANGE_ID:
             if self.market_type == CCXT__MARKET_TYPE__FUTURE or \
                     self.market_type == CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP:
@@ -373,7 +377,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                             set_bybit_leverage(params=set_leverage__dict)
                     else:
                         success = False
-            # INFO: Spot Market does not support leverage
+            # Spot Market does not support leverage
         else:
             raise NotImplementedError()
         return success
@@ -392,7 +396,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
     def set__parent(self, owner):
         self.parent = owner
 
-        # INFO: Run post-processing AFTER parent has been set
+        # Run post-processing AFTER parent has been set
         self._post_process__after_parent_is_added()
 
     def get__parent(self):
@@ -524,7 +528,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                 pass
 
             if self.partially_filled_earlier is not None:
-                # INFO: Carry forward partially_filled_earlier status to the next order
+                # Carry forward partially_filled_earlier status to the next order
                 order.partially_filled_earlier = self.partially_filled_earlier
 
             # Get the order
@@ -634,7 +638,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
             if 'trades' in new_ccxt_order and new_ccxt_order['trades'] is not None:
                 for fill in new_ccxt_order['trades']:
                     if fill not in order.executed_fills:
-                        # INFO: Execute according to the OrderExecutionBit
+                        # Execute according to the OrderExecutionBit
                         dt = fill['datetime']
                         size = fill['amount']
                         price = fill['price']
@@ -669,10 +673,10 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
             if new_ccxt_order[self.parent.mappings['opened_order']['key']] == \
                     self.parent.mappings['opened_order']['value']:
                 if order.status != backtrader.Order.Accepted:
-                    # INFO: Reset partially_filled_earlier status
+                    # Reset partially_filled_earlier status
                     self.partially_filled_earlier = None
 
-                    # INFO: Refresh the content of ccxt_order with the latest ccxt_order
+                    # Refresh the content of ccxt_order with the latest ccxt_order
                     order.extract_from_ccxt_order(new_ccxt_order)
                     order.accept()
                     self.notify(order)
@@ -680,20 +684,20 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
             elif new_ccxt_order[self.parent.mappings['partially_filled_order']['key']] == \
                     self.parent.mappings['partially_filled_order']['value']:
                 if order.status != backtrader.Order.Partial:
-                    # INFO: Refresh the content of ccxt_order with the latest ccxt_order
+                    # Refresh the content of ccxt_order with the latest ccxt_order
                     order.extract_from_ccxt_order(new_ccxt_order)
                     order.partial()
 
-                    # INFO: Only notify but NOT execute as it wouldn't create any impact to the trade.update
+                    # Only notify but NOT execute as it wouldn't create any impact to the trade.update
                     # self.execute(order, order.price)
                     self.notify(order)
 
-                    # INFO: Carry forward partially_filled_earlier status to the next order
+                    # Carry forward partially_filled_earlier status to the next order
                     self.partially_filled_earlier = order.partially_filled_earlier
             # Check if the exchange order is closed
             elif new_ccxt_order[self.parent.mappings['closed_order']['key']] == \
                     self.parent.mappings['closed_order']['value']:
-                # INFO: Refresh the content of ccxt_order with the latest ccxt_order
+                # Refresh the content of ccxt_order with the latest ccxt_order
                 order.extract_from_ccxt_order(new_ccxt_order)
                 order.completed()
                 self.execute(order, order.price)
@@ -703,7 +707,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
             # Check if the exchange order is rejected
             elif new_ccxt_order[self.parent.mappings['rejected_order']['key']] == \
                     self.parent.mappings['rejected_order']['value']:
-                # INFO: Refresh the content of ccxt_order with the latest ccxt_order
+                # Refresh the content of ccxt_order with the latest ccxt_order
                 order.extract_from_ccxt_order(new_ccxt_order)
                 order.reject()
                 self.notify(order)
@@ -712,14 +716,14 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
             #  from https://github.com/juancols/bt-ccxt-store/
             elif new_ccxt_order[self.parent.mappings['canceled_order']['key']] == \
                     self.parent.mappings['canceled_order']['value']:
-                # INFO: Refresh the content of ccxt_order with the latest ccxt_order
+                # Refresh the content of ccxt_order with the latest ccxt_order
                 order.extract_from_ccxt_order(new_ccxt_order)
                 order.cancel()
                 self.notify(order)
                 self.open_orders.remove(order)
             elif new_ccxt_order[self.parent.mappings['expired_order']['key']] == \
                     self.parent.mappings['expired_order']['value']:
-                # INFO: Refresh the content of ccxt_order with the latest ccxt_order
+                # Refresh the content of ccxt_order with the latest ccxt_order
                 order.extract_from_ccxt_order(new_ccxt_order)
                 order.expire()
                 self.notify(order)
@@ -767,11 +771,11 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         if datafeed is not None:
             created = int(datafeed.datetime.datetime(0).timestamp() * 1000)
         else:
-            # INFO: Use the current UTC datetime
+            # Use the current UTC datetime
             created = int(datetime.datetime.utcnow().timestamp() * 1000)
             if 'params' in params.keys():
                 if 'symbol' in params['params'].keys():
-                    # INFO: Remove symbol name from params
+                    # Remove symbol name from params
                     params['params'].pop('symbol', None)
 
         # Extract CCXT specific params if passed to the order
@@ -851,7 +855,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         if ret_ord is None or ret_ord['id'] is None:
             return None
 
-        # INFO: Based on experience in Testnet, it is better to wait momentarily as the server will require time to
+        # Based on experience in Testnet, it is better to wait momentarily as the server will require time to
         #       process the order, inclusive of providing websocket response.
         time.sleep(0.1)
 
@@ -949,7 +953,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
             print(msg)
             print(json.dumps(ccxt_order, indent=self.indent))
 
-        # INFO: Exposed simulated so that we could proceed with order without running cerebro
+        # Exposed simulated so that we could proceed with order without running cerebro
         bt_ccxt_order__dict = dict(
             owner=owner,
             exchange_name=str(self.exchange).lower(),
@@ -1025,7 +1029,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         params = dict(
             type=self.market_type_name,
         )
-        # INFO: Due to nature of order is processed async, the order could not be found immediately right after
+        # Due to nature of order is processed async, the order could not be found immediately right after
         #       order is opened. Hence, perform retry to confirm if that's the case.
         for retry_no in range(self.max_retry):
             try:
@@ -1116,7 +1120,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         if datafeed is not None:
             position_timestamp_dt = datafeed.datetime.datetime(0)
         else:
-            # INFO: Use the current UTC datetime
+            # Use the current UTC datetime
             position_timestamp_dt = datetime.datetime.utcnow()
 
         # Legality Check
@@ -1137,7 +1141,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                     msg += "ccxt_order_id: {}".format(ccxt_order_id)
                     print(msg)
 
-                # INFO: Refresh Active Order
+                # Refresh Active Order
                 order.ccxt_order = self.fetch_ccxt_order(
                     order.symbol_id, order_id=ccxt_order_id)
             else:
@@ -1153,23 +1157,23 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                     msg += "ccxt_order_id: {}".format(ccxt_order_id)
                     print(msg)
 
-                # INFO: Refresh Conditional Order
+                # Refresh Conditional Order
                 order.ccxt_order = self.fetch_ccxt_order(
                     order.symbol_id, stop_order_id=ccxt_order_id)
 
         # Legality Check
         legality_check_not_none_obj(order.ccxt_order, "order.ccxt_order")
 
-        # INFO: Refresh the content of ccxt_order with the latest ccxt_order
+        # Refresh the content of ccxt_order with the latest ccxt_order
         order.extract_from_ccxt_order(order.ccxt_order)
 
         if order.status == order.Partial:
             size = order.executed.filled_size
         else:
-            # INFO: Refresh contents of executed with the latest size
+            # Refresh contents of executed with the latest size
             remaining_size = abs(order.filled)
             if order.order_type == backtrader.Order.Sell:
-                # INFO: Invert the sign
+                # Invert the sign
                 remaining_size = -remaining_size
             order.executed = backtrader.OrderData(
                 remaining_size=remaining_size)
@@ -1282,7 +1286,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                       margin, profit_and_loss_amount, spread_in_ticks,
                       position_size, position_average_price)
 
-        # INFO: size and price could deviate from its original value due to floating point precision error. The
+        # size and price could deviate from its original value due to floating point precision error. The
         #       following codes are to provide remedy for that situation.
         order.executed.size = \
             round_to_nearest_decimal_points(order.executed.size, commission_info.qty_digits,
@@ -1672,7 +1676,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                         # to pass a custom domain in case of connectivity problems, you can use:
                         # domain="bytick"  # the default is "bybit"
 
-                        # INFO: Attempting to resolve WebSocket USDT Perp encountered error: ping/pong timed out in
+                        # Attempting to resolve WebSocket USDT Perp encountered error: ping/pong timed out in
                         #       dashboard
                         # ping_interval=20,
                         # ping_timeout=10,
@@ -1711,7 +1715,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
     def establish_bybit_mainnet_usdt_perpetual_websocket(self):
         proceed_with_connection = False
 
-        # INFO: Only OHLCV_PROVIDER should be connected to ws_mainnet_usdt_perpetual
+        # Only OHLCV_PROVIDER should be connected to ws_mainnet_usdt_perpetual
         if self.is_ohlcv_provider == True:
             if self.ws_mainnet_usdt_perpetual is None:
                 proceed_with_connection = True
@@ -1736,7 +1740,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                     # to pass a custom domain in case of connectivity problems, you can use:
                     # domain="bytick"  # the default is "bybit"
 
-                    # INFO: Attempting to resolve WebSocket USDT Perp encountered error: ping/pong timed out in
+                    # Attempting to resolve WebSocket USDT Perp encountered error: ping/pong timed out in
                     #       dashboard
                     # ping_interval=20,
                     # ping_timeout=10,
@@ -1747,7 +1751,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                 try:
                     if self.ws_mainnet_usdt_perpetual.is_connected() == True:
                         # Reference: https://bybit-exchange.github.io/docs/futuresV2/linear/#t-websocketkline
-                        # INFO: Subscribe to 1 minute candle
+                        # Subscribe to 1 minute candle
                         if len(self.symbols_id) == 1:
                             self.ws_mainnet_usdt_perpetual.kline_stream(
                                 self.handle_klines, self.symbols_id[0], "1")
@@ -1799,7 +1803,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                 gc.collect()
 
     def close_bybit_mainnet_usdt_perpetual_websocket(self):
-        # INFO: Only OHLCV_PROVIDER should be connected to ws_mainnet_usdt_perpetual
+        # Only OHLCV_PROVIDER should be connected to ws_mainnet_usdt_perpetual
         if self.is_ohlcv_provider == True:
             if self.ws_mainnet_usdt_perpetual is not None:
                 if len(self.ws_mainnet_usdt_perpetual.active_connections) > 0 and \
@@ -1819,7 +1823,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         return self.account_alias
 
     def get_open_orders(self):
-        # INFO: In order to prevent manipulation from caller
+        # In order to prevent manipulation from caller
         cloned_open_orders = []
         for open_order in self.open_orders:
             cloned_open_orders.append(copy.copy(open_order))
@@ -1894,7 +1898,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                         self._fetch_opened_positions_from_exchange(
                             symbols=[ccxt_market_symbol_name], params={'type': symbol_type})
 
-                # INFO: Identify ws_position to be changed
+                # Identify ws_position to be changed
                 positions_to_be_changed = []
                 for i, _ in enumerate(self.ws_positions[symbol_id]):
                     for latest_changed_position in latest_changed_positions:
@@ -1904,7 +1908,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                                 positions_to_be_changed.append(
                                     (i, latest_changed_position))
 
-                # INFO: Update with the latest position from websocket
+                # Update with the latest position from websocket
                 for position_to_be_changed_tuple in positions_to_be_changed:
                     index, latest_changed_position = position_to_be_changed_tuple
                     self.ws_positions[symbol_id][index] = latest_changed_position
@@ -1952,7 +1956,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                 result = self.exchange.safe_value(message, 'data')
                 active_order = self.exchange.parse_order(result[0], market)
 
-                # INFO: Strip away "/" and ":USDT"
+                # Strip away "/" and ":USDT"
                 active_order['symbol'] = active_order['symbol'].replace(
                     "/", "")
                 active_order['symbol'] = active_order['symbol'].replace(
@@ -1982,13 +1986,13 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                     [active_order['id']
                         for active_order in active_orders_to_be_added[symbol_id]]
 
-                # INFO: Look for existing order in the list
+                # Look for existing order in the list
                 ws_active_orders_to_be_removed = []
                 for ws_active_order in self.ws_active_orders[symbol_id]:
                     if ws_active_order['id'] in active_order_ids_to_be_added:
                         ws_active_orders_to_be_removed.append(ws_active_order)
 
-                # INFO: Remove the existing ws active order
+                # Remove the existing ws active order
                 for ws_active_order in ws_active_orders_to_be_removed:
                     if self.debug:
                         # TODO: Debug use
@@ -2006,7 +2010,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
 
                     self.ws_active_orders[symbol_id].remove(ws_active_order)
 
-                # INFO: Add the latest active orders
+                # Add the latest active orders
                 for active_order in active_orders_to_be_added[symbol_id]:
                     self.ws_active_orders[symbol_id].append(active_order)
 
@@ -2050,7 +2054,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                 conditional_order = self.exchange.parse_order(
                     result[0], market)
 
-                # INFO: Strip away "/" and ":USDT"
+                # Strip away "/" and ":USDT"
                 conditional_order['symbol'] = conditional_order['symbol'].replace(
                     "/", "")
                 conditional_order['symbol'] = conditional_order['symbol'].replace(
@@ -2081,14 +2085,14 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                     [conditional_order['id']
                         for conditional_order in conditional_orders_to_be_added[symbol_id]]
 
-                # INFO: Look for existing order in the list
+                # Look for existing order in the list
                 ws_conditional_orders_to_be_removed = []
                 for ws_conditional_order in self.ws_conditional_orders[symbol_id]:
                     if ws_conditional_order['id'] in conditional_order_ids_to_be_added:
                         ws_conditional_orders_to_be_removed.append(
                             ws_conditional_order)
 
-                # INFO: Remove the existing ws conditional order
+                # Remove the existing ws conditional order
                 for ws_conditional_order in ws_conditional_orders_to_be_removed:
                     if self.debug:
                         # TODO: Debug use
@@ -2107,7 +2111,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                     self.ws_conditional_orders[symbol_id].remove(
                         ws_conditional_order)
 
-                # INFO: Add the latest conditional orders
+                # Add the latest conditional orders
                 for conditional_order in conditional_orders_to_be_added[symbol_id]:
                     self.ws_conditional_orders[symbol_id].append(
                         conditional_order)
@@ -2154,7 +2158,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
             symbol_id = topic_responses_split[2]
             if len(data_responses) > 0:
                 # References: https://bybit-exchange.github.io/docs/futuresV2/linear/#t-websocketkline
-                # INFO: Data sent timestamp in seconds * 10^6
+                # Data sent timestamp in seconds * 10^6
                 tstamp = int(data_responses[0]['timestamp']) / 1e6
                 ohlcv = \
                     (float(data_responses[0]['open']), float(data_responses[0]['high']),
@@ -2264,7 +2268,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
             ohlcv_provider__account_or_store = self.parent.get_ohlcv_provider__account_or_store()
             mainnet__account_or_store = ohlcv_provider__account_or_store
 
-        # INFO: Always fetch klines from MAINNET instead of TESTNET
+        # Always fetch klines from MAINNET instead of TESTNET
         ret_value = mainnet__account_or_store.ws_klines[dataname]
         return ret_value
 
@@ -2279,10 +2283,11 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         if self.main_net_toggle_switch_value == True:
             mainnet_exchange = self.exchange
         else:
+            legality_check_not_none_obj(self.parent, "self.parent")
             ohlcv_provider__account_or_store = self.parent.get_ohlcv_provider__account_or_store()
             mainnet_exchange = ohlcv_provider__account_or_store.exchange
 
-        # INFO: Always fetch OHLCV from MAINNET instead of TESTNET
+        # Always fetch OHLCV from MAINNET instead of TESTNET
         ret_value = mainnet_exchange.fetch_ohlcv(
             symbol, timeframe=timeframe, since=since, limit=limit, params=params)
         return ret_value
@@ -2295,7 +2300,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
             ohlcv_provider__account_or_store = self.parent.get_ohlcv_provider__account_or_store()
             mainnet_exchange = ohlcv_provider__account_or_store.exchange
 
-        # INFO: Always fetch order book from MAINNET instead of TESTNET
+        # Always fetch order book from MAINNET instead of TESTNET
         ret_value = mainnet_exchange.fetch_order_book(
             symbol, limit=limit, params=params)
         return ret_value
@@ -2304,16 +2309,16 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
     def _fetch_order_from_exchange(self, order_id, symbol_id, params={}):
         order = None
         try:
-            # INFO: Due to nature of order is processed async, the order could not be found immediately right after
+            # Due to nature of order is processed async, the order could not be found immediately right after
             #       order is opened. Hence, perform retry to confirm if that's the case.
             order = self.exchange.fetch_order(order_id, symbol_id, params)
         except OrderNotFound:
-            # INFO: Ignore order not found error
+            # Ignore order not found error
             pass
         return order
 
     def _snail_path_to_fetch_order_from_exchange(self, order_id, symbol_id, params):
-        # INFO: Optional Params
+        # Optional Params
         conditional_oid = params.get('stop_order_id', None)
 
         order = None
@@ -2337,14 +2342,14 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
             order = self._fetch_order_from_exchange(
                 order_id, symbol_id, params)
 
-        # INFO: It is OK to have order is None here
+        # It is OK to have order is None here
         return order
 
     def fetch_order(self, order_id, symbol_id, params={}):
-        # INFO: Optional Params
+        # Optional Params
         conditional_oid = params.get('stop_order_id', None)
 
-        # INFO: Enforce mutually exclusive rule
+        # Enforce mutually exclusive rule
         search_order_id = None
         order_type_name = None
         if order_id is None:
@@ -2368,7 +2373,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
             # msg += "order_id: {}, ".format(order_id)
             # msg += "conditional_oid: {}, ".format(conditional_oid)
             #
-            # # INFO: Strip ", " from the string
+            # # Strip ", " from the string
             # print(msg[:-2])
             pass
 
@@ -2399,7 +2404,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                 # msg += "search_into_ws_conditional_order: {}, ".format(search_into_ws_conditional_order)
                 # msg += "search_into_ws_active_order: {}, ".format(search_into_ws_active_order)
                 #
-                # # INFO: Strip ", " from the string
+                # # Strip ", " from the string
                 # print(msg[:-2])
                 pass
 
@@ -2508,7 +2513,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                     search_order_id,
                 )
                 # Credits: https://stackoverflow.com/questions/3419984/print-to-the-same-line-and-not-a-new-line
-                # INFO: Print on the same line without newline, customized accordingly to cater for our requirement
+                # Print on the same line without newline, customized accordingly to cater for our requirement
                 print("\r" + msg + sub_msg, end="")
                 order = self._snail_path_to_fetch_order_from_exchange(
                     order_id, symbol_id, params)
@@ -2525,7 +2530,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
             order = self._snail_path_to_fetch_order_from_exchange(
                 order_id, symbol_id, params)
 
-        # INFO: It is OK to have order is None here
+        # It is OK to have order is None here
         return order
 
     @retry

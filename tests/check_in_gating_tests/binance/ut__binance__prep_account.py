@@ -5,13 +5,13 @@ import unittest
 
 from time import time as timer
 
-from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPE__FUTURE, CCXT__MARKET_TYPE__SPOT
+from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPE__FUTURE, CCXT__MARKET_TYPE__SPOT, \
+    DEFAULT__INITIAL__CAPITAL_RESERVATION__VALUE, DEFAULT__LEVERAGE_IN_PERCENT
 from ccxtbt.exchange.binance.binance__exchange__specifications import BINANCE_EXCHANGE_ID
 from ccxtbt.exchange.bybit.bybit__exchange__helper import get_wallet_currency
 from ccxtbt.utils import get_time_diff
 
-from check_in_gating_tests.common.test__helper import ut__construct_standalone_account_or_store, \
-    ut__construct_standalone_instrument
+from ccxtbt.bt_ccxt_expansion__helper import construct_standalone_account_or_store, construct_standalone_instrument
 
 
 class Binance__bt_ccxt_account_or_store__Prepare_Account__TestCases(unittest.TestCase):
@@ -27,8 +27,8 @@ class Binance__bt_ccxt_account_or_store__Prepare_Account__TestCases(unittest.Tes
 
             self.isolated_toggle_switch_value = False
 
-            self.leverage_in_percent = 50.0
-            self.initial__capital_reservation__value = 0.0
+            self.leverage_in_percent = DEFAULT__LEVERAGE_IN_PERCENT
+            self.initial__capital_reservation__value = DEFAULT__INITIAL__CAPITAL_RESERVATION__VALUE
 
             self.is_ohlcv_provider = False
             self.enable_rate_limit = True
@@ -52,33 +52,32 @@ class Binance__bt_ccxt_account_or_store__Prepare_Account__TestCases(unittest.Tes
             isolated_toggle_switch_value = self.isolated_toggle_switch_value
             wallet_currency = self.wallet_currency
 
-            # INFO: Construct the components
+            # Construct the components
             for market_type in market_types:
                 construct_standalone_account_or_store__dict = dict(
                     exchange_dropdown_value=exchange_dropdown_value,
                     main_net_toggle_switch_value=main_net_toggle_switch_value,
+                    isolated_toggle_switch_value=isolated_toggle_switch_value,
+                    leverage_in_percent=leverage_in_percent,
                     market_type=market_type,
                     symbols_id=symbols_id,
                     enable_rate_limit=enable_rate_limit,
                     initial__capital_reservation__value=initial__capital_reservation__value,
                     is_ohlcv_provider=is_ohlcv_provider,
                     account__thread__connectivity__lock=account__thread__connectivity__lock,
-                    leverage_in_percent=leverage_in_percent,
                     wallet_currency=wallet_currency,
                 )
                 (bt_ccxt_account_or_store, _, ) = \
-                    ut__construct_standalone_account_or_store(
+                    construct_standalone_account_or_store(
                         params=construct_standalone_account_or_store__dict)
 
                 for symbol_id in symbols_id:
                     construct_standalone_instrument__dict = dict(
                         bt_ccxt_account_or_store=bt_ccxt_account_or_store,
-                        isolated_toggle_switch_value=isolated_toggle_switch_value,
-                        leverage_in_percent=leverage_in_percent,
                         market_type=market_type,
                         symbol_id=symbol_id,
                     )
-                    ut__construct_standalone_instrument(
+                    construct_standalone_instrument(
                         params=construct_standalone_instrument__dict)
                 self.bt_ccxt_account_or_stores.append(bt_ccxt_account_or_store)
             pass
@@ -111,7 +110,7 @@ class Binance__bt_ccxt_account_or_store__Prepare_Account__TestCases(unittest.Tes
         try:
             bt_ccxt_account_or_stores = self.bt_ccxt_account_or_stores
 
-            # INFO: Run the tests
+            # Run the tests
             for bt_ccxt_account_or_store in bt_ccxt_account_or_stores:
                 stepping_down__leverages_in_percent = [
                     i for i in range(40, -1, -10)]

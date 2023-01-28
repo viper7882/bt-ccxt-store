@@ -175,16 +175,16 @@ class BT_CCXT_Order(backtrader.OrderBase):
         if self.price == 0.0:
             # WARNING: The following code could be Bybit-specific
             if ccxt_order['stopPrice'] is not None:
-                # INFO: For market order, the completed price is captured in stopPrice a.k.a. trigger_price
+                # For market order, the completed price is captured in stopPrice a.k.a. trigger_price
                 self.price = float(ccxt_order['stopPrice'])
 
         if ccxt_order['filled'] is not None:
             self.filled = float(ccxt_order['filled'])
         else:
-            # INFO: For market order, the ccxt_order['filled'] will always be None
+            # For market order, the ccxt_order['filled'] will always be None
             if ccxt_order['type'] == backtrader.Order.Execution_Types[backtrader.Order.Market].lower():
                 self.filled = self.size
-            # INFO: For Conditional Limit Order
+            # For Conditional Limit Order
             # WARNING: The following code could be Bybit-specific
             elif ccxt_order['type'] == backtrader.Order.Execution_Types[backtrader.Order.Limit].lower() and \
                     ccxt_order['stopPrice'] is not None:
@@ -257,7 +257,7 @@ class BT_CCXT_Order(backtrader.OrderBase):
         return ret_value
 
     def clone(self):
-        # INFO: This is required so that the outcome will be reflected when calling order.executed.iterpending()
+        # This is required so that the outcome will be reflected when calling order.executed.iterpending()
         self.executed.mark_pending()
         obj = copy.copy(self)
         return obj

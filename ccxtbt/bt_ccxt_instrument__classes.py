@@ -72,7 +72,7 @@ class BT_CCXT_Instrument(backtrader.with_metaclass(Meta_Instrument, object)):
         self.ccxt_datafeeds = []
         self.commission_info = dict()
 
-        # INFO: Switch positions to exercise Enhanced Position instead
+        # Switch positions to exercise Enhanced Position instead
         self.positions = collections.defaultdict(Enhanced_Position)
 
         self.payload = backtrader.AutoOrderedDict()
@@ -86,6 +86,7 @@ class BT_CCXT_Instrument(backtrader.with_metaclass(Meta_Instrument, object)):
 
         # Derived Attributes
         self.exchange_dropdown_value = None
+        self._name = symbol_id
 
     def __repr__(self):
         return str(self)
@@ -96,7 +97,7 @@ class BT_CCXT_Instrument(backtrader.with_metaclass(Meta_Instrument, object)):
     def set__parent(self, owner):
         self.parent = owner
 
-        # INFO: Run post-processing AFTER parent has been set
+        # Run post-processing AFTER parent has been set
         self._post_process__after_parent_is_added()
 
     def get__parent(self):
@@ -132,11 +133,17 @@ class BT_CCXT_Instrument(backtrader.with_metaclass(Meta_Instrument, object)):
         legality_check_not_none_obj(ccxt_datafeed, "ccxt_datafeed")
         return ccxt_datafeed
 
-    def fetch_ohlcv(self, symbol, timeframe, since, limit):
-        assert self.symbol_id == symbol, "Instrument: {} does NOT support {}!!!".format(
-            self.symbol_id, symbol)
+    def fetch_ohlcv(self, symbol, timeframe, since, limit, until=None):
+        assert self.symbol_id == symbol, \
+            "Instrument: {} does NOT support {}!!!".format(
+                self.symbol_id, symbol)
+
+        params = {}
+        if until is not None:
+            params['until'] = until
+
         legality_check_not_none_obj(self.parent, "self.parent")
-        return self.parent.fetch_ohlcv(symbol, timeframe, since, limit)
+        return self.parent.fetch_ohlcv(symbol, timeframe, since, limit, params)
 
     def get_granularity(self, timeframe, compression):
         legality_check_not_none_obj(self.parent, "self.parent")
@@ -309,17 +316,17 @@ class BT_CCXT_Instrument(backtrader.with_metaclass(Meta_Instrument, object)):
                 print(msg + sub_msg)
 
         permit_position_update = False
-        # INFO: If there is no pending order to be processed, allow position changes from higher level
+        # If there is no pending order to be processed, allow position changes from higher level
         if len(self.parent.open_orders) == 0:
             permit_position_update = True
         else:
             for open_order in self.parent.open_orders:
-                # INFO: We should not gate position update if there is conditional order
+                # We should not gate position update if there is conditional order
                 if open_order.ordering_type == backtrader.Order.CONDITIONAL_ORDERING_TYPE:
                     permit_position_update = True
 
             if permit_position_update == False:
-                # INFO: Try to move BT_CCXT_Account_or_Store to get rid of the open_orders
+                # Try to move BT_CCXT_Account_or_Store to get rid of the open_orders
                 self.parent.next()
 
                 if len(self.parent.open_orders) == 0:
@@ -543,6 +550,11 @@ class BT_CCXT_Instrument(backtrader.with_metaclass(Meta_Instrument, object)):
                             position_order_based_side)
                         price = float(position['entry_price'])
                         size = float(position['size'])
+                        if size != 0.0:
+                            if position_type == backtrader.Position.SHORT_POSITION:
+                                # Guarantee to return negative sign
+                                size = -abs(size)
+                                assert size < 0.0
                         self.set_position(position_type, size, price)
             pass
         else:

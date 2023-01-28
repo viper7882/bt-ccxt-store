@@ -30,10 +30,10 @@ Sample output:
 
 BINANCE_SPOT_AND_FUTURES_QTY_DIGITS = 8
 
-# INFO: Max limit set by Binance is unknown (tested with 10000 and it is still working)
+# Max limit set by Binance is unknown (tested with 10000 and it is still working)
 BINANCE_SPOT__ORDERBOOK_DEPTH_LIMIT = 2000
 
-# INFO: Hard limit set by Binance
+# Hard limit set by Binance
 BINANCE_FUTURES__ORDERBOOK_DEPTH_LIMIT = 1000
 
 BINANCE__SUBSCRIBE_WS_STREAM_COMMAND = "SUBSCRIBE"
