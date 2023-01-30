@@ -26,6 +26,8 @@ import datetime
 import inspect
 import json
 
+from ccxtbt.bt_ccxt__specifications import CCXT_SIDE_KEY, DERIVED__CCXT_ORDER__KEYS, EXECUTION_TYPE, \
+    STATUS
 from ccxtbt.exchange.binance.binance__exchange__specifications import BINANCE_EXCHANGE_ID
 from ccxtbt.exchange.bybit.bybit__exchange__specifications import BYBIT_EXCHANGE_ID
 
@@ -33,7 +35,7 @@ from ccxtbt.exchange.bybit.bybit__exchange__specifications import BYBIT_EXCHANGE
 class BT_CCXT_Order(backtrader.OrderBase):
     params = dict(
         ccxt_order=None,
-        exchange_name=None,
+        exchange_dropdown_value=None,
         symbol_id=None,
         position_type=None,
         ordering_type=None,
@@ -43,7 +45,7 @@ class BT_CCXT_Order(backtrader.OrderBase):
     def __init__(self):
         # Legality Check
         assert isinstance(self.p.ccxt_order, object)
-        assert isinstance(self.p.exchange_name, str)
+        assert isinstance(self.p.exchange_dropdown_value, str)
         assert isinstance(self.p.symbol_id, str)
 
         if self.p.position_type not in range(len(backtrader.Position.Position_Types)):
@@ -64,7 +66,7 @@ class BT_CCXT_Order(backtrader.OrderBase):
 
         super(BT_CCXT_Order, self).__init__()
 
-        if self.p.exchange_name == BYBIT_EXCHANGE_ID or self.p.exchange_name == BINANCE_EXCHANGE_ID:
+        if self.p.exchange_dropdown_value == BYBIT_EXCHANGE_ID or self.p.exchange_dropdown_value == BINANCE_EXCHANGE_ID:
             # Legality Check
             if self.p.symbol_id.endswith("USDT"):
                 stop_out = False
@@ -101,13 +103,13 @@ class BT_CCXT_Order(backtrader.OrderBase):
                         print(json.dumps(self.ccxt_order, indent=self.indent))
                         stop_out = True
 
-                if self.p.exchange_name == BINANCE_EXCHANGE_ID:
+                if self.p.exchange_dropdown_value == BINANCE_EXCHANGE_ID:
                     reduce_only_key = 'reduceOnly'
-                elif self.p.exchange_name == BYBIT_EXCHANGE_ID:
+                elif self.p.exchange_dropdown_value == BYBIT_EXCHANGE_ID:
                     reduce_only_key = 'reduce_only'
                 else:
                     raise NotImplementedError(
-                        "{} exchange is yet to be supported!!!".format(self.p.exchange_name))
+                        "{} exchange is yet to be supported!!!".format(self.p.exchange_dropdown_value))
 
                 if reduce_only_key in self.ccxt_order['info'].keys():
                     point_of_reference = self.ccxt_order['info'][reduce_only_key]
@@ -150,7 +152,7 @@ class BT_CCXT_Order(backtrader.OrderBase):
                     "symbol_id: {} is yet to be supported!!!".format(self.p.symbol_id))
         else:
             raise NotImplementedError(
-                "{} exchange is yet to be supported!!!".format(self.p.exchange_name))
+                "{} exchange is yet to be supported!!!".format(self.p.exchange_dropdown_value))
 
     def extract_from_ccxt_order(self, ccxt_order):
         self.ccxt_order = ccxt_order
@@ -160,59 +162,86 @@ class BT_CCXT_Order(backtrader.OrderBase):
         else:
             self.ccxt_id = ccxt_order['id']
 
-        self.order_type = self.Buy if ccxt_order['side'] == 'buy' else self.Sell
+        # Do NOT remove. Required by backtrader
+        self.order_type = \
+            self.Buy if ccxt_order[CCXT_SIDE_KEY].lower(
+            ) == 'buy' else self.Sell
 
-        self.size = float(ccxt_order['amount'])
+        for key in DERIVED__CCXT_ORDER__KEYS:
+            # Skip status as it is not requested by user
+            if key == DERIVED__CCXT_ORDER__KEYS[STATUS]:
+                continue
 
-        if ccxt_order['average'] is not None:
-            self.price = float(ccxt_order['average'])
-        elif ccxt_order['price'] is not None:
-            self.price = float(ccxt_order['price'])
+            if hasattr(self, key):
+                # Validate if the attribute is matching
+                assert getattr(self, key) == ccxt_order[key], \
+                    "Expected: \'{}\'={} != Actual: [\'{}\']={}".format(
+                        key,
+                        getattr(self, key),
+                        key,
+                        ccxt_order[key],
+                )
+            else:
+                # Propagate over the attributes from ccxt_order
+                setattr(self, key, ccxt_order[key])
+
+        self.size = ccxt_order['amount']
+
+        if ccxt_order['average'] != 0.0:
+            self.price = ccxt_order['average']
+        elif ccxt_order['price'] != 0.0:
+            self.price = ccxt_order['price']
         else:
             # WARNING: The following code might cause assertion error during execute.
             self.price = 0.0
 
         if self.price == 0.0:
-            # WARNING: The following code could be Bybit-specific
-            if ccxt_order['stopPrice'] is not None:
+            if ccxt_order['stopPrice'] != 0.0:
                 # For market order, the completed price is captured in stopPrice a.k.a. trigger_price
-                self.price = float(ccxt_order['stopPrice'])
+                self.price = ccxt_order['stopPrice']
 
-        if ccxt_order['filled'] is not None:
-            self.filled = float(ccxt_order['filled'])
+        if ccxt_order['filled'] != 0.0:
+            self.filled = ccxt_order['filled']
         else:
             # For market order, the ccxt_order['filled'] will always be None
-            if ccxt_order['type'] == backtrader.Order.Execution_Types[backtrader.Order.Market].lower():
-                self.filled = self.size
-            # For Conditional Limit Order
-            # WARNING: The following code could be Bybit-specific
-            elif ccxt_order['type'] == backtrader.Order.Execution_Types[backtrader.Order.Limit].lower() and \
-                    ccxt_order['stopPrice'] is not None:
+            if ccxt_order[DERIVED__CCXT_ORDER__KEYS[EXECUTION_TYPE]] == backtrader.Order.Market:
                 self.filled = self.size
             else:
-                self.filled = 0.0
-
-        if ccxt_order['remaining'] is not None:
-            self.remaining = float(ccxt_order['remaining'])
-        else:
-            self.remaining = 0.0
-
-        if ccxt_order['stopPrice'] is not None:
-            if float(ccxt_order['stopPrice']) != 0.0:
-                if self.p.exchange_name == BINANCE_EXCHANGE_ID:
-                    if 'status' in ccxt_order['info'].keys():
-                        if ccxt_order['info']['status'] is not None:
-                            if ccxt_order['info']['status'].upper() != "NEW":
-                                self.triggered = True
-                    pass
-                elif self.p.exchange_name == BYBIT_EXCHANGE_ID:
-                    if 'order_status' in ccxt_order['info'].keys():
-                        if ccxt_order['info']['order_status'] is not None:
-                            if ccxt_order['info']['order_status'].lower() == "triggered":
-                                self.triggered = True
+                # Look for Conditional Limit Order
+                if self.p.exchange_dropdown_value == BINANCE_EXCHANGE_ID:
+                    conditional_limit_order__met = \
+                        ccxt_order[DERIVED__CCXT_ORDER__KEYS[EXECUTION_TYPE]] == backtrader.Order.StopLimit and \
+                        ccxt_order['stopPrice'] != 0.0
+                elif self.p.exchange_dropdown_value == BYBIT_EXCHANGE_ID:
+                    conditional_limit_order__met = \
+                        ccxt_order[DERIVED__CCXT_ORDER__KEYS[EXECUTION_TYPE]] == backtrader.Order.Limit and \
+                        ccxt_order['stopPrice'] != 0.0
                 else:
                     raise NotImplementedError(
-                        "{} exchange is yet to be supported!!!".format(self.p.exchange_name))
+                        "{} exchange is yet to be supported!!!".format(self.p.exchange_dropdown_value))
+
+                if conditional_limit_order__met == True:
+                    self.filled = self.size
+                else:
+                    self.filled = 0.0
+
+        self.remaining = ccxt_order['remaining']
+
+        if ccxt_order['stopPrice'] != 0.0:
+            if self.p.exchange_dropdown_value == BINANCE_EXCHANGE_ID:
+                if 'status' in ccxt_order['info'].keys():
+                    if ccxt_order['info']['status'] is not None:
+                        if ccxt_order['info']['status'].upper() != "NEW":
+                            self.triggered = True
+                pass
+            elif self.p.exchange_dropdown_value == BYBIT_EXCHANGE_ID:
+                if 'order_status' in ccxt_order['info'].keys():
+                    if ccxt_order['info']['order_status'] is not None:
+                        if ccxt_order['info']['order_status'].lower() == "triggered":
+                            self.triggered = True
+            else:
+                raise NotImplementedError(
+                    "{} exchange is yet to be supported!!!".format(self.p.exchange_dropdown_value))
 
     def __repr__(self):
         return str(self)

@@ -5,7 +5,8 @@ import requests
 from pprint import pprint
 
 from ccxtbt.bt_ccxt_expansion__classes import Exchange_HTTP_Parser_Per_Symbol
-from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPE__SPOT, CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP, \
+from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPES, CCXT__MARKET_TYPE__SPOT, \
+    CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP, \
     MIN_LEVERAGE, symbol_stationary__dict_template
 from ccxtbt.exchange.bybit.bybit__exchange__specifications import BYBIT__DERIVATIVES_V2_ENDPOINT, \
     BYBIT__SPOT__HTTP_ENDPOINT_URL, BYBIT__SPOT_V3_ENDPOINT, BYBIT__SYMBOLS_COMMAND, \
@@ -48,7 +49,10 @@ class Bybit_Symbol_Info__HTTP_Parser(Exchange_HTTP_Parser_Per_Symbol):
             # Attributes according to symbol_stationary__dict_template
             self.min_leverage = MIN_LEVERAGE
         else:
-            raise NotImplementedError()
+            raise NotImplementedError("{} market type is not yet enabled for {} exchange".format(
+                CCXT__MARKET_TYPES[self.market_type],
+                self.exchange_dropdown_value,
+            ))
 
         # Variables
         for key in symbol_stationary__dict_template.keys():
@@ -63,7 +67,10 @@ class Bybit_Symbol_Info__HTTP_Parser(Exchange_HTTP_Parser_Per_Symbol):
         elif self.market_type == CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP:
             ret_code_key = 'ret_code'
         else:
-            raise NotImplementedError()
+            raise NotImplementedError("{} market type is not yet enabled for {} exchange".format(
+                CCXT__MARKET_TYPES[self.market_type],
+                self.exchange_dropdown_value,
+            ))
 
         # Legality Check
         if symbol_exchange_info[ret_code_key] != 0:
@@ -84,7 +91,10 @@ class Bybit_Symbol_Info__HTTP_Parser(Exchange_HTTP_Parser_Per_Symbol):
         elif self.market_type == CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP:
             point_of_reference = symbol_exchange_info['result']
         else:
-            raise NotImplementedError()
+            raise NotImplementedError("{} market type is not yet enabled for {} exchange".format(
+                CCXT__MARKET_TYPES[self.market_type],
+                self.exchange_dropdown_value,
+            ))
 
         symbol_dict = None
         for symbol_dict in point_of_reference:
@@ -101,6 +111,10 @@ class Bybit_Symbol_Info__HTTP_Parser(Exchange_HTTP_Parser_Per_Symbol):
             self.qty_digits = get_digits(self.qty_step)
             self.min_qty = float(symbol_dict['minTradeQty'])
             self.max_qty = float(symbol_dict['maxTradeQty'])
+
+            # Required by offline dataset
+            # Spot account has no leverage and risk_limit
+            self.leverage_step = None
             pass
         elif self.market_type == CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP:
             self.tick_size = float(
@@ -112,9 +126,16 @@ class Bybit_Symbol_Info__HTTP_Parser(Exchange_HTTP_Parser_Per_Symbol):
                 float(symbol_dict['lot_size_filter']['min_trading_qty'])
             self.max_qty = \
                 float(symbol_dict['lot_size_filter']['max_trading_qty'])
+
+            # Required by offline dataset
+            self.leverage_step = float(
+                symbol_dict['leverage_filter']['leverage_step'])
             pass
         else:
-            raise NotImplementedError()
+            raise NotImplementedError("{} market type is not yet enabled for {} exchange".format(
+                CCXT__MARKET_TYPES[self.market_type],
+                self.exchange_dropdown_value,
+            ))
 
         # There is no min_notional imposed by Bybit at the moment
         self.min_notional = None

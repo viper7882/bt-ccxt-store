@@ -10,10 +10,7 @@ import pandas as pd
 from pprint import pprint
 from time import time as timer
 
-from ccxtbt.exchange.binance.binance__exchange__specifications import BINANCE_EXCHANGE_ID
-from ccxtbt.exchange.bybit.bybit__exchange__specifications import BYBIT_EXCHANGE_ID
-
-from .bt_ccxt__specifications import CCXT_DATA_COLUMNS, OPEN_COL, HIGH_COL, LOW_COL, CLOSE_COL, VOLUME_COL, \
+from ccxtbt.bt_ccxt__specifications import CCXT_DATA_COLUMNS, OPEN_COL, HIGH_COL, LOW_COL, CLOSE_COL, VOLUME_COL, \
     DATE_TIME_FORMAT_WITH_MS_PRECISION
 
 
@@ -211,51 +208,6 @@ def get_time_diff(start):
     return hours, minutes, seconds
 
 
-def get_ccxt_order_id(exchange, order):
-    ccxt_order_id = None
-    if isinstance(order, dict):
-        if 'id' in order.keys():
-            ccxt_order_id = order['id']
-        elif 'stop_order_id' in order.keys():
-            ccxt_order_id = order['stop_order_id']
-        elif 'order_id' in order.keys():
-            ccxt_order_id = order['order_id']
-    else:
-        # Validate assumption made
-        assert isinstance(order, object)
-
-        if hasattr(order, 'ccxt_id'):
-            ccxt_order_id = order.ccxt_id
-        elif hasattr(order, 'ccxt_order'):
-            if order.ccxt_order is not None:
-                if isinstance(order.ccxt_order, dict):
-                    if 'id' in order.ccxt_order.keys():
-                        ccxt_order_id = order.ccxt_order['id']
-
-                    if str(exchange).lower() == BINANCE_EXCHANGE_ID:
-                        raise NotImplementedError(
-                            "{} exchange is yet to be supported!!!".format(str(exchange).lower()))
-                    elif str(exchange).lower() == BYBIT_EXCHANGE_ID:
-                        if 'stop_order_id' in order.ccxt_order['info'].keys():
-                            ccxt_order_id = order.ccxt_order['info']['stop_order_id']
-                        elif 'order_id' in order.ccxt_order['info'].keys():
-                            ccxt_order_id = order.ccxt_order['info']['order_id']
-                    else:
-                        raise NotImplementedError(
-                            "{} exchange is yet to be supported!!!".format(str(exchange).lower()))
-                else:
-                    # Validate assumption made
-                    assert isinstance(order.ccxt_order, object)
-
-                    raise NotImplementedError()
-            else:
-                raise NotImplementedError()
-        else:
-            raise NotImplementedError()
-    legality_check_not_none_obj(ccxt_order_id, "ccxt_order_id")
-    return ccxt_order_id
-
-
 def get_digits(step_size) -> int:
     if isinstance(step_size, float):
         # Credits: https://stackoverflow.com/questions/6189956/easy-way-of-finding-decimal-places
@@ -412,3 +364,14 @@ def screen_dataframe_for_duplicated_index(params):
             pprint(df_with_duplicated_index.head(10))
             pprint(df_with_duplicated_index.tail(10))
             raise RuntimeError("Duplicated index rows are prohibited!!!")
+
+
+def get_opposite__position_type(position_type):
+    if position_type not in range(len(backtrader.Position.Position_Types)):
+        raise RuntimeError("{}: {} position type must be one of {}!!!".format(
+            inspect.currentframe(), position_type, range(len(backtrader.Position.Position_Types))))
+
+    opposite__position_type = \
+        backtrader.Position.SHORT_POSITION if position_type == backtrader.Position.LONG_POSITION else \
+        backtrader.Position.LONG_POSITION
+    return opposite__position_type

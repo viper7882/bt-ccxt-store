@@ -18,8 +18,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 ###############################################################################
-from __future__ import (absolute_import, division, print_function,
-                        unicode_literals)
+import copy
 
 import backtrader
 import collections
@@ -30,7 +29,7 @@ from pprint import pprint
 
 from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPES, CCXT__MARKET_TYPE__FUTURE, \
     CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP, CCXT__MARKET_TYPE__SPOT, \
-    symbol_stationary__dict_template
+    risk_limit__dict_template, symbol_stationary__dict_template
 from ccxtbt.bt_ccxt_account_or_store__classes import BT_CCXT_Account_or_Store
 from ccxtbt.bt_ccxt_expansion__classes import Enhanced_Position
 from ccxtbt.exchange.binance.binance__exchange__classes import Binance_Symbol_Info__HTTP_Parser
@@ -88,6 +87,9 @@ class BT_CCXT_Instrument(backtrader.with_metaclass(Meta_Instrument, object)):
         self.exchange_dropdown_value = None
         self._name = symbol_id
 
+        # Required by offline dataset
+        self.risk_limit = None
+
     def __repr__(self):
         return str(self)
 
@@ -105,6 +107,91 @@ class BT_CCXT_Instrument(backtrader.with_metaclass(Meta_Instrument, object)):
 
     def add_commission_info(self, commission_info):
         self.commission_info = commission_info
+
+        # Required by offline dataset
+        assert hasattr(commission_info, 'commission')
+        assert isinstance(commission_info.commission, int) or isinstance(
+            commission_info.commission, float)
+
+        # Rename 'commission' to 'commission_rate' in instrument
+        setattr(self, 'commission_rate', commission_info.commission)
+
+        legality_check_not_none_obj(self.parent, "self.parent")
+        legality_check_not_none_obj(
+            self.exchange_dropdown_value, "self.exchange_dropdown_value")
+
+        if self.parent.market_type == CCXT__MARKET_TYPE__SPOT:
+            # Do nothing
+            pass
+        else:
+            if self.exchange_dropdown_value == BINANCE_EXCHANGE_ID:
+                if self.parent.market_type == CCXT__MARKET_TYPE__FUTURE:
+                    response = self.parent.exchange.fapiPrivate_get_leveragebracket(
+                        {'symbol': self.symbol_id})
+
+                    point_of_reference = response[0]
+                    # Validate assumption made
+                    assert point_of_reference['symbol'] == self.symbol_id
+
+                    for risk_limit in point_of_reference['brackets']:
+                        if self.risk_limit is None:
+                            self.risk_limit = []
+
+                        risk_limit_dict = copy.deepcopy(
+                            risk_limit__dict_template)
+                        risk_limit_dict['id'] = risk_limit['bracket']
+                        risk_limit_dict['starting_margin'] = \
+                            float(risk_limit['cum'])
+                        risk_limit_dict['maintenance_margin_ratio'] = \
+                            float(risk_limit['maintMarginRatio'])
+                        risk_limit_dict['max_leverage'] = \
+                            float(risk_limit['initialLeverage'])
+                        risk_limit_dict['min_position_value'] = \
+                            float(risk_limit['notionalFloor'])
+                        risk_limit_dict['max_position_value'] = \
+                            float(risk_limit['notionalCap'])
+                        self.risk_limit.append(risk_limit_dict)
+                    pass
+                else:
+                    raise NotImplementedError("{} market type is not yet enabled for {} exchange".format(
+                        CCXT__MARKET_TYPES[self.parent.market_type],
+                        self.exchange_dropdown_value,
+                    ))
+            elif self.exchange_dropdown_value == BYBIT_EXCHANGE_ID:
+                if self.parent.market_type == CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP:
+                    response = self.parent.exchange.public_get_public_linear_risk_limit(
+                        {'symbol': self.symbol_id})
+
+                    prev_max_position_value = 0
+                    for risk_limit in response['result']:
+                        if self.risk_limit is None:
+                            self.risk_limit = []
+
+                        risk_limit_dict = copy.deepcopy(
+                            risk_limit__dict_template)
+                        risk_limit_dict['id'] = risk_limit['id']
+                        risk_limit_dict['starting_margin'] = \
+                            float(risk_limit['starting_margin'])
+                        risk_limit_dict['maintenance_margin_ratio'] = \
+                            float(risk_limit['maintain_margin'])
+                        risk_limit_dict['max_leverage'] = \
+                            float(risk_limit['max_leverage'])
+                        risk_limit_dict['min_position_value'] = prev_max_position_value
+                        risk_limit_dict['max_position_value'] = \
+                            float(risk_limit['limit'])
+                        self.risk_limit.append(risk_limit_dict)
+
+                        prev_max_position_value = risk_limit_dict['max_position_value']
+                    pass
+                else:
+                    raise NotImplementedError("{} market type is not yet enabled for {} exchange".format(
+                        CCXT__MARKET_TYPES[self.parent.market_type],
+                        self.exchange_dropdown_value,
+                    ))
+            else:
+                raise NotImplementedError(
+                    "{} exchange is yet to be supported!!!".format(self.exchange_dropdown_value))
+            pass
 
     def get_commission_info(self):
         return self.commission_info
@@ -192,6 +279,18 @@ class BT_CCXT_Instrument(backtrader.with_metaclass(Meta_Instrument, object)):
     def get_orders(self, **kwarg):
         legality_check_not_none_obj(self.parent, "self.parent")
         return self.parent.get_orders(**kwarg)
+
+    def fetch_opened_orders(self, since=None, limit=None, params=None):
+        if params is None:
+            params = {}
+        legality_check_not_none_obj(self.parent, "self.parent")
+        return self.parent.fetch_opened_orders(symbol=self.symbol_id, since=since, limit=limit, params=params)
+
+    def fetch_closed_orders(self, since=None, limit=None, params=None):
+        if params is None:
+            params = {}
+        legality_check_not_none_obj(self.parent, "self.parent")
+        return self.parent.fetch_closed_orders(symbol=self.symbol_id, since=since, limit=limit, params=params)
 
     def set_cash(self, cash):
         legality_check_not_none_obj(self.parent, "self.parent")
@@ -315,25 +414,7 @@ class BT_CCXT_Instrument(backtrader.with_metaclass(Meta_Instrument, object)):
                 )
                 print(msg + sub_msg)
 
-        permit_position_update = False
-        # If there is no pending order to be processed, allow position changes from higher level
-        if len(self.parent.open_orders) == 0:
-            permit_position_update = True
-        else:
-            for open_order in self.parent.open_orders:
-                # We should not gate position update if there is conditional order
-                if open_order.ordering_type == backtrader.Order.CONDITIONAL_ORDERING_TYPE:
-                    permit_position_update = True
-
-            if permit_position_update == False:
-                # Try to move BT_CCXT_Account_or_Store to get rid of the open_orders
-                self.parent.next()
-
-                if len(self.parent.open_orders) == 0:
-                    permit_position_update = True
-
-        if permit_position_update == True:
-            self.positions[position_type].set(size, price)
+        self.positions[position_type].set(size, price)
 
     def buy(self, owner, symbol_id, size,
             # Optional Params
@@ -386,6 +467,10 @@ class BT_CCXT_Instrument(backtrader.with_metaclass(Meta_Instrument, object)):
                                 order_intent=order_intent,
                                 position_type=position_type,
                                 **kwargs)
+
+    def cancel(self, order):
+        legality_check_not_none_obj(self.parent, "self.parent")
+        return self.parent.cancel(order)
 
     def get_pnl(self, position_types):
         '''
@@ -451,7 +536,7 @@ class BT_CCXT_Instrument(backtrader.with_metaclass(Meta_Instrument, object)):
 
     def get_exchange_dropdown_value(self):
         legality_check_not_none_obj(self.parent, "self.parent")
-        return str(self.parent.exchange).lower()
+        return self.parent.exchange_dropdown_value
 
     def get_open_orders(self):
         legality_check_not_none_obj(self.parent, "self.parent")
@@ -486,7 +571,7 @@ class BT_CCXT_Instrument(backtrader.with_metaclass(Meta_Instrument, object)):
                 # position.
                 pass
             elif self.parent.market_type == CCXT__MARKET_TYPE__FUTURE:
-                balance = self.parent._get_wallet_balance()
+                balance = self.parent._get_balance()
                 point_of_reference = balance['info']['positions']
 
                 for position in point_of_reference:
@@ -500,7 +585,10 @@ class BT_CCXT_Instrument(backtrader.with_metaclass(Meta_Instrument, object)):
                         self.set_position(position_type, size, price)
                         pass
             else:
-                raise NotImplementedError()
+                raise NotImplementedError("{} market type is not yet enabled for {} exchange".format(
+                    CCXT__MARKET_TYPES[self.parent.market_type],
+                    self.exchange_dropdown_value,
+                ))
         elif self.exchange_dropdown_value == BYBIT_EXCHANGE_ID:
             if self.parent.market_type == CCXT__MARKET_TYPE__SPOT:
                 # Spot account does not have any position as the orders are meant to convert from one currency to
@@ -508,6 +596,10 @@ class BT_CCXT_Instrument(backtrader.with_metaclass(Meta_Instrument, object)):
                 # position.
                 pass
             elif self.parent.market_type == CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP:
+                # Get account balance is required here so that the cash and value are updated in the account as well
+                # despite no use in this function
+                _ = self.parent._get_balance()
+
                 point_of_reference = self._get_bybit_position_list()
 
                 updated_position_mode = False
@@ -528,8 +620,7 @@ class BT_CCXT_Instrument(backtrader.with_metaclass(Meta_Instrument, object)):
                             msg = "{}: {} Line: {}: INFO: {}: Sync with {}: ".format(
                                 CCXT__MARKET_TYPES[self.parent.market_type],
                                 frameinfo.function, frameinfo.lineno,
-                                self.symbol_id, str(
-                                    self.parent.exchange).lower(),
+                                self.symbol_id, self.parent.exchange_dropdown_value,
                             )
                             sub_msg = "Adjusted Dual/Hedge Position Mode from {} -> {}".format(
                                 False,
@@ -556,9 +647,15 @@ class BT_CCXT_Instrument(backtrader.with_metaclass(Meta_Instrument, object)):
                                 size = -abs(size)
                                 assert size < 0.0
                         self.set_position(position_type, size, price)
-            pass
+                pass
+            else:
+                raise NotImplementedError("{} market type is not yet enabled for {} exchange".format(
+                    CCXT__MARKET_TYPES[self.parent.market_type],
+                    self.exchange_dropdown_value,
+                ))
         else:
-            raise NotImplementedError()
+            raise NotImplementedError(
+                "{} exchange is yet to be supported!!!".format(self.exchange_dropdown_value))
 
         # Dump positions
         # pprint(self.positions)
@@ -578,7 +675,8 @@ class BT_CCXT_Instrument(backtrader.with_metaclass(Meta_Instrument, object)):
             http_parser = Bybit_Symbol_Info__HTTP_Parser(
                 params=http_parser__dict)
         else:
-            raise NotImplementedError()
+            raise NotImplementedError(
+                "{} exchange is yet to be supported!!!".format(self.exchange_dropdown_value))
         http_parser.run()
 
         # Populate symbol static info over according to symbol_stationary__dict_template
@@ -606,8 +704,12 @@ class BT_CCXT_Instrument(backtrader.with_metaclass(Meta_Instrument, object)):
         orderbook = self.parent.get_orderbook(symbol_id=self.symbol_id)
 
         # Legality Check
-        assert offset < len(orderbook['asks'])
-        assert offset >= -len(orderbook['asks'])
+        assert offset < len(orderbook['asks']), \
+            "Expected: {} vs Actual: {}".format(
+                len(orderbook['asks']) - 1, offset)
+        assert offset >= -len(orderbook['asks']), \
+            "Expected: {} vs Actual: {}".format(
+                len(orderbook['asks']) - 1, offset)
 
         ask = orderbook['asks'][offset][0]
         bid = orderbook['bids'][offset][0]

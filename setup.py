@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='bt_ccxt_store',
-    version='2023.01.29',
+    version='2023.01.30',
     description='A fork of Ed Bartosh\'s CCXT Store Work with some additions',
     url='https://github.com/viper7882/bt-ccxt-store',
     author='Dave Vallance',

@@ -18,9 +18,10 @@ def ut_handle_datafeed(datafeed, price=None):
         datafeed.close[0] = price
 
 
-def reverse_engineer__ccxt_order(exchange, bt_ccxt_order__dict):
+def ut_reverse_engineer__ccxt_order(bt_ccxt_order__dict):
     # Un-serialize Params
     ccxt_order = bt_ccxt_order__dict['ccxt_order']
+    exchange_dropdown_value = bt_ccxt_order__dict['exchange_dropdown_value']
 
     if ccxt_order['type'] == backtrader.Order.Execution_Types[backtrader.Order.Limit].lower():
         execution_type = backtrader.Order.Limit
@@ -41,10 +42,10 @@ def reverse_engineer__ccxt_order(exchange, bt_ccxt_order__dict):
     else:
         ordering_type = backtrader.Order.CONDITIONAL_ORDERING_TYPE
 
-    if str(exchange).lower() == BINANCE_EXCHANGE_ID:
+    if exchange_dropdown_value == BINANCE_EXCHANGE_ID:
         raise NotImplementedError(
-            "{} exchange is yet to be supported!!!".format(str(exchange).lower()))
-    elif str(exchange).lower() == BYBIT_EXCHANGE_ID:
+            "{} exchange is yet to be supported!!!".format(exchange_dropdown_value))
+    elif exchange_dropdown_value == BYBIT_EXCHANGE_ID:
         if 'info' in ccxt_order.keys():
             if 'reduce_only' in ccxt_order['info'].keys():
                 # Validate assumption made
@@ -60,7 +61,7 @@ def reverse_engineer__ccxt_order(exchange, bt_ccxt_order__dict):
             raise NotImplementedError()
     else:
         raise NotImplementedError(
-            "{} exchange is yet to be supported!!!".format(str(exchange).lower()))
+            "{} exchange is yet to be supported!!!".format(exchange_dropdown_value))
 
     bt_ccxt_order__dict.update(dict(
         execution_type=execution_type,

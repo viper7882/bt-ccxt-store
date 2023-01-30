@@ -192,11 +192,6 @@ class BT_CCXT_Feed(with_metaclass(MetaCCXTFeed, DataBase)):
         # Validate assumption made
         assert isinstance(granularity_dropdown_value, str)
 
-        timeframe_duration_in_seconds = self.instrument.parse_timeframe(
-            granularity_dropdown_value)
-        timeframe_duration_in_ms = timeframe_duration_in_seconds * 1000
-        time_delta = self.p.ohlcv_limit * timeframe_duration_in_ms
-
         all_ohlcv = []
         fetch_since = since
         while fetch_since < until:

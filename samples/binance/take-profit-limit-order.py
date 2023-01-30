@@ -1,12 +1,14 @@
 import os
 
-from ccxtbt import BT_CCXT_Account_or_Store
 from backtrader import Order
 import backtrader as bt
 from datetime import datetime, timedelta
 import time
 import json
 import logging
+
+from ccxtbt.bt_ccxt_account_or_store__classes import BT_CCXT_Account_or_Store
+from ccxtbt.bt_ccxt__specifications import CANCELED_ORDER, CCXT_ORDER_TYPES, CLOSED_ORDER
 
 
 class TestStrategy(bt.Strategy):
@@ -38,7 +40,7 @@ class TestStrategy(bt.Strategy):
             print('{} - {} | O: {} H: {} L: {} C: {} V:{}'.format(data.datetime.datetime(),
                                                                   datafeed._name, data.open[0], data.high[0], data.low[0], data.close[0], data.volume[0]))
 
-    def datafeed_notification(self, data, status, *args, **kwargs):
+    def datafeed_notification(self, datafeed, status, *args, **kwargs):
         dn = datafeed._name
         dt = datetime.now()
         msg = 'Data Status: {}, Order Status: {}'.format(
@@ -87,11 +89,11 @@ broker_mapping = {
         bt.Order.StopLimit: 'TAKE_PROFIT_LIMIT'
     },
     'mappings': {
-        'closed_order': {
+        CCXT_ORDER_TYPES[CLOSED_ORDER]: {
             'key': 'status',
             'value': 'closed'
         },
-        'canceled_order': {
+        CCXT_ORDER_TYPES[CANCELED_ORDER]: {
             'key': 'result',
             'value': 1}
     }

@@ -6,7 +6,8 @@ from datetime import datetime, timedelta
 import backtrader as bt
 from backtrader import Order
 
-from ccxtbt import BT_CCXT_Account_or_Store
+from ccxtbt.bt_ccxt__specifications import CANCELED_ORDER, CCXT_ORDER_TYPES, CLOSED_ORDER
+from ccxtbt.bt_ccxt_account_or_store__classes import BT_CCXT_Account_or_Store
 
 
 class TestStrategy(bt.Strategy):
@@ -33,7 +34,7 @@ class TestStrategy(bt.Strategy):
                                                                   datafeed._name, data.open[0], data.high[0], data.low[0],
                                                                   data.close[0], data.volume[0]))
 
-    def datafeed_notification(self, data, status, *args, **kwargs):
+    def datafeed_notification(self, datafeed, status, *args, **kwargs):
         dn = datafeed._name
         dt = datetime.now()
         msg = 'Data Status: {}, Order Status: {}'.format(
@@ -81,11 +82,11 @@ broker_mapping = {
         bt.Order.StopLimit: 'stop limit'
     },
     'mappings': {
-        'closed_order': {
+        CCXT_ORDER_TYPES[CLOSED_ORDER]: {
             'key': 'status',
             'value': 'closed'
         },
-        'canceled_order': {
+        CCXT_ORDER_TYPES[CANCELED_ORDER]: {
             'key': 'status',
             'value': 'canceled'
         }

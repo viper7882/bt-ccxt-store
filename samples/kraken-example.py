@@ -1,6 +1,8 @@
-from ccxtbt import BT_CCXT_Account_or_Store
 import backtrader as bt
 from datetime import datetime, timedelta
+
+from ccxtbt.bt_ccxt_account_or_store__classes import BT_CCXT_Account_or_Store
+from ccxtbt.bt_ccxt__specifications import CANCELED_ORDER, CCXT_ORDER_TYPES, CLOSED_ORDER
 
 
 class TestStrategy(bt.Strategy):
@@ -78,11 +80,11 @@ broker_mapping = {
         bt.Order.StopLimit: 'stop limit'
     },
     'mappings': {
-        'closed_order': {
+        CCXT_ORDER_TYPES[CLOSED_ORDER]: {
             'key': 'status',
             'value': 'closed'
         },
-        'canceled_order': {
+        CCXT_ORDER_TYPES[CANCELED_ORDER]: {
             'key': 'result',
             'value': 1}
     }

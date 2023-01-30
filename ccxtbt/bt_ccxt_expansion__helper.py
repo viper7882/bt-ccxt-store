@@ -2,7 +2,9 @@ import backtrader
 import json
 import time
 
-from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPES, MAX_LIVE_EXCHANGE_RETRIES
+from ccxtbt.bt_ccxt__specifications import CANCELED_ORDER, CCXT_ORDER_TYPES, CCXT_STATUS_KEY, CCXT__MARKET_TYPES, \
+    CLOSED_ORDER, \
+    EXPIRED_ORDER, MAX_LIVE_EXCHANGE_RETRIES, OPENED_ORDER, PARTIALLY_FILLED_ORDER, REJECTED_ORDER
 from ccxtbt.bt_ccxt_account_or_store__classes import BT_CCXT_Account_or_Store
 from ccxtbt.bt_ccxt_exchange__classes import BT_CCXT_Exchange
 from ccxtbt.bt_ccxt_instrument__classes import BT_CCXT_Instrument
@@ -27,7 +29,7 @@ def construct_standalone_exchange(params) -> object:
     if exchange_dropdown_value == BINANCE_EXCHANGE_ID:
         order_types.update(
             {
-                backtrader.Order.StopMarket: "stop market",
+                backtrader.Order.StopMarket: "stop_market",
                 backtrader.Order.StopLimit: "stop",
             }
         )
@@ -37,43 +39,46 @@ def construct_standalone_exchange(params) -> object:
 
     # CCXT broker_or_exchange mapping consumed by BT-CCXT broker_or_exchange
     # Documentation: https://docs.ccxt.com/en/latest/manual.html#order-structure
-    mappings = dict(
-        opened_order={
-            'key': "status",
+    mappings = {
+        CCXT_ORDER_TYPES[OPENED_ORDER]: {
+            'key': CCXT_STATUS_KEY,
             'value': "open",
         },
-        closed_order={
-            'key': "status",
+        CCXT_ORDER_TYPES[CLOSED_ORDER]: {
+            'key': CCXT_STATUS_KEY,
             'value': "closed",
         },
-        canceled_order={
-            'key': "status",
+        CCXT_ORDER_TYPES[CANCELED_ORDER]: {
+            'key': CCXT_STATUS_KEY,
             'value': "canceled",
         },
-        expired_order={
-            'key': "status",
+        CCXT_ORDER_TYPES[EXPIRED_ORDER]: {
+            'key': CCXT_STATUS_KEY,
             'value': "expired",
         },
-        rejected_order={
-            'key': "status",
+        CCXT_ORDER_TYPES[REJECTED_ORDER]: {
+            'key': CCXT_STATUS_KEY,
             'value': "rejected",
         },
-    )
+    }
 
     if exchange_dropdown_value == BINANCE_EXCHANGE_ID:
-        mappings.update(
-            partially_filled_order={
-                'key': "status",
+        mappings.update({
+            CCXT_ORDER_TYPES[PARTIALLY_FILLED_ORDER]: {
+                'key': CCXT_STATUS_KEY,
                 'value': "PARTIALLY_FILLED",
             },
-        )
+        })
     elif exchange_dropdown_value == BYBIT_EXCHANGE_ID:
-        mappings.update(
-            partially_filled_order={
-                'key': "status",
+        mappings.update({
+            CCXT_ORDER_TYPES[PARTIALLY_FILLED_ORDER]: {
+                'key': CCXT_STATUS_KEY,
                 'value': "PartiallyFilled",
             },
-        )
+        })
+    else:
+        # Do nothing
+        pass
 
     ccxt__broker_mapping = dict(
         mappings=mappings,
@@ -188,14 +193,15 @@ def construct_standalone_instrument(params) -> object:
         market_type=market_type,
         symbol_id=symbol_id,
     )
-    if str(bt_ccxt_account_or_store.exchange).lower() == BINANCE_EXCHANGE_ID:
+    if bt_ccxt_account_or_store.exchange_dropdown_value == BINANCE_EXCHANGE_ID:
         commission = get_binance_commission_rate(
             params=commission_rate__dict)
-    elif str(bt_ccxt_account_or_store.exchange).lower() == BYBIT_EXCHANGE_ID:
+    elif bt_ccxt_account_or_store.exchange_dropdown_value == BYBIT_EXCHANGE_ID:
         commission = get_bybit_commission_rate(
             params=commission_rate__dict)
     else:
-        raise NotImplementedError()
+        raise NotImplementedError(
+            "{} exchange is yet to be supported!!!".format(bt_ccxt_account_or_store.exchange_dropdown_value))
 
     get_commission_info__dict = dict(
         symbol_id=symbol_id,

@@ -3,6 +3,7 @@ import inspect
 
 from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPES, CCXT__MARKET_TYPE__FUTURE, CCXT__MARKET_TYPE__SPOT, \
     MIN_LEVERAGE
+from ccxtbt.exchange.binance.binance__exchange__specifications import BINANCE_EXCHANGE_ID
 from ccxtbt.utils import legality_check_not_none_obj
 
 
@@ -40,7 +41,10 @@ def get_binance_commission_rate(params) -> float:
             account_info['commissionRates'], key=account_info['commissionRates'].get)
         commission = float(account_info['commissionRates'][key_of_max_value])
     else:
-        raise NotImplementedError()
+        raise NotImplementedError("{} market type is not yet enabled for {} exchange".format(
+            CCXT__MARKET_TYPES[market_type],
+            BINANCE_EXCHANGE_ID,
+        ))
     legality_check_not_none_obj(commission, "commission")
     return commission
 
@@ -83,9 +87,15 @@ def get_binance_max_leverage(params) -> int:
                 break
         pass
     elif market_type == CCXT__MARKET_TYPE__SPOT:
-        raise NotImplementedError()
+        raise NotImplementedError("{} market type is not yet enabled for {} exchange".format(
+            CCXT__MARKET_TYPES[market_type],
+            BINANCE_EXCHANGE_ID,
+        ))
     else:
-        raise NotImplementedError()
+        raise NotImplementedError("{} market type is not yet enabled for {} exchange".format(
+            CCXT__MARKET_TYPES[market_type],
+            BINANCE_EXCHANGE_ID,
+        ))
     legality_check_not_none_obj(max_leverage, "max_leverage")
     return max_leverage
 
@@ -118,7 +128,10 @@ def get_binance_leverages(params) -> tuple:
     elif market_type == CCXT__MARKET_TYPE__SPOT:
         leverage = int(MIN_LEVERAGE)
     else:
-        raise NotImplementedError()
+        raise NotImplementedError("{} market type is not yet enabled for {} exchange".format(
+            CCXT__MARKET_TYPES[market_type],
+            BINANCE_EXCHANGE_ID,
+        ))
     legality_check_not_none_obj(leverage, "leverage")
     legality_check_not_none_obj(max_leverage, "max_leverage")
     ret_value = leverage, max_leverage
@@ -161,7 +174,7 @@ def set_binance_leverage(params) -> None:
         msg = "{}: {} Line: {}: INFO: {}: Sync with {}: ".format(
             CCXT__MARKET_TYPES[market_type],
             frameinfo.function, frameinfo.lineno,
-            symbol_id, str(bt_ccxt_account_or_store.exchange).lower(),
+            symbol_id, bt_ccxt_account_or_store.exchange_dropdown_value,
         )
         sub_msg = "Adjusted leverage from {} -> {}".format(
             from_leverage,
@@ -169,7 +182,8 @@ def set_binance_leverage(params) -> None:
         )
         print(msg + sub_msg)
         pass
-    elif market_type == CCXT__MARKET_TYPE__SPOT:
-        raise NotImplementedError()
     else:
-        raise NotImplementedError()
+        raise NotImplementedError("{} market type is not yet enabled for {} exchange".format(
+            CCXT__MARKET_TYPES[market_type],
+            BINANCE_EXCHANGE_ID,
+        ))

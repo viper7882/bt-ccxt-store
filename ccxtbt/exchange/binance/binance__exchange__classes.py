@@ -5,9 +5,11 @@ import requests
 from pprint import pprint
 
 from ccxtbt.bt_ccxt_expansion__classes import Exchange_HTTP_Parser_Per_Symbol
-from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPE__SPOT, CCXT__MARKET_TYPE__FUTURE, MIN_LEVERAGE, \
+from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPES, CCXT__MARKET_TYPE__SPOT, CCXT__MARKET_TYPE__FUTURE, \
+    MIN_LEVERAGE, \
     symbol_stationary__dict_template
-from ccxtbt.exchange.binance.binance__exchange__specifications import BINANCE__SPOT__V3__HTTP_ENDPOINT_URL, \
+from ccxtbt.exchange.binance.binance__exchange__specifications import BINANCE__FUTURES__COMMISSION_RATE_ENDPOINT, \
+    BINANCE__SPOT__V3__HTTP_ENDPOINT_URL, \
     BINANCE__EXCHANGE_INFO_ENDPOINT, BINANCE__SYMBOL_COMMAND, BINANCE__FUTURES__V1__HTTP_ENDPOINT_URL
 from ccxtbt.utils import legality_check_not_none_obj, get_digits
 
@@ -50,7 +52,10 @@ class Binance_Symbol_Info__HTTP_Parser(Exchange_HTTP_Parser_Per_Symbol):
             self.min_leverage = int(MIN_LEVERAGE)
             self.leverage_step = 1
         else:
-            raise NotImplementedError()
+            raise NotImplementedError("{} market type is not yet enabled for {} exchange".format(
+                CCXT__MARKET_TYPES[self.market_type],
+                self.exchange_dropdown_value,
+            ))
 
         # Variables
         for key in symbol_stationary__dict_template.keys():
@@ -91,12 +96,22 @@ class Binance_Symbol_Info__HTTP_Parser(Exchange_HTTP_Parser_Per_Symbol):
 
         if self.market_type == CCXT__MARKET_TYPE__SPOT:
             self.min_notional = float(symbol_dict['filters'][2]['minNotional'])
+
+            # Required by offline dataset
+            # Spot account has no leverage
+            self.leverage_step = None
             pass
         elif self.market_type == CCXT__MARKET_TYPE__FUTURE:
             # If min_notional is not doubled up (i.e. same value as Spot), exchange will error out
             self.min_notional = float(
                 symbol_dict['filters'][5]['notional']) * 2
+
+            # Required by offline dataset
+            self.leverage_step = 1
             pass
         else:
-            raise NotImplementedError()
+            raise NotImplementedError("{} market type is not yet enabled for {} exchange".format(
+                CCXT__MARKET_TYPES[self.market_type],
+                self.exchange_dropdown_value,
+            ))
         pass

@@ -10,6 +10,45 @@ CCXT_DATA_COLUMNS = ["datetime", "open", "high",
 DATETIME_COL, OPEN_COL, HIGH_COL, LOW_COL, CLOSE_COL, VOLUME_COL, OPEN_INTEREST_COL = range(
     len(CCXT_DATA_COLUMNS))
 
+CCXT_ORDER_TYPES = \
+    ('opened_order', 'partially_filled_order', 'closed_order',
+     'canceled_order', 'expired_order', 'rejected_order', )
+OPENED_ORDER, PARTIALLY_FILLED_ORDER, CLOSED_ORDER, CANCELED_ORDER, EXPIRED_ORDER, REJECTED_ORDER, = \
+    range(len(CCXT_ORDER_TYPES))
+
+CCXT_TYPE_KEY = 'type_name'
+CCXT_SYMBOL_KEY = 'symbol_name'
+CCXT_SIDE_KEY = 'side_name'
+CCXT_STATUS_KEY = 'ccxt_status'
+
+LIST_OF_CCXT_KEY_TO_BE_RENAMED = \
+    [
+        ('type', CCXT_TYPE_KEY),
+        ('symbol', CCXT_SYMBOL_KEY),
+        ('side', CCXT_SIDE_KEY),
+        ('status', CCXT_STATUS_KEY),
+    ]
+
+CCXT_ORDER_KEYS__MUST_EXIST = (
+    CCXT_TYPE_KEY, CCXT_STATUS_KEY, 'side_name', 'reduce_only')
+CCXT_ORDER_KEYS__MUST_BE_IN_FLOAT = (
+    'price', 'amount', 'average', 'filled', 'remaining', 'stopPrice', )
+
+DERIVED__CCXT_ORDER__KEYS = \
+    ('status', 'ordering_type', 'execution_type',
+     'order_intent', 'position_type', 'side', )
+STATUS, ORDERING_TYPE, EXECUTION_TYPE, ORDER_INTENT, POSITION_TYPE, SIDE, = range(
+    len(DERIVED__CCXT_ORDER__KEYS))
+
+# ----------------------------------------------------------------------------------------------------------------------
+# WARNING: Update to the following tuples must be in sync with filter_order__dict_template
+PLURAL__CCXT_ORDER__KEYS = \
+    ('statuses', 'ordering_types', 'execution_types',
+     'order_intents', 'position_types', 'sides', )
+STATUSES, ORDERING_TYPES, EXECUTION_TYPES, ORDER_INTENTS, POSITION_TYPES, SIDES, = \
+    range(len(PLURAL__CCXT_ORDER__KEYS))
+# ----------------------------------------------------------------------------------------------------------------------
+
 DEFAULT_ACCOUNT_ALIAS = "Main"
 
 BT_CCXT__CASH_TRANSFER_WAIT_TIME__IN_SECONDS = 1.0
@@ -51,8 +90,7 @@ symbol_stationary__dict_template = dict(
     symbol_name=None,
 
     # Transaction Fee
-    taker_fee=None,
-    maker_fee=None,
+    commission_rate=None,
 
     # Price
     tick_size=None,
@@ -74,4 +112,22 @@ symbol_stationary__dict_template = dict(
 
     # Risk Limit
     risk_limit=None,  # To be filled with risk_limit__dict_template should it exists
+)
+
+filter_order__dict_template = {
+    PLURAL__CCXT_ORDER__KEYS[STATUSES]: None,
+    PLURAL__CCXT_ORDER__KEYS[ORDERING_TYPES]: None,
+    PLURAL__CCXT_ORDER__KEYS[EXECUTION_TYPES]: None,
+    PLURAL__CCXT_ORDER__KEYS[ORDER_INTENTS]: None,
+    PLURAL__CCXT_ORDER__KEYS[POSITION_TYPES]: None,
+    PLURAL__CCXT_ORDER__KEYS[SIDES]: None,
+}
+
+risk_limit__dict_template = dict(
+    id=None,
+    starting_margin=None,
+    maintenance_margin_ratio=None,
+    max_leverage=None,
+    min_position_value=None,
+    max_position_value=None,
 )

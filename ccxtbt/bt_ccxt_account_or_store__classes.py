@@ -18,9 +18,6 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 ###############################################################################
-from __future__ import (absolute_import, division, print_function,
-                        unicode_literals)
-
 import backtrader
 import ccxt
 import collections
@@ -42,19 +39,27 @@ from pybit import usdt_perpetual
 from pprint import pprint
 from time import time as timer
 
+from ccxtbt.bt_ccxt_exchange__classes import BT_CCXT_Exchange
+from ccxtbt.bt_ccxt_order__classes import BT_CCXT_Order
+from ccxtbt.bt_ccxt_order__helper import converge_ccxt_reduce_only_value, get_ccxt_order_id, \
+    reverse_engineer__ccxt_order
+from ccxtbt.bt_ccxt__specifications import CANCELED_ORDER, CASH_DIGITS, CCXT_ORDER_KEYS__MUST_BE_IN_FLOAT, \
+    CCXT_ORDER_TYPES, CCXT_SIDE_KEY, CCXT_SYMBOL_KEY, CCXT__MARKET_TYPES, CCXT__MARKET_TYPE__FUTURE, \
+    CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP, CCXT__MARKET_TYPE__SPOT, \
+    CLOSED_ORDER, DERIVED__CCXT_ORDER__KEYS, EXECUTION_TYPE, EXPIRED_ORDER, LIST_OF_CCXT_KEY_TO_BE_RENAMED, \
+    MAX_LEVERAGE_IN_PERCENT, \
+    MIN_LEVERAGE, \
+    MIN_LEVERAGE_IN_PERCENT, OPENED_ORDER, ORDERING_TYPE, ORDER_INTENT, PARTIALLY_FILLED_ORDER, POSITION_TYPE, \
+    REJECTED_ORDER
 from ccxtbt.exchange.binance.binance__exchange__helper import get_binance_leverages, set_binance_leverage
 from ccxtbt.exchange.binance.binance__exchange__specifications import BINANCE_EXCHANGE_ID, \
     BINANCE__FUTURES__DEFAULT_DUAL_POSITION_MODE
 from ccxtbt.exchange.bybit.bybit__exchange__helper import get_bybit_leverages, get_ccxt_market_symbol_name, \
     set_bybit_leverage
 from ccxtbt.exchange.bybit.bybit__exchange__specifications import BYBIT_EXCHANGE_ID
-from ccxtbt.bt_ccxt__specifications import CASH_DIGITS, CCXT__MARKET_TYPES, CCXT__MARKET_TYPE__FUTURE, \
-    CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP, CCXT__MARKET_TYPE__SPOT, MAX_LEVERAGE_IN_PERCENT, MIN_LEVERAGE, \
-    MIN_LEVERAGE_IN_PERCENT
-from ccxtbt.bt_ccxt_order__classes import BT_CCXT_Order
-from ccxtbt.bt_ccxt_exchange__classes import BT_CCXT_Exchange
-from ccxtbt.utils import convert_slider_from_percent, legality_check_not_none_obj, \
-    round_to_nearest_decimal_points, truncate, get_time_diff, get_ccxt_order_id
+from ccxtbt.exchange.exchange__helper import get_symbol_id
+from ccxtbt.utils import capitalize_sentence, convert_slider_from_percent, legality_check_not_none_obj, \
+    round_to_nearest_decimal_points, truncate, get_time_diff
 
 
 class Meta_Account_or_Store(backtrader.Broker_or_Exchange_Base.__class__):
@@ -127,9 +132,9 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                     if isinstance(e, ExchangeError):
                         # Extract the exchange name from the exception
                         json_error = e.args[0].replace(
-                            str(self.exchange).lower() + " ", "")
+                            self.exchange_dropdown_value + " ", "")
                         exchange_error_dict = json.loads(json_error)
-                        if str(self.exchange).lower() == BYBIT_EXCHANGE_ID:
+                        if self.exchange_dropdown_value == BYBIT_EXCHANGE_ID:
                             if exchange_error_dict['ret_code'] == 130125:
                                 '''
                                 'ret_msg' = 'current position is zero, cannot fix reduce-only order qty'
@@ -139,15 +144,19 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                                 '''
                                 'ret_msg' = 'expect Rising, but trigger_price[12705000] <= current[12706500]'
                                 '''
-                                break
-                            elif exchange_error_dict['ret_code'] == 130010:
-                                '''
-                                'ret_msg' = 'order not exists or too late to repalce'
-                                '''
-                                break
+                                # This error is likely caused by base_price is incorrectly configured. Hence, it should
+                                # be raised immediately without retry
+                                raise
                             elif exchange_error_dict['ret_code'] == 130075:
                                 '''
                                 'ret_msg' = 'expect Failling, but trigger_price[11975000] \u003e= current[11968000]??1'
+                                '''
+                                # This error is likely caused by base_price is incorrectly configured. Hence, it should
+                                # be raised immediately without retry
+                                raise
+                            elif exchange_error_dict['ret_code'] == 130010:
+                                '''
+                                'ret_msg' = 'order not exists or too late to repalce'
                                 '''
                                 break
 
@@ -161,7 +170,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                                 i + 1, self.retries,
                             )
                             sub_msg = "{}: ret_code: {}, ret_msg: {}{}".format(
-                                str(self.exchange).lower(),
+                                self.exchange_dropdown_value,
                                 exchange_error_dict['ret_code'],
                                 exchange_error_dict['ret_msg'],
                                 " " * 3,
@@ -232,6 +241,9 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         self.exchange = getattr(ccxt, exchange_dropdown_value)(config)
         self.exchange.set_sandbox_mode(not self.main_net_toggle_switch_value)
 
+        # Alias
+        self.exchange_dropdown_value = self.exchange.name.lower()
+
         # Preload all markets from the exchange base on the market type specified by user
         load_markets__dict = dict(
             type=config['type'],  # CCXT Market Type
@@ -261,7 +273,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         #       established before moving on to another thread
         with self.account__thread__connectivity__lock:
             # Support for Binance below
-            if str(self.exchange).lower() == BINANCE_EXCHANGE_ID:
+            if self.exchange_dropdown_value == BINANCE_EXCHANGE_ID:
                 self.fetch_balance__dict = dict(
                     type=config['type'],
                 )
@@ -281,7 +293,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                 # self.establish_binance_websocket()
                 pass
             # Support for Bybit below
-            elif str(self.exchange).lower() == BYBIT_EXCHANGE_ID:
+            elif self.exchange_dropdown_value == BYBIT_EXCHANGE_ID:
                 self.is_ws_available = True
                 self.config__api_key = config['apiKey']
                 self.config__api_secret = config['secret']
@@ -340,7 +352,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         self.leverage_in_percent = leverage_in_percent
 
         # Support for Binance and Bybit below
-        if str(self.exchange).lower() == BINANCE_EXCHANGE_ID or str(self.exchange).lower() == BYBIT_EXCHANGE_ID:
+        if self.exchange_dropdown_value == BINANCE_EXCHANGE_ID or self.exchange_dropdown_value == BYBIT_EXCHANGE_ID:
             if self.market_type == CCXT__MARKET_TYPE__FUTURE or \
                     self.market_type == CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP:
                 for symbol_id in self.symbols_id:
@@ -350,11 +362,11 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                         symbol_id=symbol_id,
                         notional_value=position_value,
                     )
-                    if str(self.exchange).lower() == BINANCE_EXCHANGE_ID:
+                    if self.exchange_dropdown_value == BINANCE_EXCHANGE_ID:
                         (from_leverage, max_leverage,) = get_binance_leverages(
                             params=get_leverage__dict)
                     else:
-                        assert str(self.exchange).lower() == BYBIT_EXCHANGE_ID
+                        assert self.exchange_dropdown_value == BYBIT_EXCHANGE_ID
 
                         (from_leverage, max_leverage,) = get_bybit_leverages(
                             params=get_leverage__dict)
@@ -368,7 +380,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                             from_leverage=from_leverage,
                             to_leverage=to_leverage,
                         ))
-                        if str(self.exchange).lower() == BINANCE_EXCHANGE_ID:
+                        if self.exchange_dropdown_value == BINANCE_EXCHANGE_ID:
                             set_binance_leverage(params=set_leverage__dict)
                         else:
                             assert str(self.exchange).lower(
@@ -379,7 +391,8 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                         success = False
             # Spot Market does not support leverage
         else:
-            raise NotImplementedError()
+            raise NotImplementedError(
+                "{} exchange is yet to be supported!!!".format(self.exchange_dropdown_value))
         return success
 
     def __repr__(self):
@@ -485,13 +498,13 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
 
     def notify(self, order):
         # Legality Check
+        frameinfo = inspect.getframeinfo(inspect.currentframe())
         assert type(order).__name__ == BT_CCXT_Order.__name__, \
             "{} Line: {}: Expected {} but observed {} instead!!!".format(
-                inspect.getframeinfo(inspect.currentframe()).function,
-                inspect.getframeinfo(inspect.currentframe()).lineno,
+                frameinfo.function, frameinfo.lineno,
                 BT_CCXT_Order.__name__, type(order).__name__,
         )
-        self.notifs.put(order.clone())
+        self.notifs.put(order)
 
     def next(self):
         if self.debug:
@@ -506,7 +519,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
             pass
 
         for order in self.open_orders:
-            oID = order.ccxt_order['id']
+            ccxt_order_id = order.ccxt_order['id']
 
             # Print debug before fetching so we know which order is giving an
             # issue if it crashes
@@ -539,12 +552,12 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                     # msg = "{} Line: {}: DEBUG: ordering_type == backtrader.Order.ACTIVE_ORDERING_TYPE, ".format(
                     #     frameinfo.function, frameinfo.lineno,
                     # )
-                    # msg += "order_id: {}".format(oID)
+                    # msg += "order_id: {}".format(ccxt_order_id)
                     # print(msg)
                     pass
 
                 new_ccxt_order = self.fetch_ccxt_order(
-                    order.symbol_id, order_id=oID)
+                    order.symbol_id, order_id=ccxt_order_id)
             else:
                 # Validate assumption made
                 assert order.ordering_type == backtrader.Order.CONDITIONAL_ORDERING_TYPE
@@ -555,12 +568,12 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                     # msg = "{} Line: {}: DEBUG: ordering_type == backtrader.Order.CONDITIONAL_ORDERING_TYPE, ".format(
                     #     frameinfo.function, frameinfo.lineno,
                     # )
-                    # msg += "stop_order_id: {}".format(oID)
+                    # msg += "stop_order_id: {}".format(ccxt_order_id)
                     # print(msg)
                     pass
 
                 new_ccxt_order = self.fetch_ccxt_order(
-                    order.symbol_id, stop_order_id=oID)
+                    order.symbol_id, stop_order_id=ccxt_order_id)
 
             if new_ccxt_order is None:
                 if self.debug:
@@ -670,8 +683,8 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                 print(json.dumps(new_ccxt_order, indent=self.indent))
 
             # Check if the exchange order is opened
-            if new_ccxt_order[self.parent.mappings['opened_order']['key']] == \
-                    self.parent.mappings['opened_order']['value']:
+            if new_ccxt_order[self.parent.mappings[CCXT_ORDER_TYPES[OPENED_ORDER]]['key']] == \
+                    self.parent.mappings[CCXT_ORDER_TYPES[OPENED_ORDER]]['value']:
                 if order.status != backtrader.Order.Accepted:
                     # Reset partially_filled_earlier status
                     self.partially_filled_earlier = None
@@ -679,10 +692,12 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                     # Refresh the content of ccxt_order with the latest ccxt_order
                     order.extract_from_ccxt_order(new_ccxt_order)
                     order.accept()
-                    self.notify(order)
+
+                    # Notify using clone so that UT could snapshot the order
+                    self.notify(order.clone())
             # Check if the exchange order is partially filled
-            elif new_ccxt_order[self.parent.mappings['partially_filled_order']['key']] == \
-                    self.parent.mappings['partially_filled_order']['value']:
+            elif new_ccxt_order[self.parent.mappings[CCXT_ORDER_TYPES[PARTIALLY_FILLED_ORDER]]['key']] == \
+                    self.parent.mappings[CCXT_ORDER_TYPES[PARTIALLY_FILLED_ORDER]]['value']:
                 if order.status != backtrader.Order.Partial:
                     # Refresh the content of ccxt_order with the latest ccxt_order
                     order.extract_from_ccxt_order(new_ccxt_order)
@@ -690,43 +705,57 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
 
                     # Only notify but NOT execute as it wouldn't create any impact to the trade.update
                     # self.execute(order, order.price)
-                    self.notify(order)
+
+                    # Notify using clone so that UT could snapshot the order
+                    self.notify(order.clone())
 
                     # Carry forward partially_filled_earlier status to the next order
                     self.partially_filled_earlier = order.partially_filled_earlier
+
+                    instrument = self.get__child(order.p.symbol_id)
+                    instrument.sync_symbol_positions()
             # Check if the exchange order is closed
-            elif new_ccxt_order[self.parent.mappings['closed_order']['key']] == \
-                    self.parent.mappings['closed_order']['value']:
+            elif new_ccxt_order[self.parent.mappings[CCXT_ORDER_TYPES[CLOSED_ORDER]]['key']] == \
+                    self.parent.mappings[CCXT_ORDER_TYPES[CLOSED_ORDER]]['value']:
                 # Refresh the content of ccxt_order with the latest ccxt_order
                 order.extract_from_ccxt_order(new_ccxt_order)
                 order.completed()
+
+                # Notify using clone so that UT could snapshot the order
+                self.notify(order.clone())
+
                 self.execute(order, order.price)
                 assert order.executed.remaining_size == 0.0
+
+                instrument = self.get__child(order.p.symbol_id)
+                instrument.sync_symbol_positions()
+
                 self.open_orders.remove(order)
-                self._get_balance()
             # Check if the exchange order is rejected
-            elif new_ccxt_order[self.parent.mappings['rejected_order']['key']] == \
-                    self.parent.mappings['rejected_order']['value']:
+            elif new_ccxt_order[self.parent.mappings[CCXT_ORDER_TYPES[REJECTED_ORDER]]['key']] == \
+                    self.parent.mappings[CCXT_ORDER_TYPES[REJECTED_ORDER]]['value']:
                 # Refresh the content of ccxt_order with the latest ccxt_order
                 order.extract_from_ccxt_order(new_ccxt_order)
                 order.reject()
-                self.notify(order)
+                # Notify using clone so that UT could snapshot the order
+                self.notify(order.clone())
                 self.open_orders.remove(order)
             # Manage case when an order is being Canceled or Expired from the Exchange
             #  from https://github.com/juancols/bt-ccxt-store/
-            elif new_ccxt_order[self.parent.mappings['canceled_order']['key']] == \
-                    self.parent.mappings['canceled_order']['value']:
+            elif new_ccxt_order[self.parent.mappings[CCXT_ORDER_TYPES[CANCELED_ORDER]]['key']] == \
+                    self.parent.mappings[CCXT_ORDER_TYPES[CANCELED_ORDER]]['value']:
                 # Refresh the content of ccxt_order with the latest ccxt_order
                 order.extract_from_ccxt_order(new_ccxt_order)
                 order.cancel()
-                self.notify(order)
+                # Notify using clone so that UT could snapshot the order
+                self.notify(order.clone())
                 self.open_orders.remove(order)
-            elif new_ccxt_order[self.parent.mappings['expired_order']['key']] == \
-                    self.parent.mappings['expired_order']['value']:
+            elif new_ccxt_order[self.parent.mappings[CCXT_ORDER_TYPES[EXPIRED_ORDER]]['key']] == \
+                    self.parent.mappings[CCXT_ORDER_TYPES[EXPIRED_ORDER]]['value']:
                 # Refresh the content of ccxt_order with the latest ccxt_order
                 order.extract_from_ccxt_order(new_ccxt_order)
                 order.expire()
-                self.notify(order)
+                self.notify(order.clone())
                 self.open_orders.remove(order)
             else:
                 msg = "{} Line: {}: {}: WARNING: ".format(
@@ -736,7 +765,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                 )
                 sub_msg = "new_ccxt_order ID: {}, status: {} is not processed".format(
                     new_ccxt_order['id'],
-                    new_ccxt_order[self.parent.mappings['opened_order']['key']],
+                    new_ccxt_order[self.parent.mappings[CCXT_ORDER_TYPES[OPENED_ORDER]]['key']],
                 )
                 print(msg + sub_msg)
                 pass
@@ -768,16 +797,6 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         execution_type_name = self.parent.order_types.get(
             execution_type) if execution_type else 'market'
 
-        if datafeed is not None:
-            created = int(datafeed.datetime.datetime(0).timestamp() * 1000)
-        else:
-            # Use the current UTC datetime
-            created = int(datetime.datetime.utcnow().timestamp() * 1000)
-            if 'params' in params.keys():
-                if 'symbol' in params['params'].keys():
-                    # Remove symbol name from params
-                    params['params'].pop('symbol', None)
-
         # Extract CCXT specific params if passed to the order
         order_params = params['params'] if 'params' in params else params
         start = timer()
@@ -789,30 +808,34 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
             order_params.pop(attribute)
 
         # TODO: User to perform exchange-specific parameter customization here
-        if str(self.exchange).lower() == BINANCE_EXCHANGE_ID:
+        if self.exchange_dropdown_value == BINANCE_EXCHANGE_ID:
             if market_type == CCXT__MARKET_TYPE__SPOT:
                 '''
                 Reference: https://binance-docs.github.io/apidocs/spot/en/#new-order-trade
                 '''
                 # Include timestamp
-                order_params['timestamp'] = int(
-                    datetime.datetime.now().timestamp() * 1000)
+                order_params['timestamp'] = \
+                    int(datetime.datetime.now().timestamp() * 1000)
                 pass
             elif market_type == CCXT__MARKET_TYPE__FUTURE:
                 '''
                 Reference: https://binance-docs.github.io/apidocs/futures/en/#new-order-trade
                 '''
-                order_params.update(dict(
-                    # Binance requires positionSide to be sent in Hedge Mode
-                    positionSide=backtrader.Position.Position_Types[position_type].upper(
-                    ),
-                ))
+                # Binance requires positionSide to be sent in Hedge Mode
+                order_params['positionSide'] = \
+                    backtrader.Position.Position_Types[position_type].upper()
             else:
-                raise NotImplementedError()
+                raise NotImplementedError("{} market type is not yet enabled for {} exchange".format(
+                    CCXT__MARKET_TYPES[market_type],
+                    self.exchange_dropdown_value,
+                ))
             pass
-        elif str(self.exchange).lower() == BYBIT_EXCHANGE_ID:
+        elif self.exchange_dropdown_value == BYBIT_EXCHANGE_ID:
             if market_type == CCXT__MARKET_TYPE__SPOT:
-                raise NotImplementedError()
+                raise NotImplementedError("{} market type is not yet enabled for {} exchange".format(
+                    CCXT__MARKET_TYPES[market_type],
+                    self.exchange_dropdown_value,
+                ))
             elif market_type == CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP:
                 if order_intent == backtrader.Order.Entry_Order:
                     if 'reduce_only' in order_params.keys():
@@ -827,7 +850,10 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                 else:
                     raise NotImplementedError()
             else:
-                raise NotImplementedError()
+                raise NotImplementedError("{} market type is not yet enabled for {} exchange".format(
+                    CCXT__MARKET_TYPES[market_type],
+                    self.exchange_dropdown_value,
+                ))
             pass
         else:
             pass
@@ -861,7 +887,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
 
         # Perform exchange-specific parameter extraction here
         order_type_name = None
-        if str(self.exchange).lower() == BINANCE_EXCHANGE_ID:
+        if self.exchange_dropdown_value == BINANCE_EXCHANGE_ID:
             if market_type == CCXT__MARKET_TYPE__SPOT:
                 assert 'stopPrice' in ret_ord.keys()
                 if ret_ord['stopPrice'] is not None and float(ret_ord['stopPrice']) != 0.0:
@@ -883,9 +909,12 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                     stop_order_id = None
                     order_type_name = 'Active'
             else:
-                raise NotImplementedError()
+                raise NotImplementedError("{} market type is not yet enabled for {} exchange".format(
+                    CCXT__MARKET_TYPES[market_type],
+                    self.exchange_dropdown_value,
+                ))
             pass
-        elif str(self.exchange).lower() == BYBIT_EXCHANGE_ID:
+        elif self.exchange_dropdown_value == BYBIT_EXCHANGE_ID:
             if 'stop_order_id' in ret_ord['info'].keys():
                 order_id = None
                 stop_order_id = ret_ord['id']
@@ -895,7 +924,8 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                 stop_order_id = None
                 order_type_name = 'Active'
         else:
-            raise NotImplementedError()
+            raise NotImplementedError(
+                "{} exchange is yet to be supported!!!".format(self.exchange_dropdown_value))
         legality_check_not_none_obj(order_type_name, "order_type_name")
 
         # TODO: Debug use
@@ -936,15 +966,14 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
 
         # TODO: Debug use
         if self.debug:
-            exchange_order_intent = self.get_exchange_order_intent(ccxt_order)
             frameinfo = inspect.getframeinfo(inspect.currentframe())
             msg = "{} Line: {}: DEBUG: {}: ".format(
                 frameinfo.function, frameinfo.lineno,
                 datetime.datetime.now().isoformat().replace("T", " ")[:-3],
             )
-            if exchange_order_intent is not None:
-                msg += "[{}] ".format(
-                    backtrader.Order.Order_Intents[exchange_order_intent])
+            msg += "[{}] ".format(
+                backtrader.Order.Order_Intents[ccxt_order[DERIVED__CCXT_ORDER__KEYS[ORDER_INTENT]]]
+            )
             msg += "{} Order, order_id: \'{}\' vs stop_order_id: \'{}\', submitted ccxt_order:".format(
                 order_type_name,
                 order_id,
@@ -956,7 +985,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         # Exposed simulated so that we could proceed with order without running cerebro
         bt_ccxt_order__dict = dict(
             owner=owner,
-            exchange_name=str(self.exchange).lower(),
+            exchange_dropdown_value=self.exchange_dropdown_value,
             symbol_id=symbol_id,
             ccxt_order=ccxt_order,
             execution_type=execution_type,
@@ -976,40 +1005,20 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
             ))
         order = BT_CCXT_Order(**bt_ccxt_order__dict)
 
-        # Check if the exchange order is NOT closed
-        if ccxt_order[self.parent.mappings['closed_order']['key']] != self.parent.mappings['closed_order']['value']:
-            # Mark order as submitted
-            order.submit()
-            instrument = self.get__child(order.p.symbol_id)
-            commission_info = instrument.get_commission_info()
-            order.add_commission_info(commission_info)
-            self.notify(order)
+        # Mark order as submitted first
+        order.submit()
+        instrument = self.get__child(order.p.symbol_id)
+        commission_info = instrument.get_commission_info()
+        order.add_commission_info(commission_info)
+
+        # Notify using clone so that UT could snapshot the order
+        self.notify(order.clone())
         self.open_orders.append(order)
+
+        # Explicitly call next one round prior to releasing order to caller. The intention is to provide guarantee for
+        # caller to sync up position thereafter
+        self.next()
         return order
-
-    def get_exchange_order_intent(self, ccxt_order):
-        exchange_order_intent = None
-        if str(self.exchange).lower() == BINANCE_EXCHANGE_ID:
-            raise NotImplementedError(
-                "{} exchange is yet to be supported!!!".format(str(self.exchange).lower()))
-        elif str(self.exchange).lower() == BYBIT_EXCHANGE_ID:
-            if 'reduce_only' in ccxt_order['info'].keys():
-                # Validate assumption made
-                assert isinstance(ccxt_order['info']['reduce_only'], bool)
-
-                if ccxt_order['info']['reduce_only'] == False:
-                    exchange_order_intent = backtrader.Order.Entry_Order
-                else:
-                    # Validate assumption made
-                    assert ccxt_order['info']['reduce_only'] == True
-
-                    exchange_order_intent = backtrader.Order.Exit_Order
-            else:
-                raise NotImplementedError()
-        else:
-            raise NotImplementedError(
-                "{} exchange is yet to be supported!!!".format(str(self.exchange).lower()))
-        return exchange_order_intent
 
     def fetch_ccxt_order(self, symbol_id, order_id=None, stop_order_id=None):
         # Mutually exclusive legality check
@@ -1054,8 +1063,6 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                         order_type_name = 'Active'
 
                     if self.debug:
-                        exchange_order_intent = self.get_exchange_order_intent(
-                            ccxt_order)
                         # TODO: Debug use
                         frameinfo = inspect.getframeinfo(
                             inspect.currentframe())
@@ -1064,9 +1071,9 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                             datetime.datetime.now().isoformat().replace(
                                 "T", " ")[:-3],
                         )
-                        if exchange_order_intent is not None:
-                            msg += "[{}] ".format(
-                                backtrader.Order.Order_Intents[exchange_order_intent])
+                        msg += "[{}] ".format(
+                            backtrader.Order.Order_Intents[ccxt_order[DERIVED__CCXT_ORDER__KEYS[ORDER_INTENT]]]
+                        )
                         msg += "{} Order, order_id: \'{}\' vs stop_order_id: \'{}\'".format(
                             order_type_name,
                             order_id,
@@ -1082,9 +1089,9 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                                 "T", " ")[:-3],
                             order_id if order_id is not None else stop_order_id,
                         )
-                        if exchange_order_intent is not None:
+                        if ccxt_order[DERIVED__CCXT_ORDER__KEYS[ORDER_INTENT]] is not None:
                             msg += "[{}] ".format(
-                                backtrader.Order.Order_Intents[exchange_order_intent])
+                                backtrader.Order.Order_Intents[ccxt_order[DERIVED__CCXT_ORDER__KEYS[ORDER_INTENT]]])
                         msg += "{} Order during retry#{}/{}".format(
                             order_type_name,
                             retry_no + 1,
@@ -1102,7 +1109,21 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                                                          inspect.getframeinfo(
                                                              inspect.currentframe()).lineno,
                                                          int(minutes), seconds))
-        return ccxt_order
+
+        # Confirmation
+        assert ccxt_order['id'] == order_id if order_id is not None else stop_order_id, \
+            "Expected: {}, Actual: {}".format(
+                order_id if order_id is not None else stop_order_id, ccxt_order['id'])
+
+        # Post-process the CCXT order so that they are consistent across multiple exchanges
+        post_process__ccxt_orders__dict = dict(
+            bt_ccxt_exchange=self.parent,
+            bt_ccxt_account_or_store=self,
+            ccxt_orders=[ccxt_order],
+        )
+        ccxt_orders = self._post_process__ccxt_orders(
+            params=post_process__ccxt_orders__dict)
+        return ccxt_orders[0]
 
     def execute(self, order, price, spread_in_ticks=1, dt_in_float=None, skip_notification=False):
         # Legality Check
@@ -1182,7 +1203,8 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
 
         if size == 0.0:
             if skip_notification == False:
-                self.notify(order)
+                # Notify using clone so that UT could snapshot the order
+                self.notify(order.clone())
             return
 
         instrument = self.get__child(order.p.symbol_id)
@@ -1373,7 +1395,8 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
 
         order.add_commission_info(commission_info)
         if skip_notification == False:
-            self.notify(order)
+            # Notify using clone so that UT could snapshot the order
+            self.notify(order.clone())
 
         # Legality Check
         throws_out_error = False
@@ -1490,84 +1513,261 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                             ordering_type, order_intent, simulated, kwargs)
 
     def cancel(self, order):
-        oID = order.ccxt_order['id']
+        frameinfo = inspect.getframeinfo(inspect.currentframe())
+        assert type(order).__name__ == BT_CCXT_Order.__name__, \
+            "{} Line: {}: Expected {} but observed {} instead!!!".format(
+                frameinfo.function, frameinfo.lineno,
+                BT_CCXT_Order.__name__, type(order).__name__,
+        )
+        assert hasattr(order, 'ccxt_order')
+
+        ccxt_order_id = order.ccxt_order['id']
 
         if self.debug:
             print('Broker cancel() called')
-            print('Fetching Order ID: {}'.format(oID))
+            print('Fetching Order ID: {}'.format(ccxt_order_id))
 
-        # check first if the order has already been filled otherwise an error
+        # Check first if the order has already been filled otherwise an error
         # might be raised if we try to cancel an order that is not open.
-        # Get the order
-        ccxt_order = None
+        # Get the latest CCXT order
+        # CCXT Market Type is explicitly required
+        fetch_order__dict = dict(
+            type=self.market_type_name,   # CCXT Market Type
+        )
         if order.ordering_type == backtrader.Order.ACTIVE_ORDERING_TYPE:
-            ccxt_order = self.fetch_order(oID, order.datafeed.p.dataname)
+            new_ccxt_order = self.fetch_order(
+                ccxt_order_id, order.symbol_id, params=fetch_order__dict)
         else:
             # Validate assumption made
             assert order.ordering_type == backtrader.Order.CONDITIONAL_ORDERING_TYPE
 
-            fetch_order__dict = dict(
-                stop_order_id=oID,
-            )
-            ccxt_order = self.fetch_order(
-                None, order.datafeed.p.dataname, params=fetch_order__dict)
-        legality_check_not_none_obj(ccxt_order, "ccxt_order")
+            fetch_order__dict.update(dict(
+                stop_order_id=ccxt_order_id,
+            ))
+            new_ccxt_order = self.fetch_order(
+                None, order.symbol_id, params=fetch_order__dict)
+        legality_check_not_none_obj(new_ccxt_order, "new_ccxt_order")
+
+        # Post-process the CCXT order so that they are consistent across multiple exchanges
+        post_process__ccxt_orders__dict = dict(
+            bt_ccxt_exchange=self.parent,
+            bt_ccxt_account_or_store=self,
+            ccxt_orders=[new_ccxt_order],
+        )
+        post_processed__ccxt_orders = self._post_process__ccxt_orders(
+            params=post_process__ccxt_orders__dict)
+        assert len(post_processed__ccxt_orders) == 1
+        post_processed__ccxt_order = post_processed__ccxt_orders[0]
 
         if self.debug:
             frameinfo = inspect.getframeinfo(inspect.currentframe())
-            msg = "{} Line: {}: DEBUG: ccxt_order:".format(
+            msg = "{} Line: {}: DEBUG: new_ccxt_order:".format(
                 frameinfo.function, frameinfo.lineno,
             )
             print(msg)
-            print(json.dumps(ccxt_order, indent=self.indent))
+            print(json.dumps(post_processed__ccxt_order, indent=self.indent))
 
         # Check if the exchange order is closed
-        if ccxt_order[self.parent.mappings['closed_order']['key']] == self.parent.mappings['closed_order']['value']:
+        if post_processed__ccxt_order[self.parent.mappings[CCXT_ORDER_TYPES[CLOSED_ORDER]]['key']] == \
+                self.parent.mappings[CCXT_ORDER_TYPES[CLOSED_ORDER]]['value']:
             return order
 
-        if order.ordering_type == backtrader.Order.ACTIVE_ORDERING_TYPE:
-            ccxt_order = self.cancel_order(oID, order.datafeed.p.dataname)
-        else:
-            # Validate assumption made
-            assert order.ordering_type == backtrader.Order.CONDITIONAL_ORDERING_TYPE
+        # CCXT Market Type is explicitly required
+        cancel_order__dict = dict(
+            type=self.market_type_name,   # CCXT Market Type
+        )
+        if order.ordering_type == backtrader.Order.CONDITIONAL_ORDERING_TYPE:
+            cancel_order__dict.update(dict(
+                stop=True,
+            ))
+        cancelled_ccxt_order = \
+            self.cancel_order(ccxt_order_id, order.symbol_id,
+                              params=cancel_order__dict)
 
-            fetch_order__dict = dict(
-                stop_order_id=oID,
-            )
-            ccxt_order = self.cancel_order(
-                None, order.datafeed.p.dataname, params=fetch_order__dict)
+        # Confirm the ccxt_order is cancelled in the exchange
+        success = False
+        if cancelled_ccxt_order['id'] is not None:
+            orders_to_be_removed = []
+            for open_order in self.open_orders:
+                if open_order.ccxt_id == ccxt_order_id:
+                    orders_to_be_removed.append(open_order)
 
-        if self.debug:
-            frameinfo = inspect.getframeinfo(inspect.currentframe())
-            msg = "{} Line: {}: DEBUG: ccxt_order:".format(
-                frameinfo.function, frameinfo.lineno,
-            )
-            print(msg)
-            print(json.dumps(ccxt_order, indent=self.indent))
-            print('Value Expected: {}'.format(
-                self.parent.mappings['canceled_order']['value']))
-            print('Value Received: {}'.format(
-                ccxt_order[self.parent.mappings['canceled_order']['key']]))
+            for order_to_be_removed in orders_to_be_removed:
+                # Remove the original order
+                self.open_orders.remove(order_to_be_removed)
 
-        # Check if the exchange order is cancelled
-        if ccxt_order[self.parent.mappings['canceled_order']['key']] == self.parent.mappings['canceled_order']['value']:
-            self.open_orders.remove(order)
+            # Mark the queried order as cancelled
             order.cancel()
-            self.notify(order)
-        return order
+
+            # Notify using clone so that UT could snapshot the order
+            self.notify(order.clone())
+            success = True
+        return success
 
     def modify_order(self, order_id, symbol, type, side, amount=None, price=None, trigger_price=None, params={}):
         return self._edit_order(order_id, symbol, type, side, amount=amount, price=price,
                                 trigger_price=trigger_price, params=params)
 
-    def get_orders(self, symbol=None, since=None, limit=None, params={}):
-        return self._fetch_orders(symbol=symbol, since=since, limit=limit, params=params)
+    def _post_process__ccxt_orders(self, params):
+        # Un-serialize Params
+        ccxt_orders = params['ccxt_orders']
 
-    def fetch_opened_orders(self, symbol=None, since=None, limit=None, params={}):
-        return self._fetch_opened_orders(symbol=symbol, since=since, limit=limit, params=params)
+        ret_ccxt_orders = []
 
-    def fetch_closed_orders(self, symbol=None, since=None, limit=None, params={}):
-        return self.fetch_closed_orders(symbol=symbol, since=since, limit=limit, params=params)
+        legality_check_not_none_obj(self.parent, "self.parent")
+        for ccxt_order in ccxt_orders:
+            assert isinstance(ccxt_order, dict)
+
+            from_items = []
+            to_items = []
+            for ccxt_key_tuple in LIST_OF_CCXT_KEY_TO_BE_RENAMED:
+                from_items.append(ccxt_key_tuple[0])
+                to_items.append(ccxt_key_tuple[1])
+
+            # Rename dict while maintaining its ordering
+            renamed_ccxt_order = {}
+            for k, v in ccxt_order.items():
+                if k in from_items:
+                    index = from_items.index(k)
+                    to_item = to_items[index]
+
+                    # Rename the key
+                    renamed_ccxt_order.update({
+                        to_item: v,
+                    })
+                else:
+                    # Retain the same item
+                    renamed_ccxt_order.update({
+                        k: v,
+                    })
+
+            if CCXT_SYMBOL_KEY in renamed_ccxt_order.keys():
+                get_symbol_id__dict = dict(
+                    exchange_dropdown_value=self.exchange_dropdown_value,
+                    symbol_name=renamed_ccxt_order[CCXT_SYMBOL_KEY],
+                )
+                renamed_ccxt_order['symbol_id'] = \
+                    get_symbol_id(params=get_symbol_id__dict)
+
+            if CCXT_SIDE_KEY in renamed_ccxt_order.keys():
+                renamed_ccxt_order[CCXT_SIDE_KEY] = \
+                    capitalize_sentence(renamed_ccxt_order[CCXT_SIDE_KEY])
+
+                # Convert CCXT_SIDE_KEY to enum
+                renamed_ccxt_order['side'] = backtrader.Order.Order_Types.index(
+                    renamed_ccxt_order[CCXT_SIDE_KEY])
+
+            for ccxt_order_key in CCXT_ORDER_KEYS__MUST_BE_IN_FLOAT:
+                if ccxt_order_key in renamed_ccxt_order.keys():
+                    if renamed_ccxt_order[ccxt_order_key] is not None:
+                        renamed_ccxt_order[ccxt_order_key] = \
+                            self.exchange.safe_float(
+                                renamed_ccxt_order, ccxt_order_key)
+                    else:
+                        # Convert None to 0.0 for consistency
+                        renamed_ccxt_order[ccxt_order_key] = 0.0
+
+            ccxt_reduce_only_value__dict = dict(
+                exchange_dropdown_value=self.exchange_dropdown_value,
+                ccxt_order=renamed_ccxt_order,
+            )
+            ccxt_order = converge_ccxt_reduce_only_value(
+                params=ccxt_reduce_only_value__dict)
+
+            reverse_engineer__ccxt_order__dict = dict(
+                ccxt_order=ccxt_order,
+            )
+            reverse_engineer__ccxt_order__dict.update(params)
+            ccxt_order = reverse_engineer__ccxt_order(
+                params=reverse_engineer__ccxt_order__dict)
+
+            ret_ccxt_orders.append(ccxt_order)
+        return ret_ccxt_orders
+
+    def _common_handle_orders_routine(self, params):
+        # Un-serialize Params
+        ccxt_orders = params['ccxt_orders']
+
+        # Optional Params
+        datafeed = params.get('datafeed', None)
+
+        # Post-process the CCXT orders so that they are consistent across multiple exchanges
+        post_process__ccxt_orders__dict = dict(
+            bt_ccxt_exchange=self.parent,
+            bt_ccxt_account_or_store=self,
+            ccxt_orders=ccxt_orders,
+        )
+        post_processed__ccxt_opened_orders = self._post_process__ccxt_orders(
+            params=post_process__ccxt_orders__dict)
+
+        ret_opened_orders = []
+        for ccxt_order in post_processed__ccxt_opened_orders:
+            # Exposed simulated so that we could proceed with order without running cerebro
+            bt_ccxt_order__dict = dict(
+                owner=self,
+                exchange_dropdown_value=self.exchange_dropdown_value,
+                symbol_id=ccxt_order['symbol_id'],
+                ccxt_order=ccxt_order,
+                execution_type=ccxt_order[DERIVED__CCXT_ORDER__KEYS[EXECUTION_TYPE]],
+                position_type=ccxt_order[DERIVED__CCXT_ORDER__KEYS[POSITION_TYPE]],
+                ordering_type=ccxt_order[DERIVED__CCXT_ORDER__KEYS[ORDERING_TYPE]],
+                order_intent=ccxt_order[DERIVED__CCXT_ORDER__KEYS[ORDER_INTENT]],
+            )
+            if datafeed is not None:
+                # Assign the datafeed since it exists
+                bt_ccxt_order__dict.update(dict(
+                    datafeed=datafeed,
+                ))
+            else:
+                # Turn on simulated should there is no datafeed
+                bt_ccxt_order__dict.update(dict(
+                    simulated=True,
+                ))
+            ret_opened_orders.append(BT_CCXT_Order(**bt_ccxt_order__dict))
+        return ret_opened_orders
+
+    def get_orders(self, symbol=None, since=None, limit=None, datafeed=None, params=None):
+        if params is None:
+            params = {}
+
+        ccxt_orders = self._fetch_orders(
+            symbol=symbol, since=since, limit=limit, params=params)
+
+        handle_orders_routine__dict = dict(
+            ccxt_orders=ccxt_orders,
+
+            # Optional Params
+            datafeed=datafeed,
+        )
+        return self._common_handle_orders_routine(params=handle_orders_routine__dict)
+
+    def fetch_opened_orders(self, symbol=None, since=None, limit=None, datafeed=None, params=None):
+        if params is None:
+            params = {}
+        ccxt_opened_orders = self._fetch_opened_orders(
+            symbol=symbol, since=since, limit=limit, params=params)
+
+        handle_orders_routine__dict = dict(
+            ccxt_orders=ccxt_opened_orders,
+
+            # Optional Params
+            datafeed=datafeed,
+        )
+        return self._common_handle_orders_routine(params=handle_orders_routine__dict)
+
+    def fetch_closed_orders(self, symbol=None, since=None, limit=None, datafeed=None, params=None):
+        if params is None:
+            params = {}
+        ccxt_closed_orders = self.fetch_closed_orders(
+            symbol=symbol, since=since, limit=limit, params=params)
+
+        handle_orders_routine__dict = dict(
+            ccxt_orders=ccxt_closed_orders,
+
+            # Optional Params
+            datafeed=datafeed,
+        )
+        return self._common_handle_orders_routine(params=handle_orders_routine__dict)
 
     def get_positions(self, symbols=None, params={}):
         return self._fetch_opened_positions(symbols, params)
@@ -1832,7 +2032,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
     def get_granularity(self, timeframe, compression):
         if not self.exchange.has['fetchOHLCV']:
             raise NotImplementedError("'%s' exchange doesn't support fetching OHLCV datafeed" %
-                                      self.exchange.name)
+                                      self.exchange_dropdown_value)
 
         granularity = self._GRANULARITIES.get((timeframe, compression))
         if granularity is None:
@@ -1843,7 +2043,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         if self.exchange.timeframes and \
                 granularity not in self.exchange.timeframes:
             raise ValueError("'%s' exchange doesn't support fetching OHLCV datafeed for "
-                             "%s time frame" % (self.exchange.name, granularity))
+                             "%s time frame" % (self.exchange_dropdown_value, granularity))
 
         return granularity
 
@@ -2246,7 +2446,9 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
             order_id, symbol, type, side, amount=amount, price=price, trigger_price=trigger_price, params=params)
 
     @retry
-    def cancel_order(self, order_id, symbol, params):
+    def cancel_order(self, order_id, symbol, params=None):
+        if params is None:
+            params = {}
         return self.exchange.cancel_order(order_id, symbol, params=params)
 
     @retry
@@ -2585,7 +2787,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         return ret_positions
 
     def _post_process__after_parent_is_added(self):
-        if str(self.exchange).lower() == BINANCE_EXCHANGE_ID:
+        if self.exchange_dropdown_value == BINANCE_EXCHANGE_ID:
             if self.market_type == CCXT__MARKET_TYPE__FUTURE:
                 get__response = self.exchange.fapiPrivate_get_positionside_dual()
                 if get__response['dualSidePosition'] != BINANCE__FUTURES__DEFAULT_DUAL_POSITION_MODE:
@@ -2601,7 +2803,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                     msg = "{}: {} Line: {}: INFO: Sync with {}: ".format(
                         CCXT__MARKET_TYPES[self.market_type],
                         frameinfo.function, frameinfo.lineno,
-                        str(self.exchange).lower(),
+                        self.exchange_dropdown_value,
                     )
                     sub_msg = "Adjusted Dual/Hedge Position Mode from {} -> {}".format(
                         False,
@@ -2613,7 +2815,10 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                 # Do nothing here
                 pass
             else:
-                raise NotImplementedError()
+                raise NotImplementedError("{} market type is not yet enabled for {} exchange".format(
+                    CCXT__MARKET_TYPES[self.market_type],
+                    self.exchange_dropdown_value,
+                ))
         else:
             # Do nothing here
             pass

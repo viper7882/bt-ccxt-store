@@ -18,12 +18,11 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 ###############################################################################
-from __future__ import (absolute_import, division, print_function,
-                        unicode_literals)
-
 import backtrader
 
-from .utils import legality_check_not_none_obj
+from ccxtbt.bt_ccxt__specifications import CANCELED_ORDER, CCXT_ORDER_TYPES, CCXT_STATUS_KEY, CLOSED_ORDER, \
+    EXPIRED_ORDER, OPENED_ORDER, REJECTED_ORDER
+from ccxtbt.utils import legality_check_not_none_obj
 
 
 class BT_CCXT_Exchange(backtrader.with_metaclass(backtrader.MetaSingleton, object)):
@@ -77,24 +76,24 @@ class BT_CCXT_Exchange(backtrader.with_metaclass(backtrader.MetaSingleton, objec
 
     # Documentation: https://docs.ccxt.com/en/latest/manual.html#order-structure
     mappings = {
-        'opened_order': {
-            'key': "status",
+        CCXT_ORDER_TYPES[OPENED_ORDER]: {
+            'key': CCXT_STATUS_KEY,
             'value': "open"
         },
-        'closed_order': {
-            'key': "status",
+        CCXT_ORDER_TYPES[CLOSED_ORDER]: {
+            'key': CCXT_STATUS_KEY,
             'value': "closed"
         },
-        'canceled_order': {
-            'key': "status",
+        CCXT_ORDER_TYPES[CANCELED_ORDER]: {
+            'key': CCXT_STATUS_KEY,
             'value': "canceled"
         },
-        'expired_order': {
-            'key': "status",
+        CCXT_ORDER_TYPES[EXPIRED_ORDER]: {
+            'key': CCXT_STATUS_KEY,
             'value': "expired"
         },
-        'rejected_order': {
-            'key': "status",
+        CCXT_ORDER_TYPES[REJECTED_ORDER]: {
+            'key': CCXT_STATUS_KEY,
             'value': "rejected"
         }
     }

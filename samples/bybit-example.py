@@ -1,17 +1,17 @@
-from time import time as timer
-from ccxtbt import BT_CCXT_Account_or_Store
 import inspect
 import datetime as dt
 import backtrader as bt
 import time
+
+from time import time as timer
+from ccxtbt.bt_ccxt_account_or_store__classes import BT_CCXT_Account_or_Store
+from ccxtbt.bt_ccxt__specifications import CANCELED_ORDER, CCXT_ORDER_TYPES, CLOSED_ORDER
+
 DEFAULT_DATE_TIME_FORMAT = "%d-%m-%y %H:%M"
 
+
 # Credits: https://gist.github.com/rodrigo-brito/3b0fca2487c92ad97869247edd5fd852
-
-
 # DEBUG = True
-
-
 def get_time_diff(start):
     prog_time_diff = timer() - start
     hours, rem = divmod(prog_time_diff, 3600)
@@ -81,11 +81,11 @@ def main():
             bt.Order.StopLimit: 'stop limit'
         },
         'mappings': {
-            'closed_order': {
+            CCXT_ORDER_TYPES[CLOSED_ORDER]: {
                 'key': 'status',
                 'value': 'closed'
             },
-            'canceled_order': {
+            CCXT_ORDER_TYPES[CANCELED_ORDER]: {
                 'key': 'result',
                 'value': 1
             }

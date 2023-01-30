@@ -8,15 +8,15 @@ import unittest
 from time import time as timer
 from pprint import pprint
 
-from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP, CCXT__MARKET_TYPE__SPOT, \
-    DEFAULT__INITIAL__CAPITAL_RESERVATION__VALUE, DEFAULT__LEVERAGE_IN_PERCENT
 from ccxtbt.bt_ccxt_feed__classes import BT_CCXT_Feed
 from ccxtbt.bt_ccxt_order__classes import BT_CCXT_Order
+from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP, CCXT__MARKET_TYPE__SPOT, \
+    DEFAULT__INITIAL__CAPITAL_RESERVATION__VALUE, DEFAULT__LEVERAGE_IN_PERCENT
 from ccxtbt.exchange.bybit.bybit__exchange__specifications import BYBIT_EXCHANGE_ID, BYBIT_OHLCV_LIMIT
 from ccxtbt.exchange.bybit.bybit__exchange__helper import get_wallet_currency
 from ccxtbt.utils import get_time_diff
 
-from check_in_gating_tests.common.test__helper import ut_handle_datafeed, reverse_engineer__ccxt_order
+from check_in_gating_tests.common.test__helper import ut_handle_datafeed, ut_reverse_engineer__ccxt_order
 from ccxtbt.bt_ccxt_expansion__helper import construct_standalone_account_or_store, construct_standalone_instrument
 
 
@@ -193,16 +193,16 @@ class Bybit__bt_ccxt_account_or_store__Static_Orders__TestCases(unittest.TestCas
 
                 bt_ccxt_order__dict = dict(
                     owner=self,
-                    exchange_name=str(
-                        self.bt_ccxt_account_or_store.exchange).lower(),
+                    exchange_dropdown_value=self.bt_ccxt_account_or_store.exchange_dropdown_value,
                     symbol_id=symbol_id,
                     position_type=backtrader.Position.SHORT_POSITION,
                     datafeed=self.short_bb_data,
                     ccxt_order=primary_entry__ccxt_order,
                 )
-                bt_ccxt_order__dict = reverse_engineer__ccxt_order(
-                    self.bt_ccxt_account_or_store.exchange, bt_ccxt_order__dict)
-                self.primary_entry_order = BT_CCXT_Order(**bt_ccxt_order__dict)
+                reverse_engineered__bt_ccxt_order__dict = ut_reverse_engineer__ccxt_order(
+                    bt_ccxt_order__dict)
+                self.primary_entry_order = BT_CCXT_Order(
+                    **reverse_engineered__bt_ccxt_order__dict)
 
                 offset_entry__ccxt_order = \
                     {
@@ -304,17 +304,17 @@ class Bybit__bt_ccxt_account_or_store__Static_Orders__TestCases(unittest.TestCas
                 # Ideal situation
                 bt_ccxt_order__dict = dict(
                     owner=self,
-                    exchange_name=str(
-                        self.bt_ccxt_account_or_store.exchange).lower(),
+                    exchange_dropdown_value=self.bt_ccxt_account_or_store.exchange_dropdown_value,
                     symbol_id=symbol_id,
                     position_type=backtrader.Position.LONG_POSITION,
                     datafeed=self.long_bb_data,
                     ccxt_order=offset_entry__ccxt_order,
                     # ccxt_order=hedging_entry__ccxt_order,
                 )
-                bt_ccxt_order__dict = reverse_engineer__ccxt_order(
-                    self.bt_ccxt_account_or_store.exchange, bt_ccxt_order__dict)
-                self.hedging_entry_order = BT_CCXT_Order(**bt_ccxt_order__dict)
+                reverse_engineered__bt_ccxt_order__dict = ut_reverse_engineer__ccxt_order(
+                    bt_ccxt_order__dict)
+                self.hedging_entry_order = BT_CCXT_Order(
+                    **reverse_engineered__bt_ccxt_order__dict)
 
         except Exception:
             traceback.print_exc()

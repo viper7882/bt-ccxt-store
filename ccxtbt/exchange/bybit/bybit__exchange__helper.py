@@ -2,8 +2,9 @@ import ccxt
 import datetime
 import inspect
 
-from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPES, CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP, CCXT__MARKET_TYPE__SPOT, \
-    MIN_LEVERAGE
+from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPES, CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP, \
+    CCXT__MARKET_TYPE__SPOT, MIN_LEVERAGE
+from ccxtbt.exchange.bybit.bybit__exchange__specifications import BYBIT_EXCHANGE_ID
 from ccxtbt.utils import legality_check_not_none_obj
 
 
@@ -53,7 +54,6 @@ def get_bybit_commission_rate(params) -> float:
     market_type = params['market_type']
     symbol_id = params['symbol_id']
 
-    commission = None
     if market_type == CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP or market_type == CCXT__MARKET_TYPE__SPOT:
         market_type_name = CCXT__MARKET_TYPES[market_type]
 
@@ -73,13 +73,15 @@ def get_bybit_commission_rate(params) -> float:
 
         selected_market = markets[ccxt_market_symbol_name]
 
-        commission = \
-            max(float(selected_market['taker']),
-                float(selected_market['maker']))
+        taker_fee = float(selected_market['taker'])
+        maker_fee = float(selected_market['maker'])
+        commission = max(taker_fee, maker_fee)
         pass
     else:
-        raise NotImplementedError()
-    legality_check_not_none_obj(commission, "commission")
+        raise NotImplementedError("{} market type is not yet enabled for {} exchange".format(
+            CCXT__MARKET_TYPES[market_type],
+            BYBIT_EXCHANGE_ID,
+        ))
     return commission
 
 
@@ -122,10 +124,11 @@ def get_bybit_max_leverage(params) -> float:
             raise NotImplementedError()
         else:
             raise NotImplementedError()
-    elif market_type == CCXT__MARKET_TYPE__SPOT:
-        raise NotImplementedError()
     else:
-        raise NotImplementedError()
+        raise NotImplementedError("{} market type is not yet enabled for {} exchange".format(
+            CCXT__MARKET_TYPES[market_type],
+            BYBIT_EXCHANGE_ID,
+        ))
     legality_check_not_none_obj(max_leverage, "max_leverage")
     return max_leverage
 
@@ -158,7 +161,10 @@ def get_bybit_leverages(params) -> tuple:
     elif market_type == CCXT__MARKET_TYPE__SPOT:
         leverage = MIN_LEVERAGE
     else:
-        raise NotImplementedError()
+        raise NotImplementedError("{} market type is not yet enabled for {} exchange".format(
+            CCXT__MARKET_TYPES[market_type],
+            BYBIT_EXCHANGE_ID,
+        ))
     legality_check_not_none_obj(leverage, "leverage")
     legality_check_not_none_obj(max_leverage, "max_leverage")
     ret_value = leverage, max_leverage
@@ -213,7 +219,7 @@ def set_bybit_leverage(params) -> None:
         msg = "{}: {} Line: {}: INFO: {}: Sync with {}: ".format(
             CCXT__MARKET_TYPES[market_type],
             frameinfo.function, frameinfo.lineno,
-            symbol_id, str(bt_ccxt_account_or_store.exchange).lower(),
+            symbol_id, bt_ccxt_account_or_store.exchange_dropdown_value,
         )
         sub_msg = "Adjusted leverage from {} -> {}".format(
             from_leverage,
@@ -221,7 +227,8 @@ def set_bybit_leverage(params) -> None:
         )
         print(msg + sub_msg)
         pass
-    elif market_type == CCXT__MARKET_TYPE__SPOT:
-        raise NotImplementedError()
     else:
-        raise NotImplementedError()
+        raise NotImplementedError("{} market type is not yet enabled for {} exchange".format(
+            CCXT__MARKET_TYPES[market_type],
+            BYBIT_EXCHANGE_ID,
+        ))
