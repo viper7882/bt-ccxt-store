@@ -41,7 +41,7 @@ def converge_ccxt_reduce_only_value(params):
 
 def reverse_engineer__ccxt_order(params):
     '''
-    The following codes made assumption where def _post_process__ccxt_orders has been called prior to this
+    The following codes made assumption where def post_process__ccxt_orders has been called prior to this
     '''
     # Un-serialize Params
     bt_ccxt_exchange = params['bt_ccxt_exchange']

@@ -186,18 +186,19 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
 
     def __init__(self, exchange_dropdown_value, wallet_currency, config, retries, symbols_id,
                  main_net_toggle_switch_value, initial__capital_reservation__value, is_ohlcv_provider,
-                 account__thread__connectivity__lock, isolated_toggle_switch_value, leverage_in_percent, debug=False):
+                 account__thread__connectivity__lock, isolated_toggle_switch_value, leverage_in_percent,
+                 keep_original_ccxt_order=False, debug=False):
         super().__init__()
 
         # WARNING: Must rename to init2 here or else it will cause
         #          TypeError: BT_CCXT_Account_or_Store.init() missing 7 required positional arguments:
         self.init2(exchange_dropdown_value, wallet_currency, config, retries, symbols_id, main_net_toggle_switch_value,
                    initial__capital_reservation__value, is_ohlcv_provider, account__thread__connectivity__lock,
-                   isolated_toggle_switch_value, leverage_in_percent, debug)
+                   isolated_toggle_switch_value, leverage_in_percent, keep_original_ccxt_order, debug)
 
     def init2(self, exchange_dropdown_value, wallet_currency, config, retries, symbols_id, main_net_toggle_switch_value,
               initial__capital_reservation__value, is_ohlcv_provider, account__thread__connectivity__lock,
-              isolated_toggle_switch_value, leverage_in_percent, debug=False):
+              isolated_toggle_switch_value, leverage_in_percent, keep_original_ccxt_order=False, debug=False):
         # Legality Check
         assert isinstance(retries, int)
         assert isinstance(symbols_id, list)
@@ -223,6 +224,11 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         self._live__capital_reservation__value = initial__capital_reservation__value
         self.is_ohlcv_provider = is_ohlcv_provider
         self.account__thread__connectivity__lock = account__thread__connectivity__lock
+
+        # True to keep a copy of original ccxt order
+        self.keep_original_ccxt_order = keep_original_ccxt_order
+        self.exchange_ccxt_orders = []
+
         self.debug = debug
         self._cash_snapshot = 0.0
 
@@ -506,7 +512,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         )
         self.notifs.put(order)
 
-    def next(self):
+    def next(self, ut_provided__new_ccxt_order=None):
         if self.debug:
             # # TODO: Debug use
             # if len(self.open_orders) > 0:
@@ -544,36 +550,40 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                 # Carry forward partially_filled_earlier status to the next order
                 order.partially_filled_earlier = self.partially_filled_earlier
 
-            # Get the order
-            if order.ordering_type == backtrader.Order.ACTIVE_ORDERING_TYPE:
-                if self.debug:
-                    # # TODO: Debug use
-                    # frameinfo = inspect.getframeinfo(inspect.currentframe())
-                    # msg = "{} Line: {}: DEBUG: ordering_type == backtrader.Order.ACTIVE_ORDERING_TYPE, ".format(
-                    #     frameinfo.function, frameinfo.lineno,
-                    # )
-                    # msg += "order_id: {}".format(ccxt_order_id)
-                    # print(msg)
-                    pass
-
-                new_ccxt_order = self.fetch_ccxt_order(
-                    order.symbol_id, order_id=ccxt_order_id)
+            if ut_provided__new_ccxt_order:
+                # Use the order provided by UT
+                new_ccxt_order = order.ccxt_order
             else:
-                # Validate assumption made
-                assert order.ordering_type == backtrader.Order.CONDITIONAL_ORDERING_TYPE
+                # Get the order from exchange
+                if order.ordering_type == backtrader.Order.ACTIVE_ORDERING_TYPE:
+                    if self.debug:
+                        # # TODO: Debug use
+                        # frameinfo = inspect.getframeinfo(inspect.currentframe())
+                        # msg = "{} Line: {}: DEBUG: ordering_type == backtrader.Order.ACTIVE_ORDERING_TYPE, ".format(
+                        #     frameinfo.function, frameinfo.lineno,
+                        # )
+                        # msg += "order_id: {}".format(ccxt_order_id)
+                        # print(msg)
+                        pass
 
-                if self.debug:
-                    # # TODO: Debug use
-                    # frameinfo = inspect.getframeinfo(inspect.currentframe())
-                    # msg = "{} Line: {}: DEBUG: ordering_type == backtrader.Order.CONDITIONAL_ORDERING_TYPE, ".format(
-                    #     frameinfo.function, frameinfo.lineno,
-                    # )
-                    # msg += "stop_order_id: {}".format(ccxt_order_id)
-                    # print(msg)
-                    pass
+                    new_ccxt_order = self.fetch_ccxt_order(
+                        order.symbol_id, order_id=ccxt_order_id)
+                else:
+                    # Validate assumption made
+                    assert order.ordering_type == backtrader.Order.CONDITIONAL_ORDERING_TYPE
 
-                new_ccxt_order = self.fetch_ccxt_order(
-                    order.symbol_id, stop_order_id=ccxt_order_id)
+                    if self.debug:
+                        # # TODO: Debug use
+                        # frameinfo = inspect.getframeinfo(inspect.currentframe())
+                        # msg = "{} Line: {}: DEBUG: ordering_type == backtrader.Order.CONDITIONAL_ORDERING_TYPE, ".format(
+                        #     frameinfo.function, frameinfo.lineno,
+                        # )
+                        # msg += "stop_order_id: {}".format(ccxt_order_id)
+                        # print(msg)
+                        pass
+
+                    new_ccxt_order = self.fetch_ccxt_order(
+                        order.symbol_id, stop_order_id=ccxt_order_id)
 
             if new_ccxt_order is None:
                 if self.debug:
@@ -1005,8 +1015,6 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
             ))
         order = BT_CCXT_Order(**bt_ccxt_order__dict)
 
-        # Mark order as submitted first
-        order.submit()
         instrument = self.get__child(order.p.symbol_id)
         commission_info = instrument.get_commission_info()
         order.add_commission_info(commission_info)
@@ -1121,7 +1129,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
             bt_ccxt_account_or_store=self,
             ccxt_orders=[ccxt_order],
         )
-        ccxt_orders = self._post_process__ccxt_orders(
+        ccxt_orders = self.post_process__ccxt_orders(
             params=post_process__ccxt_orders__dict)
         return ccxt_orders[0]
 
@@ -1554,7 +1562,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
             bt_ccxt_account_or_store=self,
             ccxt_orders=[new_ccxt_order],
         )
-        post_processed__ccxt_orders = self._post_process__ccxt_orders(
+        post_processed__ccxt_orders = self.post_process__ccxt_orders(
             params=post_process__ccxt_orders__dict)
         assert len(post_processed__ccxt_orders) == 1
         post_processed__ccxt_order = post_processed__ccxt_orders[0]
@@ -1608,13 +1616,16 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         return self._edit_order(order_id, symbol, type, side, amount=amount, price=price,
                                 trigger_price=trigger_price, params=params)
 
-    def _post_process__ccxt_orders(self, params):
+    def post_process__ccxt_orders(self, params):
         # Un-serialize Params
         ccxt_orders = params['ccxt_orders']
 
-        ret_ccxt_orders = []
-
         legality_check_not_none_obj(self.parent, "self.parent")
+
+        if self.keep_original_ccxt_order:
+            self.exchange_ccxt_orders = copy.deepcopy(ccxt_orders)
+
+        ret_ccxt_orders = []
         for ccxt_order in ccxt_orders:
             assert isinstance(ccxt_order, dict)
 
@@ -1697,7 +1708,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
             bt_ccxt_account_or_store=self,
             ccxt_orders=ccxt_orders,
         )
-        post_processed__ccxt_opened_orders = self._post_process__ccxt_orders(
+        post_processed__ccxt_opened_orders = self.post_process__ccxt_orders(
             params=post_process__ccxt_orders__dict)
 
         ret_opened_orders = []

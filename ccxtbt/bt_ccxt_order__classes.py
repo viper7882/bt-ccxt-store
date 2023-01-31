@@ -66,6 +66,9 @@ class BT_CCXT_Order(backtrader.OrderBase):
 
         super(BT_CCXT_Order, self).__init__()
 
+        # Mark order as submitted first
+        self.submit()
+
         if self.p.exchange_dropdown_value == BYBIT_EXCHANGE_ID or self.p.exchange_dropdown_value == BINANCE_EXCHANGE_ID:
             # Legality Check
             if self.p.symbol_id.endswith("USDT"):

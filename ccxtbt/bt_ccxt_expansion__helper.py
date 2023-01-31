@@ -2,16 +2,22 @@ import backtrader
 import json
 import time
 
-from ccxtbt.bt_ccxt__specifications import CANCELED_ORDER, CCXT_ORDER_TYPES, CCXT_STATUS_KEY, CCXT__MARKET_TYPES, \
+from ccxtbt.bt_ccxt__specifications import CANCELED_ORDER, CANCELED_VALUE, CANCELLED_VALUE, CCXT_COMMON_MAPPING_VALUES, \
+    CCXT_ORDER_TYPES, \
+    CCXT_STATUS_KEY, CCXT__MARKET_TYPES, \
     CLOSED_ORDER, \
-    EXPIRED_ORDER, MAX_LIVE_EXCHANGE_RETRIES, OPENED_ORDER, PARTIALLY_FILLED_ORDER, REJECTED_ORDER
+    CLOSED_VALUE, EXPIRED_ORDER, EXPIRED_VALUE, MAX_LIVE_EXCHANGE_RETRIES, OPENED_ORDER, OPEN_VALUE, \
+    PARTIALLY_FILLED_ORDER, \
+    REJECTED_ORDER, REJECTED_VALUE
 from ccxtbt.bt_ccxt_account_or_store__classes import BT_CCXT_Account_or_Store
 from ccxtbt.bt_ccxt_exchange__classes import BT_CCXT_Exchange
 from ccxtbt.bt_ccxt_instrument__classes import BT_CCXT_Instrument
 from ccxtbt.exchange.binance.binance__exchange__helper import get_binance_commission_rate
-from ccxtbt.exchange.binance.binance__exchange__specifications import BINANCE_EXCHANGE_ID
+from ccxtbt.exchange.binance.binance__exchange__specifications import BINANCE_EXCHANGE_ID, \
+    BINANCE__PARTIALLY_FILLED__ORDER_STATUS__VALUE
 from ccxtbt.exchange.bybit.bybit__exchange__helper import get_bybit_commission_rate
-from ccxtbt.exchange.bybit.bybit__exchange__specifications import BYBIT_EXCHANGE_ID
+from ccxtbt.exchange.bybit.bybit__exchange__specifications import BYBIT_EXCHANGE_ID, \
+    BYBIT__PARTIALLY_FILLED__ORDER_STATUS__VALUE
 from ccxtbt.exchange.exchange__helper import get_api_and_secret_file_path
 from ccxtbt.utils import legality_check_not_none_obj
 
@@ -39,41 +45,53 @@ def construct_standalone_exchange(params) -> object:
 
     # CCXT broker_or_exchange mapping consumed by BT-CCXT broker_or_exchange
     # Documentation: https://docs.ccxt.com/en/latest/manual.html#order-structure
+    # Common mapping across exchanges
     mappings = {
         CCXT_ORDER_TYPES[OPENED_ORDER]: {
             'key': CCXT_STATUS_KEY,
-            'value': "open",
+            'value': CCXT_COMMON_MAPPING_VALUES[OPEN_VALUE],
         },
         CCXT_ORDER_TYPES[CLOSED_ORDER]: {
             'key': CCXT_STATUS_KEY,
-            'value': "closed",
-        },
-        CCXT_ORDER_TYPES[CANCELED_ORDER]: {
-            'key': CCXT_STATUS_KEY,
-            'value': "canceled",
+            'value': CCXT_COMMON_MAPPING_VALUES[CLOSED_VALUE],
         },
         CCXT_ORDER_TYPES[EXPIRED_ORDER]: {
             'key': CCXT_STATUS_KEY,
-            'value': "expired",
+            'value': CCXT_COMMON_MAPPING_VALUES[EXPIRED_VALUE],
         },
         CCXT_ORDER_TYPES[REJECTED_ORDER]: {
             'key': CCXT_STATUS_KEY,
-            'value': "rejected",
+            'value': CCXT_COMMON_MAPPING_VALUES[REJECTED_VALUE],
         },
     }
 
+    # Exchange specific entries below
     if exchange_dropdown_value == BINANCE_EXCHANGE_ID:
+        '''
+        Reference: https://binance-docs.github.io/apidocs/futures/en/#public-endpoints-info
+        '''
         mappings.update({
+            CCXT_ORDER_TYPES[CANCELED_ORDER]: {
+                'key': CCXT_STATUS_KEY,
+                'value': CCXT_COMMON_MAPPING_VALUES[CANCELED_VALUE],
+            },
             CCXT_ORDER_TYPES[PARTIALLY_FILLED_ORDER]: {
                 'key': CCXT_STATUS_KEY,
-                'value': "PARTIALLY_FILLED",
+                'value': BINANCE__PARTIALLY_FILLED__ORDER_STATUS__VALUE,
             },
         })
     elif exchange_dropdown_value == BYBIT_EXCHANGE_ID:
+        '''
+        Reference: https://bybit-exchange.github.io/docs/futuresV2/linear/#order-status-order_status-stop_order_status
+        '''
         mappings.update({
+            CCXT_ORDER_TYPES[CANCELED_ORDER]: {
+                'key': CCXT_STATUS_KEY,
+                'value': CCXT_COMMON_MAPPING_VALUES[CANCELLED_VALUE],
+            },
             CCXT_ORDER_TYPES[PARTIALLY_FILLED_ORDER]: {
                 'key': CCXT_STATUS_KEY,
-                'value': "PartiallyFilled",
+                'value': BYBIT__PARTIALLY_FILLED__ORDER_STATUS__VALUE,
             },
         })
     else:
@@ -105,6 +123,7 @@ def construct_standalone_account_or_store(params) -> tuple:
     # Optional Params
     account_type = params.get('account_type', None)
     bt_ccxt_exchange = params.get('bt_ccxt_exchange', None)
+    keep_original_ccxt_order = params.get('keep_original_ccxt_order', None)
 
     market_type_name = CCXT__MARKET_TYPES[market_type]
 
@@ -151,6 +170,7 @@ def construct_standalone_account_or_store(params) -> tuple:
             retries=MAX_LIVE_EXCHANGE_RETRIES,
             symbols_id=symbols_id,
             account__thread__connectivity__lock=account__thread__connectivity__lock,
+            keep_original_ccxt_order=keep_original_ccxt_order,
             # debug=True,
         ))
 

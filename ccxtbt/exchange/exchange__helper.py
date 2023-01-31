@@ -1,14 +1,10 @@
 import os
 import pathlib
 
-from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPES, \
-    CCXT__MARKET_TYPE__FUTURE, CCXT__MARKET_TYPE__SPOT, \
-    FUTURES__MAINNET__API_KEY_AND_SECRET_FILE_NAME, \
-    FUTURES__TESTNET__API_KEY_AND_SECRET_FILE_NAME, \
-    MAINNET__API_KEY_AND_SECRET_FILE_NAME, \
-    SPOT__MAINNET__API_KEY_AND_SECRET_FILE_NAME, \
-    SPOT__TESTNET__API_KEY_AND_SECRET_FILE_NAME, \
-    TESTNET__API_KEY_AND_SECRET_FILE_NAME
+from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPES, CCXT__MARKET_TYPE__FUTURE, CCXT__MARKET_TYPE__SPOT, \
+    FUTURES__MAINNET__API_KEY_AND_SECRET_FILE_NAME, FUTURES__TESTNET__API_KEY_AND_SECRET_FILE_NAME, \
+    MAINNET__API_KEY_AND_SECRET_FILE_NAME, SPOT__MAINNET__API_KEY_AND_SECRET_FILE_NAME, \
+    SPOT__TESTNET__API_KEY_AND_SECRET_FILE_NAME, TESTNET__API_KEY_AND_SECRET_FILE_NAME
 from ccxtbt.exchange.binance.binance__exchange__specifications import BINANCE_EXCHANGE_ID
 from ccxtbt.exchange.bybit.bybit__exchange__helper import get_wallet_currency
 from ccxtbt.exchange.bybit.bybit__exchange__specifications import BYBIT_EXCHANGE_ID
@@ -37,6 +33,10 @@ def get_minimum_instrument_quantity(price, instrument):
                 instrument.min_notional, instrument.value_digits,
             )
         pass
+
+    # Due to requirement to simulate partially filled order, the minimum quantity must be greater than the qty_step
+    if minimum_instrument_quantity == instrument.qty_step:
+        minimum_instrument_quantity += instrument.qty_step
     return minimum_instrument_quantity
 
 

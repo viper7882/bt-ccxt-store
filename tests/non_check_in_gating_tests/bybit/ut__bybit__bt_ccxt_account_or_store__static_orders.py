@@ -10,8 +10,9 @@ from pprint import pprint
 
 from ccxtbt.bt_ccxt_feed__classes import BT_CCXT_Feed
 from ccxtbt.bt_ccxt_order__classes import BT_CCXT_Order
-from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP, CCXT__MARKET_TYPE__SPOT, \
-    DEFAULT__INITIAL__CAPITAL_RESERVATION__VALUE, DEFAULT__LEVERAGE_IN_PERCENT
+from ccxtbt.bt_ccxt__specifications import CCXT_COMMON_MAPPING_VALUES, CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP, \
+    CCXT__MARKET_TYPE__SPOT, \
+    CLOSED_VALUE, DEFAULT__INITIAL__CAPITAL_RESERVATION__VALUE, DEFAULT__LEVERAGE_IN_PERCENT, OPEN_VALUE
 from ccxtbt.exchange.bybit.bybit__exchange__specifications import BYBIT_EXCHANGE_ID, BYBIT_OHLCV_LIMIT
 from ccxtbt.exchange.bybit.bybit__exchange__helper import get_wallet_currency
 from ccxtbt.utils import get_time_diff
@@ -177,7 +178,7 @@ class Bybit__bt_ccxt_account_or_store__Static_Orders__TestCases(unittest.TestCas
                         "average": self.primary_entry_price,
                         "filled": abs(self.primary_entry_qty),
                         "remaining": 0.0,
-                        "status": "closed",
+                        "status": CCXT_COMMON_MAPPING_VALUES[CLOSED_VALUE],
                         "fee": {
                             "cost": 0.7376139,
                             "currency": "USDT"
@@ -246,7 +247,7 @@ class Bybit__bt_ccxt_account_or_store__Static_Orders__TestCases(unittest.TestCas
                         "average": None,
                         "filled": None,
                         "remaining": None,
-                        "status": "open",
+                        "status": CCXT_COMMON_MAPPING_VALUES[OPEN_VALUE],
                         "fee": None,
                         "trades": [],
                         "fees": []
@@ -295,7 +296,7 @@ class Bybit__bt_ccxt_account_or_store__Static_Orders__TestCases(unittest.TestCas
                         "average": None,
                         "filled": None,
                         "remaining": None,
-                        "status": "closed",
+                        "status": CCXT_COMMON_MAPPING_VALUES[CLOSED_VALUE],
                         "fee": None,
                         "trades": [],
                         "fees": []

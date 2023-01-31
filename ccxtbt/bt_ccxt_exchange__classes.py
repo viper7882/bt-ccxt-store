@@ -20,8 +20,9 @@
 ###############################################################################
 import backtrader
 
-from ccxtbt.bt_ccxt__specifications import CANCELED_ORDER, CCXT_ORDER_TYPES, CCXT_STATUS_KEY, CLOSED_ORDER, \
-    EXPIRED_ORDER, OPENED_ORDER, REJECTED_ORDER
+from ccxtbt.bt_ccxt__specifications import CANCELED_ORDER, CANCELED_VALUE, CCXT_COMMON_MAPPING_VALUES, CCXT_ORDER_TYPES, \
+    CCXT_STATUS_KEY, CLOSED_ORDER, \
+    CLOSED_VALUE, EXPIRED_ORDER, EXPIRED_VALUE, OPENED_ORDER, OPEN_VALUE, REJECTED_ORDER, REJECTED_VALUE
 from ccxtbt.utils import legality_check_not_none_obj
 
 
@@ -78,23 +79,23 @@ class BT_CCXT_Exchange(backtrader.with_metaclass(backtrader.MetaSingleton, objec
     mappings = {
         CCXT_ORDER_TYPES[OPENED_ORDER]: {
             'key': CCXT_STATUS_KEY,
-            'value': "open"
+            'value': CCXT_COMMON_MAPPING_VALUES[OPEN_VALUE],
         },
         CCXT_ORDER_TYPES[CLOSED_ORDER]: {
             'key': CCXT_STATUS_KEY,
-            'value': "closed"
+            'value': CCXT_COMMON_MAPPING_VALUES[CLOSED_VALUE],
         },
         CCXT_ORDER_TYPES[CANCELED_ORDER]: {
             'key': CCXT_STATUS_KEY,
-            'value': "canceled"
+            'value': CCXT_COMMON_MAPPING_VALUES[CANCELED_VALUE]
         },
         CCXT_ORDER_TYPES[EXPIRED_ORDER]: {
             'key': CCXT_STATUS_KEY,
-            'value': "expired"
+            'value': CCXT_COMMON_MAPPING_VALUES[EXPIRED_VALUE]
         },
         CCXT_ORDER_TYPES[REJECTED_ORDER]: {
             'key': CCXT_STATUS_KEY,
-            'value': "rejected"
+            'value': CCXT_COMMON_MAPPING_VALUES[REJECTED_VALUE]
         }
     }
 

@@ -53,3 +53,5 @@ BYBIT__DERIVATIVES__CLUSTER_PUBLIC_TRADE = "publicTrade"
 Reference: https://bybit-exchange.github.io/docs/futuresV2/linear/#t-switchpositionmode
 '''
 BYBIT__DERIVATIVES__DEFAULT_POSITION_MODE = "BothSide"
+
+BYBIT__PARTIALLY_FILLED__ORDER_STATUS__VALUE = "PartiallyFilled"

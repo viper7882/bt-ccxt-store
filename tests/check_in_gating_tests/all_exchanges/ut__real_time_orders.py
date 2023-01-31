@@ -11,16 +11,23 @@ from time import time as timer
 from unittest.mock import Mock, MagicMock, patch, create_autospec, call
 
 from ccxtbt.bt_ccxt_feed__classes import BT_CCXT_Feed
+from ccxtbt.bt_ccxt_order__classes import BT_CCXT_Order
 from ccxtbt.bt_ccxt_order__helper import get_filtered_orders
-from ccxtbt.bt_ccxt__specifications import MIN_LIVE_EXCHANGE_RETRIES, STATUSES, CCXT__MARKET_TYPES, \
+from ccxtbt.bt_ccxt__specifications import CCXT_COMMON_MAPPING_VALUES, CCXT_ORDER_TYPES, CCXT_STATUS_KEY, \
+    DERIVED__CCXT_ORDER__KEYS, \
+    MIN_LIVE_EXCHANGE_RETRIES, \
+    PARTIALLY_FILLED_ORDER, REJECTED_VALUE, STATUS, STATUSES, \
+    CCXT__MARKET_TYPES, \
     CCXT__MARKET_TYPE__FUTURE, \
     CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP, CCXT__MARKET_TYPE__SPOT, \
     DEFAULT__INITIAL__CAPITAL_RESERVATION__VALUE, DEFAULT__LEVERAGE_IN_PERCENT, EXECUTION_TYPES, \
     MAX_LIVE_EXCHANGE_RETRIES, \
     ORDERING_TYPES, ORDER_INTENTS, PLURAL__CCXT_ORDER__KEYS, POSITION_TYPES, filter_order__dict_template
-from ccxtbt.exchange.binance.binance__exchange__specifications import BINANCE_EXCHANGE_ID, BINANCE_OHLCV_LIMIT
+from ccxtbt.exchange.binance.binance__exchange__specifications import BINANCE_EXCHANGE_ID, BINANCE_OHLCV_LIMIT, \
+    BINANCE__PARTIALLY_FILLED__ORDER_STATUS__VALUE
 from ccxtbt.exchange.bybit.bybit__exchange__helper import get_wallet_currency
-from ccxtbt.exchange.bybit.bybit__exchange__specifications import BYBIT_EXCHANGE_ID
+from ccxtbt.exchange.bybit.bybit__exchange__specifications import BYBIT_EXCHANGE_ID, \
+    BYBIT__PARTIALLY_FILLED__ORDER_STATUS__VALUE
 from ccxtbt.exchange.exchange__helper import get_minimum_instrument_quantity
 from ccxtbt.utils import get_opposite__position_type, get_order_entry_price_and_queue, get_time_diff
 
@@ -98,6 +105,7 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
 
                         # Optional Params
                         bt_ccxt_exchange=bt_ccxt_exchange,
+                        keep_original_ccxt_order=True,
                     )
                     (bt_ccxt_account_or_store, exchange_specific_config, ) = \
                         construct_standalone_account_or_store(
@@ -514,6 +522,9 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
                                         params=get_filtered_orders__dict)
 
                                 if len(opened_ccxt_orders) == 0:
+                                    # ----------------------------------------------------------------------------------
+                                    # [Entry] Order
+                                    # ----------------------------------------------------------------------------------
                                     if bt_ccxt_account_or_store.exchange_dropdown_value == BINANCE_EXCHANGE_ID:
                                         offset = 100
                                     else:
@@ -607,6 +618,198 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
                                     self.assertEqual(
                                         entry_order.status, backtrader.Order.Accepted)
 
+                                    # ----------------------------------------------------------------------------------
+                                    # Partially Filled Order
+                                    # ----------------------------------------------------------------------------------
+                                    # Locate the unmodified CCXT order
+                                    unmodified_ccxt_orders = \
+                                        [exchange_ccxt_order
+                                         for exchange_ccxt_order in bt_ccxt_account_or_store.exchange_ccxt_orders
+                                         if entry_order.ccxt_id == exchange_ccxt_order['id']]
+                                    assert len(unmodified_ccxt_orders) == 1
+
+                                    # Create a copy so that we could modify it locally without affecting original order
+                                    unmodified_ccxt_order = copy.deepcopy(
+                                        unmodified_ccxt_orders[0])
+
+                                    if unmodified_ccxt_order['remaining'] is None:
+                                        unmodified_ccxt_order['remaining'] = unmodified_ccxt_order['amount']
+
+                                    if unmodified_ccxt_order['filled'] is None:
+                                        unmodified_ccxt_order['filled'] = 0.0
+
+                                    # Validate assumption made
+                                    assert isinstance(
+                                        unmodified_ccxt_order['filled'], float)
+                                    assert isinstance(
+                                        unmodified_ccxt_order['remaining'], float)
+
+                                    # Increment the qty by one step
+                                    order_increment_qty = instrument.qty_step
+                                    unmodified_ccxt_order['filled'] += order_increment_qty
+                                    unmodified_ccxt_order['remaining'] -= order_increment_qty
+
+                                    if bt_ccxt_account_or_store.exchange_dropdown_value == BINANCE_EXCHANGE_ID:
+                                        partially_filled__order_status__value = \
+                                            BINANCE__PARTIALLY_FILLED__ORDER_STATUS__VALUE
+                                    elif bt_ccxt_account_or_store.exchange_dropdown_value == BYBIT_EXCHANGE_ID:
+                                        partially_filled__order_status__value = \
+                                            BYBIT__PARTIALLY_FILLED__ORDER_STATUS__VALUE
+                                    else:
+                                        raise NotImplementedError(
+                                            "{} exchange is yet to be supported!!!".format(
+                                                bt_ccxt_account_or_store.exchange_dropdown_value)
+                                        )
+
+                                    unmodified_ccxt_order[DERIVED__CCXT_ORDER__KEYS[STATUS]] = \
+                                        partially_filled__order_status__value
+
+                                    # Post-process the CCXT order so that they are consistent across multiple exchanges
+                                    post_process__ccxt_orders__dict = dict(
+                                        bt_ccxt_exchange=bt_ccxt_account_or_store.parent,
+                                        bt_ccxt_account_or_store=bt_ccxt_account_or_store,
+                                        ccxt_orders=[unmodified_ccxt_order],
+                                    )
+                                    post_processed__ccxt_orders = bt_ccxt_account_or_store.post_process__ccxt_orders(
+                                        params=post_process__ccxt_orders__dict)
+                                    post_processed__ccxt_order = post_processed__ccxt_orders[0]
+
+                                    # Suspend the order in the open_orders queue
+                                    assert len(
+                                        bt_ccxt_account_or_store.open_orders) == 1
+                                    accepted_order = bt_ccxt_account_or_store.open_orders.pop()
+
+                                    datafeed = None
+                                    # Exposed simulated so that we could proceed with order without running cerebro
+                                    bt_ccxt_order__dict = dict(
+                                        owner=bt_ccxt_account_or_store,
+                                        exchange_dropdown_value=bt_ccxt_account_or_store.exchange_dropdown_value,
+                                        symbol_id=symbol_id,
+                                        ccxt_order=post_processed__ccxt_order,
+                                        execution_type=accepted_order.execution_type,
+                                        position_type=accepted_order.position_type,
+                                        ordering_type=accepted_order.ordering_type,
+                                        order_intent=accepted_order.order_intent,
+                                    )
+                                    if datafeed is not None:
+                                        # Assign the datafeed since it exists
+                                        bt_ccxt_order__dict.update(dict(
+                                            datafeed=datafeed,
+                                        ))
+                                    else:
+                                        # Turn on simulated should there is no datafeed
+                                        bt_ccxt_order__dict.update(dict(
+                                            simulated=True,
+                                        ))
+                                    partially_filled_order = BT_CCXT_Order(
+                                        **bt_ccxt_order__dict)
+
+                                    # Test assertion
+                                    self.assertEqual(
+                                        partially_filled_order.status, backtrader.Order.Submitted)
+                                    self.assertEqual(
+                                        partially_filled_order.partially_filled_earlier, False)
+                                    self.assertEqual(
+                                        bt_ccxt_account_or_store.partially_filled_earlier, None)
+
+                                    # Swap with the simulated partially_filled_order
+                                    bt_ccxt_account_or_store.open_orders.append(
+                                        partially_filled_order)
+
+                                    # Patch def notify so that we could perform UT assertion if it is called
+                                    with patch.object(bt_ccxt_account_or_store, 'notify') as mock:
+                                        bt_ccxt_account_or_store.next(
+                                            ut_provided__new_ccxt_order=True)
+
+                                    # Confirm bt_ccxt_account_or_store.notify has been called once (Partial)
+                                    calls = \
+                                        [call(partially_filled_order)]
+                                    mock.assert_has_calls(calls)
+
+                                    # Test assertion
+                                    self.assertEqual(
+                                        partially_filled_order.status, backtrader.Order.Partial)
+                                    self.assertEqual(
+                                        partially_filled_order.partially_filled_earlier, True)
+                                    self.assertEqual(
+                                        bt_ccxt_account_or_store.partially_filled_earlier, True)
+                                    pass
+
+                                    # ----------------------------------------------------------------------------------
+                                    # Rejected Order
+                                    # ----------------------------------------------------------------------------------
+                                    # Create a copy so that we could modify it locally without affecting original order
+                                    unmodified_ccxt_order = copy.deepcopy(
+                                        unmodified_ccxt_orders[0])
+                                    unmodified_ccxt_order[DERIVED__CCXT_ORDER__KEYS[STATUS]] = \
+                                        CCXT_COMMON_MAPPING_VALUES[REJECTED_VALUE]
+
+                                    # Post-process the CCXT order so that they are consistent across multiple exchanges
+                                    post_process__ccxt_orders__dict = dict(
+                                        bt_ccxt_exchange=bt_ccxt_account_or_store.parent,
+                                        bt_ccxt_account_or_store=bt_ccxt_account_or_store,
+                                        ccxt_orders=[unmodified_ccxt_order],
+                                    )
+                                    post_processed__ccxt_orders = bt_ccxt_account_or_store.post_process__ccxt_orders(
+                                        params=post_process__ccxt_orders__dict)
+                                    post_processed__ccxt_order = post_processed__ccxt_orders[0]
+
+                                    # Suspend the order in the open_orders queue
+                                    assert len(
+                                        bt_ccxt_account_or_store.open_orders) == 1
+                                    accepted_order = bt_ccxt_account_or_store.open_orders.pop()
+
+                                    datafeed = None
+                                    # Exposed simulated so that we could proceed with order without running cerebro
+                                    bt_ccxt_order__dict = dict(
+                                        owner=bt_ccxt_account_or_store,
+                                        exchange_dropdown_value=bt_ccxt_account_or_store.exchange_dropdown_value,
+                                        symbol_id=symbol_id,
+                                        ccxt_order=post_processed__ccxt_order,
+                                        execution_type=accepted_order.execution_type,
+                                        position_type=accepted_order.position_type,
+                                        ordering_type=accepted_order.ordering_type,
+                                        order_intent=accepted_order.order_intent,
+                                    )
+                                    if datafeed is not None:
+                                        # Assign the datafeed since it exists
+                                        bt_ccxt_order__dict.update(dict(
+                                            datafeed=datafeed,
+                                        ))
+                                    else:
+                                        # Turn on simulated should there is no datafeed
+                                        bt_ccxt_order__dict.update(dict(
+                                            simulated=True,
+                                        ))
+                                    rejected_order = BT_CCXT_Order(
+                                        **bt_ccxt_order__dict)
+
+                                    # Test assertion
+                                    self.assertEqual(
+                                        rejected_order.status, backtrader.Order.Submitted)
+
+                                    # Swap with the simulated rejected_order
+                                    bt_ccxt_account_or_store.open_orders.append(
+                                        rejected_order)
+
+                                    # Patch def notify so that we could perform UT assertion if it is called
+                                    with patch.object(bt_ccxt_account_or_store, 'notify') as mock:
+                                        bt_ccxt_account_or_store.next(
+                                            ut_provided__new_ccxt_order=True)
+
+                                    # Confirm bt_ccxt_account_or_store.notify has been called once (Rejected)
+                                    calls = \
+                                        [call(rejected_order)]
+                                    mock.assert_has_calls(calls)
+
+                                    # Test assertion
+                                    self.assertEqual(
+                                        rejected_order.status, backtrader.Order.Rejected)
+                                    pass
+
+                                    # ----------------------------------------------------------------------------------
+                                    # Cancel Order
+                                    # ----------------------------------------------------------------------------------
                                     frameinfo = inspect.getframeinfo(
                                         inspect.currentframe())
                                     msg = "{}: {}: {} Line: {}: INFO: {}: ".format(
@@ -621,8 +824,6 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
                                     )
                                     print(msg + sub_msg)
                                     pprint(str(entry_order))
-
-                                    # TODO: Check if the entry order is stored into persistent storage
 
                                     fetch_opened_orders__dict = dict(
                                         # CCXT requires the market type name to be specified correctly
@@ -766,8 +967,6 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
                                     # Test Assertion
                                     self.assertEqual(
                                         len(opened_ccxt_orders), 0)
-
-                                    # TODO: Check if the entry order is removed from persistent storage
                                 else:
                                     frameinfo = inspect.getframeinfo(
                                         inspect.currentframe())
