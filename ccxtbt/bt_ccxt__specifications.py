@@ -17,7 +17,7 @@ OPENED_ORDER, PARTIALLY_FILLED_ORDER, CLOSED_ORDER, CANCELED_ORDER, EXPIRED_ORDE
     range(len(CCXT_ORDER_TYPES))
 
 CCXT_COMMON_MAPPING_VALUES = \
-    ('open', 'close', 'canceled', 'cancelled', 'expired', 'rejected', )
+    ('open', 'closed', 'canceled', 'cancelled', 'expired', 'rejected', )
 OPEN_VALUE, CLOSED_VALUE, CANCELED_VALUE, CANCELLED_VALUE, EXPIRED_VALUE, REJECTED_VALUE, = \
     range(len(CCXT_COMMON_MAPPING_VALUES))
 

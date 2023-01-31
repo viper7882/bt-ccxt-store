@@ -154,6 +154,24 @@ def reverse_engineer__ccxt_order(params):
                 break
             else:
                 raise NotImplementedError()
+
+    if DERIVED__CCXT_ORDER__KEYS[STATUS] not in ccxt_order.keys():
+        frameinfo = inspect.getframeinfo(inspect.currentframe())
+        msg = "{} Line: {}: ERROR: Tried combinations:".format(
+            frameinfo.function, frameinfo.lineno,
+        )
+
+        for ccxt_order_type in range(len(CCXT_ORDER_TYPES)):
+            key = bt_ccxt_exchange.mappings[CCXT_ORDER_TYPES[ccxt_order_type]]['key']
+            value = bt_ccxt_exchange.mappings[CCXT_ORDER_TYPES[ccxt_order_type]]['value']
+
+            sub_msg = "ccxt_order[\'{}\']: {} vs value: {}".format(
+                key,
+                ccxt_order[key],
+                value,
+            )
+            print(msg + sub_msg)
+
     ccxt_order['{}_name'.format(DERIVED__CCXT_ORDER__KEYS[STATUS])] = \
         backtrader.Order.Status[ccxt_order[DERIVED__CCXT_ORDER__KEYS[STATUS]]]
     return ccxt_order

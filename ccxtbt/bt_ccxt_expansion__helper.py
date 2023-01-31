@@ -28,6 +28,15 @@ def construct_standalone_exchange(params) -> object:
     # Un-serialized Params
     exchange_dropdown_value = params['exchange_dropdown_value']
 
+    # Optional Params
+    ut_disable_singleton = params.get('ut_disable_singleton', None)
+
+    if ut_disable_singleton:
+        '''
+        Resetting the singleton to None here so that we could sweep multiple exchanges.
+        '''
+        BT_CCXT_Exchange._singleton = None
+
     order_types = {
         backtrader.Order.Market: "market",
         backtrader.Order.Limit: "limit",

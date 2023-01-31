@@ -86,6 +86,9 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
                 for market_type in market_types:
                     construct_standalone_exchange__dict = dict(
                         exchange_dropdown_value=exchange_dropdown_value,
+
+                        # UT: Disable singleton in exchange so that we could run tests across multiple exchanges
+                        ut_disable_singleton=True,
                     )
                     bt_ccxt_exchange = construct_standalone_exchange(
                         params=construct_standalone_exchange__dict)
@@ -219,6 +222,9 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
 
                         # If there is no opened position
                         if position.price == 0.0:
+                            # ------------------------------------------------------------------------------------------
+                            # Enter using market order
+                            # ------------------------------------------------------------------------------------------
                             offset = 0
                             (nearest_ask, nearest_bid,) = \
                                 instrument.get_orderbook_price_by_offset(
@@ -328,7 +334,6 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
                                       )
                             print(msg + sub_msg)
 
-                        # Close using Market Order
                         position = instrument.get_position(position_type)
 
                         instrument.sync_symbol_positions()
@@ -339,6 +344,9 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
 
                         # If there is an opened position
                         if position.price > 0.0:
+                            # ------------------------------------------------------------------------------------------
+                            # Close using Market Order
+                            # ------------------------------------------------------------------------------------------
                             # To close a position you need to make the inverse operation with same amount
                             exit__dict = dict(
                                 owner=self,
@@ -893,7 +901,7 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
                                         cancelled_order_start = timer()
 
                                         for _ in range(MIN_LIVE_EXCHANGE_RETRIES):
-                                            # Cancel the opened order
+                                            # Cancel the opened position
                                             success = instrument.cancel(
                                                 opened_ccxt_orders[0])
                                             if success == True:
