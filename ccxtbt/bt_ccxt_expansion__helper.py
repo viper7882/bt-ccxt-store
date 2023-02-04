@@ -26,7 +26,7 @@ from ccxtbt.bt_ccxt_expansion__classes import FAKE_COMMISSION_INFO, FAKE_EXCHANG
 
 
 def construct_standalone_exchange(params) -> object:
-    # Un-serialized Params
+    # Un-serialize Params
     exchange_dropdown_value = params['exchange_dropdown_value']
 
     # Optional Params
@@ -113,7 +113,7 @@ def construct_standalone_exchange(params) -> object:
 
 
 def construct_standalone_account_or_store(params) -> tuple:
-    # Un-serialized Params
+    # Un-serialize Params
     exchange_dropdown_value = params['exchange_dropdown_value']
     main_net_toggle_switch_value = params['main_net_toggle_switch_value']
     market_type = params['market_type']
@@ -197,7 +197,7 @@ def construct_standalone_account_or_store(params) -> tuple:
 
 
 def construct_standalone_instrument(params) -> object:
-    # Un-serialized Params
+    # Un-serialize Params
     bt_ccxt_account_or_store = params['bt_ccxt_account_or_store']
     market_type = params['market_type']
     symbol_id = params['symbol_id']
@@ -245,7 +245,7 @@ def construct_standalone_instrument(params) -> object:
 
 
 def query__entry_or_exit_order(params):
-    # Un-serialized Params
+    # Un-serialize Params
     bt_ccxt_account_or_store = params['bt_ccxt_account_or_store']
     instrument = params['instrument']
     filter_order__dict = params['filter_order__dict']

@@ -6,12 +6,16 @@ import backtrader
 from time import time as timer
 from unittest.mock import patch
 
+from ccxtbt.bt_ccxt_expansion__helper import construct_standalone_account_or_store, construct_standalone_exchange, \
+    construct_standalone_instrument
+from ccxtbt.bt_ccxt_feed__classes import BT_CCXT_Feed
 from ccxtbt.bt_ccxt__specifications import CCXT_COMMON_MAPPING_VALUES, CCXT__MARKET_TYPES, CCXT__MARKET_TYPE__FUTURE, \
-    CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP, DERIVED__CCXT_ORDER__KEYS, REJECTED_VALUE, STATUS
+    CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP, DERIVED__CCXT_ORDER__KEYS, MAX_LIVE_EXCHANGE_RETRIES, REJECTED_VALUE, \
+    STATUS
 from ccxtbt.bt_ccxt_order__classes import BT_CCXT_Order
 
 from ccxtbt.exchange.binance.binance__exchange__specifications import BINANCE_EXCHANGE_ID, \
-    BINANCE__PARTIALLY_FILLED__ORDER_STATUS__VALUE
+    BINANCE_OHLCV_LIMIT, BINANCE__PARTIALLY_FILLED__ORDER_STATUS__VALUE
 from ccxtbt.exchange.bybit.bybit__exchange__specifications import BYBIT_EXCHANGE_ID, \
     BYBIT__PARTIALLY_FILLED__ORDER_STATUS__VALUE
 from ccxtbt.exchange.exchange__helper import get_minimum_instrument_quantity
@@ -107,7 +111,7 @@ def ut_get_valid_market_types(exchange_dropdown_value, target__market_types) -> 
 
 
 def ut_enter_or_exit_using_market_order(params) -> tuple:
-    # Un-serialized Params
+    # Un-serialize Params
     bt_ccxt_account_or_store = params['bt_ccxt_account_or_store']
     instrument = params['instrument']
     position_type = params['position_type']
@@ -202,7 +206,7 @@ def ut_enter_or_exit_using_market_order(params) -> tuple:
 
 
 def ut_enter_or_exit_using_limit_or_conditional_order(params) -> tuple:
-    # Un-serialized Params
+    # Un-serialize Params
     bt_ccxt_account_or_store = params['bt_ccxt_account_or_store']
     instrument = params['instrument']
     position_type = params['position_type']
@@ -314,7 +318,7 @@ def ut_enter_or_exit_using_limit_or_conditional_order(params) -> tuple:
 
 
 def ut_get_partially_filled_order(params) -> tuple:
-    # Un-serialized Params
+    # Un-serialize Params
     bt_ccxt_account_or_store = params['bt_ccxt_account_or_store']
     instrument = params['instrument']
     ccxt_order_id = params['ccxt_order_id']
@@ -403,7 +407,7 @@ def ut_get_partially_filled_order(params) -> tuple:
 
 
 def ut_get_rejected_order(params):
-    # Un-serialized Params
+    # Un-serialize Params
     bt_ccxt_account_or_store = params['bt_ccxt_account_or_store']
     instrument = params['instrument']
     ccxt_order_id = params['ccxt_order_id']
@@ -459,3 +463,114 @@ def ut_get_rejected_order(params):
     rejected_order = BT_CCXT_Order(**bt_ccxt_order__dict)
     ret_value = (rejected_order, accepted_order, )
     return ret_value
+
+
+def ut_get_bt_ccxt_account_or_stores(params) -> list:
+    # Un-serialize Params
+    exchange_dropdown_values = params['exchange_dropdown_values']
+    target__market_types = params['target__market_types']
+    construct_standalone_account_or_store__dict = params[
+        'construct_standalone_account_or_store__dict']
+
+    # Optional Params
+    callback_func = params.get('callback_func', None)
+
+    # Legality Check
+    assert isinstance(exchange_dropdown_values, tuple)
+    assert isinstance(target__market_types, tuple)
+
+    # Clone a shallow copy as we cannot pickle '_thread.lock' object
+    cloned_construct_standalone_account_or_store__dict = copy.copy(
+        construct_standalone_account_or_store__dict)
+
+    bt_ccxt_account_or_stores = []
+    for exchange_dropdown_value in exchange_dropdown_values:
+        # Construct the components
+        market_types = ut_get_valid_market_types(
+            exchange_dropdown_value, target__market_types)
+
+        for market_type in market_types:
+            construct_standalone_exchange__dict = dict(
+                exchange_dropdown_value=exchange_dropdown_value,
+
+                # UT: Disable singleton in exchange so that we could run tests across multiple exchanges
+                ut_disable_singleton=True,
+            )
+            bt_ccxt_exchange = construct_standalone_exchange(
+                params=construct_standalone_exchange__dict)
+
+            cloned_construct_standalone_account_or_store__dict.update(dict(
+                exchange_dropdown_value=exchange_dropdown_value,
+                market_type=market_type,
+
+                # Optional Params
+                bt_ccxt_exchange=bt_ccxt_exchange,
+            ))
+            (bt_ccxt_account_or_store, exchange_specific_config,) = \
+                construct_standalone_account_or_store(
+                    params=cloned_construct_standalone_account_or_store__dict)
+
+            for symbol_id in cloned_construct_standalone_account_or_store__dict['symbols_id']:
+                # Patch def notify so that we could perform UT assertion if it is called
+                with patch.object(bt_ccxt_account_or_store, 'notify') as mock:
+                    construct_standalone_instrument__dict = dict(
+                        bt_ccxt_account_or_store=bt_ccxt_account_or_store,
+                        market_type=market_type,
+                        symbol_id=symbol_id,
+                    )
+                    construct_standalone_instrument(
+                        params=construct_standalone_instrument__dict)
+                    instrument = bt_ccxt_account_or_store.get__child(
+                        symbol_id)
+
+                    custom__bt_ccxt_feed__dict = dict(
+                        timeframe=backtrader.TimeFrame.Ticks,
+                        drop_newest=False,
+                        ut__halt_if_no_ohlcv=True,
+                        # debug=True,
+                    )
+
+                    # Validate assumption made
+                    assert isinstance(custom__bt_ccxt_feed__dict, dict)
+
+                    # Long datafeed
+                    bt_ccxt_feed__dict = dict(
+                        exchange=exchange_dropdown_value,
+                        name=backtrader.Position.Position_Types[backtrader.Position.LONG_POSITION],
+                        dataname=symbol_id,
+                        ohlcv_limit=BINANCE_OHLCV_LIMIT,
+                        currency=cloned_construct_standalone_account_or_store__dict['wallet_currency'],
+                        config=exchange_specific_config,
+                        max_retries=MAX_LIVE_EXCHANGE_RETRIES,
+                    )
+                    bt_ccxt_feed__dict.update(custom__bt_ccxt_feed__dict)
+                    long_bb_data = BT_CCXT_Feed(**bt_ccxt_feed__dict)
+                    long_bb_data.set__parent(instrument)
+
+                    # Short datafeed
+                    bt_ccxt_feed__dict = dict(
+                        exchange=exchange_dropdown_value,
+                        name=backtrader.Position.Position_Types[backtrader.Position.SHORT_POSITION],
+                        dataname=symbol_id,
+                        ohlcv_limit=BINANCE_OHLCV_LIMIT,
+                        currency=cloned_construct_standalone_account_or_store__dict['wallet_currency'],
+                        config=exchange_specific_config,
+                        max_retries=MAX_LIVE_EXCHANGE_RETRIES,
+                    )
+                    bt_ccxt_feed__dict.update(custom__bt_ccxt_feed__dict)
+                    short_bb_data = BT_CCXT_Feed(**bt_ccxt_feed__dict)
+                    short_bb_data.set__parent(instrument)
+
+                if callback_func is not None:
+                    identify_calls__dict = dict(
+                        bt_ccxt_account_or_store=bt_ccxt_account_or_store,
+                        instrument=instrument,
+                    )
+                    calls = callback_func(params=identify_calls__dict)
+                    assert isinstance(calls, list)
+
+                    # Confirm bt_ccxt_account_or_store.notify has been called twice
+                    mock.assert_has_calls(calls)
+
+            bt_ccxt_account_or_stores.append(bt_ccxt_account_or_store)
+    return bt_ccxt_account_or_stores

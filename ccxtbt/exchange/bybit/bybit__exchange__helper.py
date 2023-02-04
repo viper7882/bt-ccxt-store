@@ -49,7 +49,7 @@ def get_bybit_commission_rate(params) -> float:
     '''
     Exchange specific approach to obtain commission rate for market type
     '''
-    # Un-serialized Params
+    # Un-serialize Params
     bt_ccxt_account_or_store = params['bt_ccxt_account_or_store']
     market_type = params['market_type']
     symbol_id = params['symbol_id']
@@ -89,7 +89,7 @@ def get_bybit_max_leverage(params) -> float:
     '''
     Exchange specific approach to obtain leverage for symbol
     '''
-    # Un-serialized Params
+    # Un-serialize Params
     bt_ccxt_account_or_store = params['bt_ccxt_account_or_store']
     market_type = params['market_type']
     symbol_id = params['symbol_id']
@@ -137,7 +137,7 @@ def get_bybit_leverages(params) -> tuple:
     '''
     Exchange specific approach to obtain leverage for symbol
     '''
-    # Un-serialized Params
+    # Un-serialize Params
     bt_ccxt_account_or_store = params['bt_ccxt_account_or_store']
     market_type = params['market_type']
     symbol_id = params['symbol_id']
@@ -175,7 +175,7 @@ def set_bybit_leverage(params) -> None:
     '''
     Exchange specific approach to configure leverage for symbol
     '''
-    # Un-serialized Params
+    # Un-serialize Params
     bt_ccxt_account_or_store = params['bt_ccxt_account_or_store']
     market_type = params['market_type']
     symbol_id = params['symbol_id']
