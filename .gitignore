@@ -110,3 +110,6 @@ samples/.DS_Store
 # API key and Secret
 *testnet__api_key_and_secret.json
 *mainnet__api_key_and_secret.json
+
+# Persistent Storage
+ccxt_orders_id.txt

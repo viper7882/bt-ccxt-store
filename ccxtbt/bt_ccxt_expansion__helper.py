@@ -64,6 +64,10 @@ def construct_standalone_exchange(params) -> object:
             'key': CCXT_STATUS_KEY,
             'value': CCXT_COMMON_MAPPING_VALUES[CLOSED_VALUE],
         },
+        CCXT_ORDER_TYPES[CANCELED_ORDER]: {
+            'key': CCXT_STATUS_KEY,
+            'value': CCXT_COMMON_MAPPING_VALUES[CANCELED_VALUE],
+        },
         CCXT_ORDER_TYPES[EXPIRED_ORDER]: {
             'key': CCXT_STATUS_KEY,
             'value': CCXT_COMMON_MAPPING_VALUES[EXPIRED_VALUE],
@@ -80,10 +84,6 @@ def construct_standalone_exchange(params) -> object:
         Reference: https://binance-docs.github.io/apidocs/futures/en/#public-endpoints-info
         '''
         mappings.update({
-            CCXT_ORDER_TYPES[CANCELED_ORDER]: {
-                'key': CCXT_STATUS_KEY,
-                'value': CCXT_COMMON_MAPPING_VALUES[CANCELED_VALUE],
-            },
             CCXT_ORDER_TYPES[PARTIALLY_FILLED_ORDER]: {
                 'key': CCXT_STATUS_KEY,
                 'value': BINANCE__PARTIALLY_FILLED__ORDER_STATUS__VALUE,
@@ -94,10 +94,6 @@ def construct_standalone_exchange(params) -> object:
         Reference: https://bybit-exchange.github.io/docs/futuresV2/linear/#order-status-order_status-stop_order_status
         '''
         mappings.update({
-            CCXT_ORDER_TYPES[CANCELED_ORDER]: {
-                'key': CCXT_STATUS_KEY,
-                'value': CCXT_COMMON_MAPPING_VALUES[CANCELLED_VALUE],
-            },
             CCXT_ORDER_TYPES[PARTIALLY_FILLED_ORDER]: {
                 'key': CCXT_STATUS_KEY,
                 'value': BYBIT__PARTIALLY_FILLED__ORDER_STATUS__VALUE,

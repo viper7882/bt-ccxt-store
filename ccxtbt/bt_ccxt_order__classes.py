@@ -262,7 +262,8 @@ class BT_CCXT_Order(backtrader.OrderBase):
         tojoin.append('{}: Execution Type'.format(self.execution_type_name()))
         tojoin.append('Backtrader Status: {}'.format(
             backtrader.Order.Status[self.status]))
-        tojoin.append('CCXT Status: {}'.format(self.ccxt_order['status']))
+        tojoin.append('CCXT Status: {}'.format(
+            self.ccxt_order['{}_name'.format(DERIVED__CCXT_ORDER__KEYS[STATUS])]))
 
         if type(self.ccxt_order).__name__ == BT_CCXT_Order.__name__:
             if getattr(self.ccxt_order, 'created'):
@@ -285,7 +286,7 @@ class BT_CCXT_Order(backtrader.OrderBase):
                 self.size,
                 self.ccxt_order['datetime'].replace("T", " "),
             ))
-        ret_value = str('\n'.join(tojoin))
+        ret_value = "\n".join(tojoin)
         return ret_value
 
     def clone(self):

@@ -40,6 +40,8 @@ from pprint import pprint
 from time import time as timer
 
 from ccxtbt.bt_ccxt_exchange__classes import BT_CCXT_Exchange
+from ccxtbt.bt_ccxt_persistent_storage__helper import delete_from_persistent_storage, \
+    save_to_persistent_storage
 from ccxtbt.bt_ccxt_order__classes import BT_CCXT_Order
 from ccxtbt.bt_ccxt_order__helper import converge_ccxt_reduce_only_value, get_ccxt_order_id, \
     reverse_engineer__ccxt_order
@@ -49,8 +51,8 @@ from ccxtbt.bt_ccxt__specifications import CANCELED_ORDER, CASH_DIGITS, CCXT_ORD
     CLOSED_ORDER, DERIVED__CCXT_ORDER__KEYS, EXECUTION_TYPE, EXPIRED_ORDER, LIST_OF_CCXT_KEY_TO_BE_RENAMED, \
     MAX_LEVERAGE_IN_PERCENT, \
     MIN_LEVERAGE, \
-    MIN_LEVERAGE_IN_PERCENT, OPENED_ORDER, ORDERING_TYPE, ORDER_INTENT, PARTIALLY_FILLED_ORDER, POSITION_TYPE, \
-    REJECTED_ORDER
+    MIN_LEVERAGE_IN_PERCENT, OPENED_ORDER, ORDERING_TYPE, ORDER_INTENT, PARTIALLY_FILLED_ORDER, \
+    POSITION_TYPE, REJECTED_ORDER
 from ccxtbt.exchange.binance.binance__exchange__helper import get_binance_leverages, set_binance_leverage
 from ccxtbt.exchange.binance.binance__exchange__specifications import BINANCE_EXCHANGE_ID, \
     BINANCE__FUTURES__DEFAULT_DUAL_POSITION_MODE
@@ -512,6 +514,18 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         )
         self.notifs.put(order)
 
+    def remove_open_order(self, order):
+        ccxt_order_id = order.ccxt_id
+        delete_from_persistent_storage__dict = dict(
+            ccxt_order_id=ccxt_order_id,
+            exchange_dropdown_value=self.exchange_dropdown_value,
+            market_type=self.market_type,
+        )
+        delete_from_persistent_storage(
+            params=delete_from_persistent_storage__dict)
+
+        self.open_orders.remove(order)
+
     def next(self, ut_provided__new_ccxt_order=None):
         if self.debug:
             # # TODO: Debug use
@@ -525,7 +539,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
             pass
 
         for order in self.open_orders:
-            ccxt_order_id = order.ccxt_order['id']
+            ccxt_order_id = order.ccxt_id
 
             # Print debug before fetching so we know which order is giving an
             # issue if it crashes
@@ -740,7 +754,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                 instrument = self.get__child(order.p.symbol_id)
                 instrument.sync_symbol_positions()
 
-                self.open_orders.remove(order)
+                self.remove_open_order(order)
             # Check if the exchange order is rejected
             elif new_ccxt_order[self.parent.mappings[CCXT_ORDER_TYPES[REJECTED_ORDER]]['key']] == \
                     self.parent.mappings[CCXT_ORDER_TYPES[REJECTED_ORDER]]['value']:
@@ -749,9 +763,9 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                 order.reject()
                 # Notify using clone so that UT could snapshot the order
                 self.notify(order.clone())
-                self.open_orders.remove(order)
+                self.remove_open_order(order)
             # Manage case when an order is being Canceled or Expired from the Exchange
-            #  from https://github.com/juancols/bt-ccxt-store/
+            # from https://github.com/juancols/bt-ccxt-store/
             elif new_ccxt_order[self.parent.mappings[CCXT_ORDER_TYPES[CANCELED_ORDER]]['key']] == \
                     self.parent.mappings[CCXT_ORDER_TYPES[CANCELED_ORDER]]['value']:
                 # Refresh the content of ccxt_order with the latest ccxt_order
@@ -759,14 +773,14 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                 order.cancel()
                 # Notify using clone so that UT could snapshot the order
                 self.notify(order.clone())
-                self.open_orders.remove(order)
+                self.remove_open_order(order)
             elif new_ccxt_order[self.parent.mappings[CCXT_ORDER_TYPES[EXPIRED_ORDER]]['key']] == \
                     self.parent.mappings[CCXT_ORDER_TYPES[EXPIRED_ORDER]]['value']:
                 # Refresh the content of ccxt_order with the latest ccxt_order
                 order.extract_from_ccxt_order(new_ccxt_order)
                 order.expire()
                 self.notify(order.clone())
-                self.open_orders.remove(order)
+                self.remove_open_order(order)
             else:
                 msg = "{} Line: {}: {}: WARNING: ".format(
                     inspect.getframeinfo(inspect.currentframe()).function,
@@ -1022,6 +1036,27 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         # Notify using clone so that UT could snapshot the order
         self.notify(order.clone())
         self.open_orders.append(order)
+
+        ccxt_order_id = order.ccxt_id
+
+        # TODO: Debug use
+        if self.debug:
+            frameinfo = inspect.getframeinfo(inspect.currentframe())
+            msg = "{} Line: {}: DEBUG: {}: ".format(
+                frameinfo.function, frameinfo.lineno,
+                datetime.datetime.now().isoformat().replace("T", " ")[:-3],
+            )
+            sub_msg = "save_to_persistent_storage: ccxt_order_id: \'{}\'".format(
+                ccxt_order_id,
+            )
+            print(msg + sub_msg)
+
+        save_to_persistent_storage__dict = dict(
+            ccxt_orders_id=[ccxt_order_id],
+            exchange_dropdown_value=self.exchange_dropdown_value,
+            market_type=self.market_type,
+        )
+        save_to_persistent_storage(params=save_to_persistent_storage__dict)
 
         # Explicitly call next one round prior to releasing order to caller. The intention is to provide guarantee for
         # caller to sync up position thereafter
@@ -1529,7 +1564,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         )
         assert hasattr(order, 'ccxt_order')
 
-        ccxt_order_id = order.ccxt_order['id']
+        ccxt_order_id = order.ccxt_id
 
         if self.debug:
             print('Broker cancel() called')
@@ -1552,8 +1587,9 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
             fetch_order__dict.update(dict(
                 stop_order_id=ccxt_order_id,
             ))
-            new_ccxt_order = self.fetch_order(
-                None, order.symbol_id, params=fetch_order__dict)
+            new_ccxt_order = \
+                self.fetch_order(None, order.symbol_id,
+                                 params=fetch_order__dict)
         legality_check_not_none_obj(new_ccxt_order, "new_ccxt_order")
 
         # Post-process the CCXT order so that they are consistent across multiple exchanges
@@ -1575,41 +1611,31 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
             print(msg)
             print(json.dumps(post_processed__ccxt_order, indent=self.indent))
 
-        # Check if the exchange order is closed
-        if post_processed__ccxt_order[self.parent.mappings[CCXT_ORDER_TYPES[CLOSED_ORDER]]['key']] == \
-                self.parent.mappings[CCXT_ORDER_TYPES[CLOSED_ORDER]]['value']:
-            return order
-
-        # CCXT Market Type is explicitly required
-        cancel_order__dict = dict(
-            type=self.market_type_name,   # CCXT Market Type
-        )
-        if order.ordering_type == backtrader.Order.CONDITIONAL_ORDERING_TYPE:
-            cancel_order__dict.update(dict(
-                stop=True,
-            ))
-        cancelled_ccxt_order = \
-            self.cancel_order(ccxt_order_id, order.symbol_id,
-                              params=cancel_order__dict)
-
-        # Confirm the ccxt_order is cancelled in the exchange
         success = False
-        if cancelled_ccxt_order['id'] is not None:
-            orders_to_be_removed = []
-            for open_order in self.open_orders:
-                if open_order.ccxt_id == ccxt_order_id:
-                    orders_to_be_removed.append(open_order)
+        # If the order remains opened
+        if post_processed__ccxt_order[self.parent.mappings[CCXT_ORDER_TYPES[OPENED_ORDER]]['key']] == \
+                self.parent.mappings[CCXT_ORDER_TYPES[OPENED_ORDER]]['value']:
+            # Validate assumption made
+            assert order in self.open_orders
 
-            for order_to_be_removed in orders_to_be_removed:
-                # Remove the original order
-                self.open_orders.remove(order_to_be_removed)
+            # CCXT Market Type is explicitly required
+            cancel_order__dict = dict(
+                type=self.market_type_name,   # CCXT Market Type
+            )
+            if order.ordering_type == backtrader.Order.CONDITIONAL_ORDERING_TYPE:
+                cancel_order__dict.update(dict(
+                    stop=True,
+                ))
+            cancelled_ccxt_order = \
+                self.cancel_order(ccxt_order_id, order.symbol_id,
+                                  params=cancel_order__dict)
 
-            # Mark the queried order as cancelled
-            order.cancel()
-
-            # Notify using clone so that UT could snapshot the order
-            self.notify(order.clone())
-            success = True
+            # Confirm the ccxt_order is cancelled in the exchange
+            if cancelled_ccxt_order['id'] is not None:
+                # In the event exchange requires time to reflect cancellation
+                while order in self.open_orders:
+                    self.next()
+                success = True
         return success
 
     def modify_order(self, order_id, symbol, type, side, amount=None, price=None, trigger_price=None, params={}):
