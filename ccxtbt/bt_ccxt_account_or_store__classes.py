@@ -818,6 +818,9 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
             raise ValueError("{} order_intent must be one of {}!!!".format(
                 order_intent, range(len(backtrader.Order.Order_Intents))))
 
+        if execution_type != backtrader.Order.Market:
+            legality_check_not_none_obj(price, "price")
+
         execution_type_name = self.parent.order_types.get(
             execution_type) if execution_type else 'market'
 

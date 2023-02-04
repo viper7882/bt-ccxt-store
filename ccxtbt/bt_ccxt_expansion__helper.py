@@ -12,6 +12,7 @@ from ccxtbt.bt_ccxt__specifications import CANCELED_ORDER, CANCELED_VALUE, CANCE
 from ccxtbt.bt_ccxt_account_or_store__classes import BT_CCXT_Account_or_Store
 from ccxtbt.bt_ccxt_exchange__classes import BT_CCXT_Exchange
 from ccxtbt.bt_ccxt_instrument__classes import BT_CCXT_Instrument
+from ccxtbt.bt_ccxt_order__helper import get_filtered_orders
 from ccxtbt.exchange.binance.binance__exchange__helper import get_binance_commission_rate
 from ccxtbt.exchange.binance.binance__exchange__specifications import BINANCE_EXCHANGE_ID, \
     BINANCE__PARTIALLY_FILLED__ORDER_STATUS__VALUE
@@ -241,3 +242,37 @@ def construct_standalone_instrument(params) -> object:
 
     bt_ccxt_account_or_store.add__instrument(instrument)
     return instrument
+
+
+def query__entry_or_exit_order(params):
+    # Un-serialized Params
+    bt_ccxt_account_or_store = params['bt_ccxt_account_or_store']
+    instrument = params['instrument']
+    filter_order__dict = params['filter_order__dict']
+
+    fetch_opened_orders__dict = dict(
+        # CCXT requires the market type name to be specified correctly
+        type=CCXT__MARKET_TYPES[bt_ccxt_account_or_store.market_type],
+
+    )
+    opened_bt_ccxt_orders = \
+        instrument.fetch_opened_orders(since=None,
+                                       limit=None,
+                                       params=fetch_opened_orders__dict)
+
+    if bt_ccxt_account_or_store.exchange_dropdown_value == BYBIT_EXCHANGE_ID:
+        fetch_opened_orders__dict.update(dict(
+            stop=True,
+        ))
+        opened_bt_ccxt_orders += \
+            instrument.fetch_opened_orders(since=None,
+                                           limit=None,
+                                           params=fetch_opened_orders__dict)
+
+    get_filtered_orders__dict = dict(
+        filter_order__dict=filter_order__dict,
+        orders=opened_bt_ccxt_orders,
+    )
+    filtered_bt_ccxt_orders = get_filtered_orders(
+        params=get_filtered_orders__dict)
+    return filtered_bt_ccxt_orders
