@@ -1,9 +1,11 @@
+import backtrader
 import inspect
 import os
 
 from pathlib import Path
 
-from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPES, PERSISTENT_STORAGE_DIR_NAME, PERSISTENT_STORAGE_ORDER_FILE_NAME
+from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPES, PERSISTENT_STORAGE_DIR_NAME, \
+    PERSISTENT_STORAGE_ORDER_FILE_NAME
 from ccxtbt.utils import legality_check_not_none_obj
 
 
@@ -11,6 +13,7 @@ def get_persistent_storage_file_path(params) -> str:
     # Un-serialize Params
     exchange_dropdown_value = params['exchange_dropdown_value']
     market_type = params['market_type']
+    main_net_toggle_switch_value = params['main_net_toggle_switch_value']
     symbol_id = params['symbol_id']
 
     # Legality Check
@@ -20,13 +23,22 @@ def get_persistent_storage_file_path(params) -> str:
         raise ValueError("{}: {} market_type must be one of {}!!!".format(
             inspect.currentframe(),
             market_type, range(len(CCXT__MARKET_TYPES))))
+    assert isinstance(main_net_toggle_switch_value, bool)
     assert isinstance(symbol_id, str)
+
+    if main_net_toggle_switch_value == True:
+        exchange_net_type = backtrader.Broker_or_Exchange_Base.Exchange_Net_Types[
+            backtrader.Broker_or_Exchange_Base.MAINNET]
+    else:
+        exchange_net_type = backtrader.Broker_or_Exchange_Base.Exchange_Net_Types[
+            backtrader.Broker_or_Exchange_Base.TESTNET]
 
     persistent_storage_dir_path = \
         os.path.join(Path(os.path.dirname(os.path.realpath(__file__))), PERSISTENT_STORAGE_DIR_NAME,
                      exchange_dropdown_value, CCXT__MARKET_TYPES[market_type])
 
-    file_name = "{}_{}".format(symbol_id, PERSISTENT_STORAGE_ORDER_FILE_NAME)
+    file_name = "{}_{}_{}".format(
+        exchange_net_type, symbol_id, PERSISTENT_STORAGE_ORDER_FILE_NAME)
     persistent_storage_file_path = \
         os.path.join(persistent_storage_dir_path, file_name)
     return persistent_storage_file_path
@@ -101,9 +113,18 @@ def delete_from_persistent_storage(params) -> bool:
     ccxt_order_id = params['ccxt_order_id']
 
     ccxt_orders_id = read_from_persistent_storage(params)
-    assert ccxt_order_id in ccxt_orders_id, "Expected: {} exists in {}!!!".format(
-        ccxt_order_id, ccxt_orders_id)
-    ccxt_orders_id.remove(ccxt_order_id)
+    if ccxt_order_id in ccxt_orders_id:
+        ccxt_orders_id.remove(ccxt_order_id)
+    else:
+        frameinfo = inspect.getframeinfo(inspect.currentframe())
+        msg = "{} Line: {}: WARNING: ".format(
+            frameinfo.function, frameinfo.lineno,
+        )
+        sub_msg = "\'{}\' ccxt_order_id not found in {}".format(
+            ccxt_order_id,
+            ccxt_orders_id,
+        )
+        print(msg + sub_msg)
 
     save_to_persistent_storage__dict = dict(
         ccxt_orders_id=ccxt_orders_id,

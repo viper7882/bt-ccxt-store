@@ -473,7 +473,11 @@ def ut_get_bt_ccxt_account_or_stores(params) -> list:
         'construct_standalone_account_or_store__dict']
 
     # Optional Params
-    callback_func = params.get('callback_func', None)
+    callback_func__has_calls = params.get('callback_func__has_calls', None)
+    ut_assert_not_called = params.get('ut_assert_not_called', None)
+    ut_keep_original_ccxt_order = params.get(
+        'ut_keep_original_ccxt_order', None)
+    ut_clear_opened_bt_status = params.get('ut_clear_opened_bt_status', None)
 
     # Legality Check
     assert isinstance(exchange_dropdown_values, tuple)
@@ -505,6 +509,8 @@ def ut_get_bt_ccxt_account_or_stores(params) -> list:
 
                 # Optional Params
                 bt_ccxt_exchange=bt_ccxt_exchange,
+                ut_keep_original_ccxt_order=ut_keep_original_ccxt_order,
+                ut_clear_opened_bt_status=ut_clear_opened_bt_status,
             ))
             (bt_ccxt_account_or_store, exchange_specific_config,) = \
                 construct_standalone_account_or_store(
@@ -561,16 +567,20 @@ def ut_get_bt_ccxt_account_or_stores(params) -> list:
                     short_bb_data = BT_CCXT_Feed(**bt_ccxt_feed__dict)
                     short_bb_data.set__parent(instrument)
 
-                if callback_func is not None:
+                if callback_func__has_calls is not None:
                     identify_calls__dict = dict(
                         bt_ccxt_account_or_store=bt_ccxt_account_or_store,
                         instrument=instrument,
                     )
-                    calls = callback_func(params=identify_calls__dict)
+                    calls = callback_func__has_calls(
+                        params=identify_calls__dict)
                     assert isinstance(calls, list)
 
                     # Confirm bt_ccxt_account_or_store.notify has been called twice
                     mock.assert_has_calls(calls)
+
+                if ut_assert_not_called:
+                    mock.assert_not_called()
 
             bt_ccxt_account_or_stores.append(bt_ccxt_account_or_store)
     return bt_ccxt_account_or_stores

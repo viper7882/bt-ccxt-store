@@ -129,7 +129,9 @@ def construct_standalone_account_or_store(params) -> tuple:
     # Optional Params
     account_type = params.get('account_type', None)
     bt_ccxt_exchange = params.get('bt_ccxt_exchange', None)
-    keep_original_ccxt_order = params.get('keep_original_ccxt_order', None)
+    ut_keep_original_ccxt_order = params.get(
+        'ut_keep_original_ccxt_order', None)
+    ut_clear_opened_bt_status = params.get('ut_clear_opened_bt_status', None)
 
     market_type_name = CCXT__MARKET_TYPES[market_type]
 
@@ -176,7 +178,10 @@ def construct_standalone_account_or_store(params) -> tuple:
             retries=MAX_LIVE_EXCHANGE_RETRIES,
             symbols_id=symbols_id,
             account__thread__connectivity__lock=account__thread__connectivity__lock,
-            keep_original_ccxt_order=keep_original_ccxt_order,
+
+            # Optional Params
+            ut_keep_original_ccxt_order=ut_keep_original_ccxt_order,
+            ut_clear_opened_bt_status=ut_clear_opened_bt_status,
             # debug=True,
         ))
 
