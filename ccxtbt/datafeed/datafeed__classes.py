@@ -101,6 +101,7 @@ class BT_CCXT_Feed(with_metaclass(MetaCCXTFeed, DataBase)):
         self._ts_delta = None  # timestamp delta for ohlcv
         self._name = self.p.dataname  # name of datafeed
         self._last_ws_ts = 0  # last processed timestamp for ohlcv from websocket
+        self._instrument = None
 
         # Legality Check
         if self.p.convert_to_heikin_ashi:
@@ -114,7 +115,11 @@ class BT_CCXT_Feed(with_metaclass(MetaCCXTFeed, DataBase)):
         return self._name
 
     def set__parent(self, owner):
-        self.instrument = owner
+        self._instrument = owner
+
+    def get__parent(self):
+        legality_check_not_none_obj(self._instrument, "self._instrument")
+        return self._instrument
 
     def start(self, ):
         DataBase.start(self)
@@ -187,7 +192,7 @@ class BT_CCXT_Feed(with_metaclass(MetaCCXTFeed, DataBase)):
                         self.put_notification(self.LIVE)
 
     def retry_fetch_ohlcv(self, granularity_dropdown_value, since, until):
-        legality_check_not_none_obj(self.instrument, "self.instrument")
+        legality_check_not_none_obj(self._instrument, "self._instrument")
 
         # Validate assumption made
         assert isinstance(granularity_dropdown_value, str)
@@ -196,8 +201,8 @@ class BT_CCXT_Feed(with_metaclass(MetaCCXTFeed, DataBase)):
         fetch_since = since
         while fetch_since < until:
             try:
-                ohlcv = self.instrument.fetch_ohlcv(
-                    symbol=self.instrument.symbol_id,
+                ohlcv = self._instrument.fetch_ohlcv(
+                    symbol=self._instrument.symbol_id,
                     timeframe=granularity_dropdown_value,
                     since=fetch_since,
                     until=until,
@@ -205,7 +210,7 @@ class BT_CCXT_Feed(with_metaclass(MetaCCXTFeed, DataBase)):
             except Exception as error:
                 raise RuntimeError("{}: Failed to fetch {} {} klines!!!".format(
                     error,
-                    granularity_dropdown_value, self.instrument.symbol_id,
+                    granularity_dropdown_value, self._instrument.symbol_id,
                 ))
 
             if len(ohlcv) == 0:
@@ -215,7 +220,7 @@ class BT_CCXT_Feed(with_metaclass(MetaCCXTFeed, DataBase)):
             fetch_since = ohlcv[-1][0] + 1
             all_ohlcv += ohlcv
 
-        ohlcv = self.instrument.parent.exchange.filter_by_since_limit(
+        ohlcv = self._instrument.parent.exchange.filter_by_since_limit(
             all_ohlcv, since, limit=None, key=0)
         # Filter off excessive data should there is any
         ohlcv = [entry for i, entry in enumerate(ohlcv) if ohlcv[i][0] < until]
@@ -223,8 +228,8 @@ class BT_CCXT_Feed(with_metaclass(MetaCCXTFeed, DataBase)):
 
     def _fetch_ohlcv(self, fromdate=None, todate=None):
         """Fetch OHLCV data into self._data queue"""
-        legality_check_not_none_obj(self.instrument, "self.instrument")
-        granularity = self.instrument.get_granularity(
+        legality_check_not_none_obj(self._instrument, "self._instrument")
+        granularity = self._instrument.get_granularity(
             self._timeframe, self._compression)
 
         if fromdate:
@@ -297,9 +302,9 @@ class BT_CCXT_Feed(with_metaclass(MetaCCXTFeed, DataBase)):
     def _load_ticks(self):
         # start = timer()
 
-        if self.instrument.is_ws_available():
+        if self._instrument.is_ws_available():
             try:
-                (tstamp, ohlcv) = self.instrument.get_ws_klines(self.p.dataname)
+                (tstamp, ohlcv) = self._instrument.get_ws_klines(self.p.dataname)
 
                 # If there is an update
                 if tstamp > self._last_ws_ts:
@@ -328,7 +333,7 @@ class BT_CCXT_Feed(with_metaclass(MetaCCXTFeed, DataBase)):
                 print("\r" + msg + sub_msg, end="")
                 return False
         else:
-            order_book = self.instrument.fetch_order_book(
+            order_book = self._instrument.fetch_order_book(
                 symbol=self.p.dataname)
             # nearest_ask = order_book['asks'][0][0]
             nearest_bid = order_book['bids'][0][0]

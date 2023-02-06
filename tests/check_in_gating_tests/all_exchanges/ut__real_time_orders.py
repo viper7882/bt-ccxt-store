@@ -30,10 +30,10 @@ from ccxtbt.utils import get_opposite__position_type, get_order_entry_price_and_
     get_order_exit_price_and_queue, \
     get_time_diff, legality_check_not_none_obj
 
-from check_in_gating_tests.common.test__helper import ut_enter_or_exit_using_limit_or_conditional_order, \
+from tests.common.test__helper import ut_enter_or_exit_using_limit_or_conditional_order, \
     ut_enter_or_exit_using_market_order, ut_get_bt_ccxt_account_or_stores, ut_get_partially_filled_order, \
     ut_get_rejected_order, ut_get_valid_market_types
-from check_in_gating_tests.common.test__specifications import MAX__HTTP__REAL_ORDER_WAITING_TIME__IN_SECONDS
+from tests.common.test__specifications import MAX__HTTP__REAL_ORDER_WAITING_TIME__IN_SECONDS
 
 
 class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
@@ -1347,6 +1347,14 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
                             )
                             print(msg + sub_msg)
                             pprint(str(entry_order))
+                    else:
+                        msg = "{}: {}: WARNING: {}: ".format(
+                            bt_ccxt_account_or_store.exchange_dropdown_value,
+                            CCXT__MARKET_TYPES[bt_ccxt_account_or_store.market_type],
+                            instrument.symbol_id,
+                        )
+                        sub_msg = "Unable to detect empty positions. Please retry"
+                        print(msg + sub_msg)
 
                     number_of_opened_positions = 0
                     for dual_position_type in dual_position_types:

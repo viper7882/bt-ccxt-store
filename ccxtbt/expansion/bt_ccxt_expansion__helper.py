@@ -4,6 +4,7 @@ import time
 
 from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPES
 from ccxtbt.account_or_store.account_or_store__classes import BT_CCXT_Account_or_Store
+from ccxtbt.cerebro.cerebro__classes import Enhanced_Cerebro
 from ccxtbt.cerebro.cerebro__specifications import LIVE_CEREBRO__DICT
 from ccxtbt.datafeed.datafeed__classes import BT_CCXT_Feed
 from ccxtbt.exchange_or_broker.binance.binance__exchange__helper import get_binance_commission_rate
@@ -111,7 +112,7 @@ def construct_standalone_exchange(params) -> type(BT_CCXT_Exchange):
     return bt_ccxt_exchange
 
 
-def construct_standalone_cerebro(params) -> type(backtrader.Cerebro):
+def construct_standalone_cerebro(params) -> type(Enhanced_Cerebro):
     # Un-serialize Params
     bt_ccxt_exchange = params['bt_ccxt_exchange']
 
@@ -120,7 +121,7 @@ def construct_standalone_cerebro(params) -> type(backtrader.Cerebro):
 
     # Reference: https://www.backtrader.com/docu/mixing-timeframes/indicators-mixing-timeframes/
     # data feeds from different timeframes can be mixed in indicators if runonce=False
-    cerebro = backtrader.Cerebro(**LIVE_CEREBRO__DICT)
+    cerebro = Enhanced_Cerebro(**LIVE_CEREBRO__DICT)
     cerebro.set_broker_or_exchange(bt_ccxt_exchange)
     return cerebro
 

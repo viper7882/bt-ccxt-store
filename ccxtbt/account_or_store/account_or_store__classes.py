@@ -457,6 +457,9 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
             self.ccxt_instruments.append(instrument)
             self._post_process__after_child_is_added(instrument)
 
+    def get__children(self):
+        return self.ccxt_instruments
+
     def get__child(self, symbol_id):
         legality_check_not_none_obj(symbol_id, "symbol_id")
 
@@ -2252,9 +2255,6 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                     self.ws_mainnet_usdt_perpetual = None
                     time.sleep(0.1)
                     gc.collect()
-
-    def get_account_alias(self):
-        return self.account_alias
 
     def get_open_orders(self):
         # In order to prevent manipulation from caller

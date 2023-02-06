@@ -5,6 +5,7 @@ import unittest
 
 from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPE__FUTURE, DEFAULT__INITIAL__CAPITAL_RESERVATION__VALUE, \
     DEFAULT__LEVERAGE_IN_PERCENT
+from ccxtbt.cerebro.cerebro__classes import Enhanced_Cerebro
 from ccxtbt.datafeed.datafeed__classes import BT_CCXT_Feed
 from ccxtbt.exchange_or_broker.binance.binance__exchange__specifications import BINANCE_EXCHANGE_ID, BINANCE_OHLCV_LIMIT
 from ccxtbt.exchange_or_broker.bybit.bybit__exchange__helper import get_wallet_currency
@@ -98,7 +99,7 @@ class TestStrategy(backtrader.Strategy):
 
 
 def backtesting(custom__bt_ccxt_feed__dict):
-    cerebro = backtrader.Cerebro()
+    cerebro = Enhanced_Cerebro()
 
     cerebro.add_strategy(TestStrategy)
 
@@ -169,7 +170,7 @@ def backtesting(custom__bt_ccxt_feed__dict):
     datafeed = BT_CCXT_Feed(**bt_ccxt_feed__dict)
     datafeed.set__parent(instrument)
 
-    cerebro.add_datafeed(datafeed)
+    cerebro.add_datafeed(datafeed, name="datafeed")
 
     finished_strategies = cerebro.run()
     return finished_strategies

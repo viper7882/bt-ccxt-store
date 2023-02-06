@@ -529,10 +529,6 @@ class BT_CCXT_Instrument(backtrader.with_metaclass(Meta_Instrument, object)):
             (normalized_initial_margin or 1.0)
         return pnl_comm, pnl_in_percentage, normalized_initial_margin
 
-    def get_account_alias(self):
-        legality_check_not_none_obj(self.parent, "self.parent")
-        return self.parent.get_account_alias()
-
     def get_exchange_dropdown_value(self):
         legality_check_not_none_obj(self.parent, "self.parent")
         return self.parent.exchange_dropdown_value

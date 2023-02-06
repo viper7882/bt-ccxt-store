@@ -13,25 +13,25 @@ LIVE_CEREBRO__DICT = dict(
     runonce=False,
 )
 
-common__wecoz_cerebro_data__dict_template = dict(
+common__enhanced_cerebro_data__dict_template = dict(
     # Thread and Queue Params
     thread_limiter=None,
     p2c__inbound_fifo_queue=None,
     c2p__outbound_fifo_queue=None,
 )
 
-wecoz_cerebro_new_check_data__dict_template = copy.deepcopy(
-    common__wecoz_cerebro_data__dict_template)
-wecoz_cerebro_new_check_data__dict_template.update((dict(
+enhanced_cerebro_new_check_data__dict_template = copy.deepcopy(
+    common__enhanced_cerebro_data__dict_template)
+enhanced_cerebro_new_check_data__dict_template.update((dict(
     # Program Flow Params
     qstart=None,
     datafeed=None,
     newqcheck=None,
 )))
 
-wecoz_cerebro_force_get_data__dict_template = copy.deepcopy(
-    common__wecoz_cerebro_data__dict_template)
-wecoz_cerebro_force_get_data__dict_template.update((dict(
+enhanced_cerebro_force_get_data__dict_template = copy.deepcopy(
+    common__enhanced_cerebro_data__dict_template)
+enhanced_cerebro_force_get_data__dict_template.update((dict(
     # Program Flow Params
     datafeeds=None,
     ret=None,

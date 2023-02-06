@@ -150,10 +150,6 @@ class BT_CCXT_Exchange(backtrader.with_metaclass(backtrader.MetaSingleton, objec
             ohlcv_provider__account_or_store, "ohlcv_provider__account_or_store")
         return ohlcv_provider__account_or_store
 
-    def get_account_alias(self, owner):
-        ret_account_alias = owner.p.own__account_object.account_alias__dropdown_value
-        return ret_account_alias
-
     def set_account_or_store(self, main_net_toggle_switch_value, account_alias, account_type):
         # Legality Check
         assert isinstance(main_net_toggle_switch_value, bool)

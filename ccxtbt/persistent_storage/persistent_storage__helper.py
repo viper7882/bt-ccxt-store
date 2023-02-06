@@ -11,7 +11,7 @@ from pathlib import Path
 
 from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPES
 from ccxtbt.persistent_storage.persistent_storage__specifications import PERSISTENT_STORAGE_CSV_HEADERS, \
-    PERSISTENT_STORAGE_DIR_NAME, PERSISTENT_STORAGE_ORDER_FILE_NAME, PS_CCXT_ORDER_ID, PS_ORDERING_TYPE
+    PERSISTENT_STORAGE_ORDER_FILE_NAME, PS_CCXT_ORDER_ID, PS_ORDERING_TYPE
 from ccxtbt.utils import legality_check_not_none_obj
 
 
@@ -40,8 +40,8 @@ def get_persistent_storage_file_path(params) -> str:
             backtrader.Broker_or_Exchange_Base.TESTNET]
 
     persistent_storage_dir_path = \
-        os.path.join(Path(os.path.dirname(os.path.realpath(__file__))), PERSISTENT_STORAGE_DIR_NAME,
-                     exchange_dropdown_value, CCXT__MARKET_TYPES[market_type])
+        os.path.join(Path(os.path.dirname(os.path.realpath(__file__))), exchange_dropdown_value,
+                     CCXT__MARKET_TYPES[market_type])
 
     file_name = "{}_{}_{}".format(
         exchange_net_type, symbol_id, PERSISTENT_STORAGE_ORDER_FILE_NAME)

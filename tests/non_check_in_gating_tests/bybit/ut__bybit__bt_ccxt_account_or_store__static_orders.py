@@ -19,7 +19,7 @@ from ccxtbt.expansion.bt_ccxt_expansion__helper import construct_standalone_acco
 from ccxtbt.order.order__classes import BT_CCXT_Order
 from ccxtbt.utils import get_time_diff
 
-from check_in_gating_tests.common.test__helper import ut_handle_datafeed, ut_reverse_engineer__ccxt_order
+from tests.common.test__helper import ut_handle_datafeed, ut_reverse_engineer__ccxt_order
 
 
 class Bybit__bt_ccxt_account_or_store__Static_Orders__TestCases(unittest.TestCase):
