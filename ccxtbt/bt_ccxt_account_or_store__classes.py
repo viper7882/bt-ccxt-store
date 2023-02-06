@@ -171,6 +171,11 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                                 'ret_msg' = 'order not exists or too late to repalce'
                                 '''
                                 break
+                            elif exchange_error_dict['ret_code'] == 20001:
+                                '''
+                                'ret_msg' = 'order not exists or too late to repalce'
+                                '''
+                                break
 
                             # Print out warning regarding the response received from ExchangeError
                             frameinfo = inspect.getframeinfo(
@@ -1708,19 +1713,78 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                 cancel_order__dict.update(dict(
                     stop=True,
                 ))
-            cancelled_ccxt_order = \
-                self.cancel_order(ccxt_order_id, order.symbol_id,
-                                  params=cancel_order__dict)
+            # Added finite retry as for exchange that practices async order, it could take quite a few of
+            # retries
+            for retry_no in range(self.max_retry):
+                cancelled_ccxt_order = \
+                    self.cancel_order(ccxt_order_id, order.symbol_id,
+                                      params=cancel_order__dict)
 
-            # Confirm the ccxt_order is cancelled in the exchange
-            if cancelled_ccxt_order['id'] is not None:
-                # Added finite retry as for exchange that practices async order, it could take quite a few of retries
-                for retry_no in range(self.max_retry):
+                proceed_with_next = False
+                # Confirm the ccxt_order is cancelled in the exchange
+                if cancelled_ccxt_order is not None:
+                    if cancelled_ccxt_order['id'] is not None:
+                        proceed_with_next = True
+                    else:
+                        # frameinfo = inspect.getframeinfo(inspect.currentframe())
+                        # msg = "{} Line: {}: WARNING: ".format(
+                        #     frameinfo.function, frameinfo.lineno,
+                        # )
+                        # sub_msg = "{}/{}: cancelled_ccxt_order['id'] is None".format(
+                        #     retry_no+1,
+                        #     self.max_retry,
+                        # )
+                        # print(msg + sub_msg)
+                        pass
+                else:
+                    proceed_with_next = True
+                    # frameinfo = inspect.getframeinfo(inspect.currentframe())
+                    # msg = "{} Line: {}: WARNING: ".format(
+                    #     frameinfo.function, frameinfo.lineno,
+                    # )
+                    # sub_msg = "{}/{}: cancelled_ccxt_order is None".format(
+                    #     retry_no+1,
+                    #     self.max_retry,
+                    # )
+                    # print(msg + sub_msg)
+                    pass
+
+                if proceed_with_next == True:
+                    # frameinfo = inspect.getframeinfo(inspect.currentframe())
+                    # msg = "{} Line: {}: DEBUG: ".format(
+                    #     frameinfo.function, frameinfo.lineno,
+                    # )
+                    # sub_msg = "{}/{}: BEFORE len(open_orders): {}".format(
+                    #     retry_no + 1,
+                    #     self.max_retry,
+                    #     len(self.open_orders),
+                    # )
+                    # print(msg + sub_msg)
+
                     self.next()
+
+                    # sub_msg = "{}/{}:  AFTER len(open_orders): {}".format(
+                    #     retry_no + 1,
+                    #     self.max_retry,
+                    #     len(self.open_orders),
+                    # )
+                    # print(msg + sub_msg)
 
                     if order not in self.open_orders:
                         success = True
                         break
+                    else:
+                        # frameinfo = inspect.getframeinfo(inspect.currentframe())
+                        # msg = "{} Line: {}: WARNING: ".format(
+                        #     frameinfo.function, frameinfo.lineno,
+                        # )
+                        # sub_msg = "{}/{}: {} is still in open_orders".format(
+                        #     retry_no + 1,
+                        #     self.max_retry,
+                        #     ccxt_order_id,
+                        # )
+                        # print(msg + sub_msg)
+                        pass
         return success
 
     def modify_order(self, order_id, symbol, type, side, amount=None, price=None, trigger_price=None, params={}):

@@ -14,7 +14,7 @@ from unittest.mock import patch, call
 from ccxtbt.bt_ccxt_expansion__helper import query__entry_or_exit_order
 from ccxtbt.bt_ccxt_persistent_storage__helper import read_from_persistent_storage, save_to_persistent_storage
 from ccxtbt.bt_ccxt__specifications import CANCELED_ORDER, CCXT_COMMON_MAPPING_VALUES, CLOSED_VALUE, \
-    EXPIRED_ORDER, MIN_LIVE_EXCHANGE_RETRIES, ORDERING_TYPES, PARTIALLY_FILLED_ORDER, PERSISTENT_STORAGE_CSV_HEADERS, \
+    EXPIRED_ORDER, ORDERING_TYPES, PARTIALLY_FILLED_ORDER, PERSISTENT_STORAGE_CSV_HEADERS, \
     PS_CCXT_ORDER_ID, PS_ORDERING_TYPE, REJECTED_ORDER, STAGES_OF_RESEND_NOTIFICATION, STATUSES, CCXT__MARKET_TYPES, \
     CCXT__MARKET_TYPE__FUTURE, \
     CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP, DEFAULT__INITIAL__CAPITAL_RESERVATION__VALUE, \
@@ -790,13 +790,11 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
                                     with patch.object(bt_ccxt_account_or_store, 'notify') as mock:
                                         cancelled_order_start = timer()
 
-                                        for _ in range(MIN_LIVE_EXCHANGE_RETRIES):
-                                            # Cancel the opened position
-                                            success = \
-                                                instrument.cancel(
-                                                    order_for_cancellation)
-                                            if success == True:
-                                                break
+                                        # Cancel the opened position
+                                        success = \
+                                            instrument.cancel(
+                                                order_for_cancellation)
+                                        self.assertTrue(success)
 
                                         _, cancelled_order_minutes, cancelled_order_seconds = \
                                             get_time_diff(
@@ -1182,12 +1180,10 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
                                     self.assertTrue(
                                         position.size != 0.0, "position.size: {}".format(position.size))
 
-                                    for _ in range(MIN_LIVE_EXCHANGE_RETRIES):
-                                        # Cancel the opened position
-                                        success = instrument.cancel(
-                                            order_for_cancellation)
-                                        if success == True:
-                                            break
+                                    # Cancel the opened position
+                                    success = instrument.cancel(
+                                        order_for_cancellation)
+                                    self.assertTrue(success)
 
                                     # For Canceled Order, since it has been removed in next(), there is no way to
                                     # confirm the last status here
@@ -1683,13 +1679,11 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
                                     with patch.object(bt_ccxt_account_or_store, 'notify') as mock:
                                         cancelled_order_start = timer()
 
-                                        for _ in range(MIN_LIVE_EXCHANGE_RETRIES):
-                                            # Cancel the opened position
-                                            success = \
-                                                instrument.cancel(
-                                                    order_for_cancellation)
-                                            if success == True:
-                                                break
+                                        # Cancel the opened position
+                                        success = \
+                                            instrument.cancel(
+                                                order_for_cancellation)
+                                        self.assertTrue(success)
 
                                         _, cancelled_order_minutes, cancelled_order_seconds = \
                                             get_time_diff(
@@ -2111,13 +2105,11 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
                                 with patch.object(accepted__bt_ccxt_account_or_store, 'notify') as mock:
                                     cancelled_order_start = timer()
 
-                                    for _ in range(MIN_LIVE_EXCHANGE_RETRIES):
-                                        # Cancel the opened position
-                                        success = \
-                                            instrument.cancel(
-                                                order_for_cancellation)
-                                        if success == True:
-                                            break
+                                    # Cancel the opened position
+                                    success = \
+                                        instrument.cancel(
+                                            order_for_cancellation)
+                                    self.assertTrue(success)
 
                                     _, cancelled_order_minutes, cancelled_order_seconds = \
                                         get_time_diff(
@@ -2542,13 +2534,11 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
                                 with patch.object(bt_ccxt_account_or_store, 'notify') as mock:
                                     cancelled_order_start = timer()
 
-                                    for _ in range(MIN_LIVE_EXCHANGE_RETRIES):
-                                        # Cancel the opened position
-                                        success = \
-                                            instrument.cancel(
-                                                order_for_cancellation)
-                                        if success == True:
-                                            break
+                                    # Cancel the opened position
+                                    success = \
+                                        instrument.cancel(
+                                            order_for_cancellation)
+                                    self.assertTrue(success)
 
                                     _, cancelled_order_minutes, cancelled_order_seconds = \
                                         get_time_diff(
