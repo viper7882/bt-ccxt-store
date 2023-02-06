@@ -33,8 +33,9 @@ import backtrader as bt
 from backtrader.feed import DataBase
 from backtrader.utils.py3 import with_metaclass
 
-from ccxtbt.bt_ccxt__specifications import CCXT_DATA_COLUMNS, MAX_LIVE_EXCHANGE_RETRIES, MIN_LIVE_EXCHANGE_RETRIES
-from ccxtbt.bt_ccxt_instrument__classes import BT_CCXT_Instrument
+from ccxtbt.datafeed.datafeed__specifications import CCXT_DATA_COLUMNS
+from ccxtbt.exchange_or_broker.exchange__specifications import MAX_LIVE_EXCHANGE_RETRIES, MIN_LIVE_EXCHANGE_RETRIES
+from ccxtbt.instrument.instrument__classes import BT_CCXT_Instrument
 from ccxtbt.utils import get_ha_bars, legality_check_not_none_obj
 
 
@@ -92,7 +93,6 @@ class BT_CCXT_Feed(with_metaclass(MetaCCXTFeed, DataBase)):
     # States for the Finite State Machine in _load
     _LIVE_STATE, _HISTORY_BACK_STATE, _OVER_STATE = range(3)
 
-    # def __init__(self, exchange, symbol, ohlcv_limit=None, config={}, retries=5):
     def __init__(self, **kwargs):
         super().__init__()
 

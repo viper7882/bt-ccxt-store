@@ -3,7 +3,7 @@ import inspect
 
 from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPES, CCXT__MARKET_TYPE__FUTURE, CCXT__MARKET_TYPE__SPOT, \
     MIN_LEVERAGE
-from ccxtbt.exchange.binance.binance__exchange__specifications import BINANCE_EXCHANGE_ID
+from ccxtbt.exchange_or_broker.binance.binance__exchange__specifications import BINANCE_EXCHANGE_ID
 from ccxtbt.utils import legality_check_not_none_obj
 
 

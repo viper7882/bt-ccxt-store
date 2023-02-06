@@ -1,15 +1,14 @@
 import backtrader
 import inspect
 
-from ccxtbt.bt_ccxt_order__classes import BT_CCXT_Order
-from ccxtbt.bt_ccxt__specifications import CCXT_TYPE_KEY, STATUSES, CANCELED_ORDER, CCXT_ORDER_KEYS__MUST_BE_IN_FLOAT, \
-    CCXT_ORDER_KEYS__MUST_EXIST, \
-    CCXT_ORDER_TYPES, CLOSED_ORDER, DERIVED__CCXT_ORDER__KEYS, EXECUTION_TYPE, EXECUTION_TYPES, EXPIRED_ORDER, \
-    OPENED_ORDER, ORDERING_TYPE, ORDERING_TYPES, ORDER_INTENT, \
-    ORDER_INTENTS, PARTIALLY_FILLED_ORDER, PLURAL__CCXT_ORDER__KEYS, POSITION_TYPE, POSITION_TYPES, REJECTED_ORDER, \
+from ccxtbt.exchange_or_broker.binance.binance__exchange__specifications import BINANCE_EXCHANGE_ID
+from ccxtbt.exchange_or_broker.bybit.bybit__exchange__specifications import BYBIT_EXCHANGE_ID
+from ccxtbt.order.order__classes import BT_CCXT_Order
+from ccxtbt.order.order__specifications import CCXT_ORDER_KEYS__MUST_BE_IN_FLOAT, CCXT_ORDER_KEYS__MUST_EXIST, \
+    CCXT_ORDER_TYPES, CCXT_TYPE_KEY, DERIVED__CCXT_ORDER__KEYS, PLURAL__CCXT_ORDER__KEYS, STATUSES, CANCELED_ORDER, \
+    CLOSED_ORDER, EXECUTION_TYPE, EXECUTION_TYPES, EXPIRED_ORDER, OPENED_ORDER, ORDERING_TYPE, ORDERING_TYPES, \
+    ORDER_INTENT, ORDER_INTENTS, PARTIALLY_FILLED_ORDER, POSITION_TYPE, POSITION_TYPES, REJECTED_ORDER, \
     SIDE, SIDES, STATUS
-from ccxtbt.exchange.binance.binance__exchange__specifications import BINANCE_EXCHANGE_ID
-from ccxtbt.exchange.bybit.bybit__exchange__specifications import BYBIT_EXCHANGE_ID
 from ccxtbt.utils import capitalize_sentence, legality_check_not_none_obj
 
 

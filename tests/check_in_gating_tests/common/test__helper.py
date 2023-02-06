@@ -1,24 +1,22 @@
+import backtrader
 import copy
 import inspect
-
-import backtrader
 
 from time import time as timer
 from unittest.mock import patch
 
-from ccxtbt.bt_ccxt_expansion__helper import construct_standalone_account_or_store, construct_standalone_exchange, \
-    construct_standalone_instrument
-from ccxtbt.bt_ccxt_feed__classes import BT_CCXT_Feed
-from ccxtbt.bt_ccxt__specifications import CCXT_COMMON_MAPPING_VALUES, CCXT__MARKET_TYPES, CCXT__MARKET_TYPE__FUTURE, \
-    CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP, DERIVED__CCXT_ORDER__KEYS, MAX_LIVE_EXCHANGE_RETRIES, REJECTED_VALUE, \
-    STATUS
-from ccxtbt.bt_ccxt_order__classes import BT_CCXT_Order
-
-from ccxtbt.exchange.binance.binance__exchange__specifications import BINANCE_EXCHANGE_ID, \
-    BINANCE_OHLCV_LIMIT, BINANCE__PARTIALLY_FILLED__ORDER_STATUS__VALUE
-from ccxtbt.exchange.bybit.bybit__exchange__specifications import BYBIT_EXCHANGE_ID, \
+from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPES, CCXT__MARKET_TYPE__FUTURE, \
+    CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP
+from ccxtbt.exchange_or_broker.exchange__specifications import CCXT_COMMON_MAPPING_VALUES, REJECTED_VALUE
+from ccxtbt.exchange_or_broker.binance.binance__exchange__specifications import BINANCE_EXCHANGE_ID, \
+    BINANCE__PARTIALLY_FILLED__ORDER_STATUS__VALUE
+from ccxtbt.exchange_or_broker.bybit.bybit__exchange__specifications import BYBIT_EXCHANGE_ID, \
     BYBIT__PARTIALLY_FILLED__ORDER_STATUS__VALUE
-from ccxtbt.exchange.exchange__helper import get_minimum_instrument_quantity
+from ccxtbt.exchange_or_broker.exchange__helper import get_minimum_instrument_quantity
+from ccxtbt.expansion.bt_ccxt_expansion__helper import construct_dual_position_datafeeds, \
+    construct_standalone_account_or_store, construct_standalone_exchange, construct_standalone_instrument
+from ccxtbt.order.order__classes import BT_CCXT_Order
+from ccxtbt.order.order__specifications import DERIVED__CCXT_ORDER__KEYS, STATUS
 from ccxtbt.utils import get_order_entry_price_and_queue, get_time_diff, legality_check_not_none_obj
 
 
@@ -553,43 +551,23 @@ def ut_get_bt_ccxt_account_or_stores(params) -> list:
                     instrument = bt_ccxt_account_or_store.get__child(
                         symbol_id)
 
-                    custom__bt_ccxt_feed__dict = dict(
+                    bt_ccxt_feed__dict = dict(
                         timeframe=backtrader.TimeFrame.Ticks,
                         drop_newest=False,
                         ut__halt_if_no_ohlcv=True,
                         # debug=True,
                     )
 
-                    # Validate assumption made
-                    assert isinstance(custom__bt_ccxt_feed__dict, dict)
-
-                    # Long datafeed
-                    bt_ccxt_feed__dict = dict(
-                        exchange=exchange_dropdown_value,
-                        name=backtrader.Position.Position_Types[backtrader.Position.LONG_POSITION],
-                        dataname=symbol_id,
-                        ohlcv_limit=BINANCE_OHLCV_LIMIT,
-                        currency=cloned_construct_standalone_account_or_store__dict['wallet_currency'],
-                        config=exchange_specific_config,
-                        max_retries=MAX_LIVE_EXCHANGE_RETRIES,
+                    construct_dual_position_datafeeds_dict = dict(
+                        exchange_dropdown_value=exchange_dropdown_value,
+                        instrument=instrument,
+                        bt_ccxt_feed__dict=bt_ccxt_feed__dict,
+                        wallet_currency=cloned_construct_standalone_account_or_store__dict[
+                            'wallet_currency'],
                     )
-                    bt_ccxt_feed__dict.update(custom__bt_ccxt_feed__dict)
-                    long_bb_data = BT_CCXT_Feed(**bt_ccxt_feed__dict)
-                    long_bb_data.set__parent(instrument)
-
-                    # Short datafeed
-                    bt_ccxt_feed__dict = dict(
-                        exchange=exchange_dropdown_value,
-                        name=backtrader.Position.Position_Types[backtrader.Position.SHORT_POSITION],
-                        dataname=symbol_id,
-                        ohlcv_limit=BINANCE_OHLCV_LIMIT,
-                        currency=cloned_construct_standalone_account_or_store__dict['wallet_currency'],
-                        config=exchange_specific_config,
-                        max_retries=MAX_LIVE_EXCHANGE_RETRIES,
-                    )
-                    bt_ccxt_feed__dict.update(custom__bt_ccxt_feed__dict)
-                    short_bb_data = BT_CCXT_Feed(**bt_ccxt_feed__dict)
-                    short_bb_data.set__parent(instrument)
+                    (long_bb_data, short_bb_data, ) = \
+                        construct_dual_position_datafeeds(
+                            params=construct_dual_position_datafeeds_dict)
 
                 if ut_callback_func__has_calls is not None:
                     identify_calls__dict = dict(

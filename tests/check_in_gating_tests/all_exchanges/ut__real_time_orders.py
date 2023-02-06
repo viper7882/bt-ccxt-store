@@ -1,6 +1,5 @@
 import backtrader
 import copy
-import datetime
 import inspect
 import sys
 import threading
@@ -11,18 +10,22 @@ from pprint import pprint
 from time import time as timer
 from unittest.mock import patch, call
 
-from ccxtbt.bt_ccxt_expansion__helper import query__entry_or_exit_order
-from ccxtbt.bt_ccxt_persistent_storage__helper import read_from_persistent_storage, save_to_persistent_storage
-from ccxtbt.bt_ccxt__specifications import CANCELED_ORDER, CCXT_COMMON_MAPPING_VALUES, CLOSED_ORDER, CLOSED_VALUE, \
-    EXPIRED_ORDER, ORDERING_TYPES, PARTIALLY_FILLED_ORDER, PERSISTENT_STORAGE_CSV_HEADERS, \
-    PS_CCXT_ORDER_ID, PS_ORDERING_TYPE, REJECTED_ORDER, STAGES_OF_RESEND_NOTIFICATION, STATUSES, CCXT__MARKET_TYPES, \
-    CCXT__MARKET_TYPE__FUTURE, \
+from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPES, CCXT__MARKET_TYPE__FUTURE, \
     CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP, DEFAULT__INITIAL__CAPITAL_RESERVATION__VALUE, \
-    DEFAULT__LEVERAGE_IN_PERCENT, EXECUTION_TYPES, ORDER_INTENTS, PLURAL__CCXT_ORDER__KEYS, POSITION_TYPES, \
-    filter_order__dict_template
-from ccxtbt.exchange.binance.binance__exchange__specifications import BINANCE_EXCHANGE_ID
-from ccxtbt.exchange.bybit.bybit__exchange__helper import get_wallet_currency
-from ccxtbt.exchange.bybit.bybit__exchange__specifications import BYBIT_EXCHANGE_ID
+    DEFAULT__LEVERAGE_IN_PERCENT
+from ccxtbt.account_or_store.account_or_store__specifications import STAGES_OF_RESEND_NOTIFICATION
+from ccxtbt.exchange_or_broker.exchange__specifications import CCXT_COMMON_MAPPING_VALUES, CLOSED_VALUE
+from ccxtbt.order.order__specifications import CANCELED_ORDER, CLOSED_ORDER, EXPIRED_ORDER, ORDERING_TYPES, \
+    PARTIALLY_FILLED_ORDER, REJECTED_ORDER, STATUSES, EXECUTION_TYPES, ORDER_INTENTS, POSITION_TYPES, \
+    PLURAL__CCXT_ORDER__KEYS, filter_order__dict_template
+from ccxtbt.persistent_storage.persistent_storage__specifications import PERSISTENT_STORAGE_CSV_HEADERS, \
+    PS_CCXT_ORDER_ID, PS_ORDERING_TYPE
+from ccxtbt.exchange_or_broker.binance.binance__exchange__specifications import BINANCE_EXCHANGE_ID
+from ccxtbt.exchange_or_broker.bybit.bybit__exchange__helper import get_wallet_currency
+from ccxtbt.exchange_or_broker.bybit.bybit__exchange__specifications import BYBIT_EXCHANGE_ID
+from ccxtbt.expansion.bt_ccxt_expansion__helper import query__entry_or_exit_order
+from ccxtbt.persistent_storage.persistent_storage__helper import read_from_persistent_storage, \
+    save_to_persistent_storage
 from ccxtbt.utils import get_opposite__position_type, get_order_entry_price_and_queue, \
     get_order_exit_price_and_queue, \
     get_time_diff, legality_check_not_none_obj
@@ -55,13 +58,6 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
             self.exchange_account__lock = threading.Lock()
             self.symbols_id = ["ETHUSDT", ]
             self.wallet_currency = get_wallet_currency(self.symbols_id[0])
-
-            self.minute_delta = 5
-            assert self.minute_delta > 1
-            self.latest_utc_dt = datetime.datetime.utcnow()
-            self.prev_datetime = \
-                self.latest_utc_dt - \
-                datetime.timedelta(minutes=self.minute_delta)
 
             self.construct_standalone_account_or_store__dict = dict(
                 main_net_toggle_switch_value=self.main_net_toggle_switch_value,
@@ -428,7 +424,7 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
 
     # @unittest.skip("To be enabled")
     # @unittest.skip("Ready for regression")
-    def test_20__strategy_less__both_positions__open_and_cancel__entry_order(self):
+    def test_20__strategy_less__open_and_cancel__entry_order(self):
         start = timer()
         try:
             bt_ccxt_account_or_stores = self.bt_ccxt_account_or_stores
@@ -1286,7 +1282,7 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
 
     # @unittest.skip("To be enabled")
     # @unittest.skip("Ready for regression")
-    def test_40__strategy_less__both_positions__open_and_cancel__entry_order(self):
+    def test_40__strategy_less__dual_positions__open_and_cancel__entry_order(self):
         start = timer()
         try:
             bt_ccxt_account_or_stores = self.bt_ccxt_account_or_stores

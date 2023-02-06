@@ -18,9 +18,8 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 ###############################################################################
-import copy
-
 import backtrader
+import copy
 import collections
 import inspect
 import threading
@@ -30,13 +29,13 @@ from pprint import pprint
 from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPES, CCXT__MARKET_TYPE__FUTURE, \
     CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP, CCXT__MARKET_TYPE__SPOT, \
     risk_limit__dict_template, symbol_stationary__dict_template
-from ccxtbt.bt_ccxt_account_or_store__classes import BT_CCXT_Account_or_Store
-from ccxtbt.bt_ccxt_expansion__classes import Enhanced_Position
-from ccxtbt.exchange.binance.binance__exchange__classes import Binance_Symbol_Info__HTTP_Parser
-from ccxtbt.exchange.binance.binance__exchange__specifications import BINANCE_EXCHANGE_ID
-from ccxtbt.exchange.bybit.bybit__exchange__classes import Bybit_Symbol_Info__HTTP_Parser
-from ccxtbt.exchange.bybit.bybit__exchange__specifications import BYBIT_EXCHANGE_ID, \
+from ccxtbt.account_or_store.account_or_store__classes import BT_CCXT_Account_or_Store
+from ccxtbt.exchange_or_broker.binance.binance__exchange__classes import Binance_Symbol_Info__HTTP_Parser
+from ccxtbt.exchange_or_broker.binance.binance__exchange__specifications import BINANCE_EXCHANGE_ID
+from ccxtbt.exchange_or_broker.bybit.bybit__exchange__classes import Bybit_Symbol_Info__HTTP_Parser
+from ccxtbt.exchange_or_broker.bybit.bybit__exchange__specifications import BYBIT_EXCHANGE_ID, \
     BYBIT__DERIVATIVES__DEFAULT_POSITION_MODE
+from ccxtbt.expansion.bt_ccxt_expansion__classes import Enhanced_Position
 from ccxtbt.utils import capitalize_sentence, legality_check_not_none_obj
 
 

@@ -4,19 +4,12 @@ import backtrader as bt
 import time
 
 from time import time as timer
-from ccxtbt.bt_ccxt_account_or_store__classes import BT_CCXT_Account_or_Store
-from ccxtbt.bt_ccxt__specifications import CANCELED_ORDER, CCXT_ORDER_TYPES, CLOSED_ORDER
+
+from ccxtbt.account_or_store.account_or_store__classes import BT_CCXT_Account_or_Store
+from ccxtbt.order.order__specifications import CCXT_ORDER_TYPES, CANCELED_ORDER, CLOSED_ORDER
+from ccxtbt.utils import get_time_diff
 
 DEFAULT_DATE_TIME_FORMAT = "%d-%m-%y %H:%M"
-
-
-# Credits: https://gist.github.com/rodrigo-brito/3b0fca2487c92ad97869247edd5fd852
-# DEBUG = True
-def get_time_diff(start):
-    prog_time_diff = timer() - start
-    hours, rem = divmod(prog_time_diff, 3600)
-    minutes, seconds = divmod(rem, 60)
-    return hours, minutes, seconds
 
 
 class CustomStrategy(bt.Strategy):
@@ -70,8 +63,8 @@ def main():
         'enableRateLimit': True,
     }
 
-    store = BT_CCXT_Account_or_Store(exchange=BYBIT_EXCHANGE_ID, currency=currency, config=broker_config, retries=5, debug=DEBUG,
-                                     sandbox=True)
+    store = BT_CCXT_Account_or_Store(exchange=BYBIT_EXCHANGE_ID, currency=currency, config=broker_config, retries=5,
+                                     debug=DEBUG, sandbox=True)
 
     broker_mapping = {
         'order_types': {
@@ -123,7 +116,7 @@ def main():
         hist_start_date = dt.datetime.utcnow(
         ) - dt.timedelta(minutes=minutes * BYBIT_OHLCV_LIMIT)
 
-    data = store.getdata(
+    datafeed = store.getdata(
         dataname=symbol_name,
         name=symbol_id,
         fromdate=hist_start_date,
@@ -134,7 +127,7 @@ def main():
         # historical=True,
     )
 
-    cerebro.add_datafeed(data)
+    cerebro.add_datafeed(datafeed)
     cerebro.add_strategy(CustomStrategy)
     cerebro.run()
 

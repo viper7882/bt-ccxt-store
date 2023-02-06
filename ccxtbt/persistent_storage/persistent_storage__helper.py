@@ -9,7 +9,8 @@ from pandas.core.frame import DataFrame
 from pandas.io.parsers import TextFileReader
 from pathlib import Path
 
-from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPES, PERSISTENT_STORAGE_CSV_HEADERS, \
+from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPES
+from ccxtbt.persistent_storage.persistent_storage__specifications import PERSISTENT_STORAGE_CSV_HEADERS, \
     PERSISTENT_STORAGE_DIR_NAME, PERSISTENT_STORAGE_ORDER_FILE_NAME, PS_CCXT_ORDER_ID, PS_ORDERING_TYPE
 from ccxtbt.utils import legality_check_not_none_obj
 

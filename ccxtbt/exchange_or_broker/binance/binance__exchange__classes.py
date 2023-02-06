@@ -4,13 +4,12 @@ import requests
 
 from pprint import pprint
 
-from ccxtbt.bt_ccxt_expansion__classes import Exchange_HTTP_Parser_Per_Symbol
 from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPES, CCXT__MARKET_TYPE__SPOT, CCXT__MARKET_TYPE__FUTURE, \
     MIN_LEVERAGE, \
     symbol_stationary__dict_template
-from ccxtbt.exchange.binance.binance__exchange__specifications import BINANCE__FUTURES__COMMISSION_RATE_ENDPOINT, \
-    BINANCE__SPOT__V3__HTTP_ENDPOINT_URL, \
+from ccxtbt.exchange_or_broker.binance.binance__exchange__specifications import BINANCE__SPOT__V3__HTTP_ENDPOINT_URL, \
     BINANCE__EXCHANGE_INFO_ENDPOINT, BINANCE__SYMBOL_COMMAND, BINANCE__FUTURES__V1__HTTP_ENDPOINT_URL
+from ccxtbt.expansion.bt_ccxt_expansion__classes import Exchange_HTTP_Parser_Per_Symbol
 from ccxtbt.utils import legality_check_not_none_obj, get_digits
 
 

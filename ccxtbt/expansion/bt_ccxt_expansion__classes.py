@@ -5,7 +5,7 @@ import inspect
 from abc import ABC, abstractmethod
 
 from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPES
-from ccxtbt.exchange.bybit.bybit__exchange__specifications import BYBIT_COMMISSION_PRECISION
+from ccxtbt.exchange_or_broker.bybit.bybit__exchange__specifications import BYBIT_COMMISSION_PRECISION
 from ccxtbt.utils import truncate
 
 

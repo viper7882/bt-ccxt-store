@@ -7,11 +7,11 @@ from time import time as timer
 
 from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPE__FUTURE, CCXT__MARKET_TYPE__SPOT, \
     DEFAULT__INITIAL__CAPITAL_RESERVATION__VALUE, DEFAULT__LEVERAGE_IN_PERCENT
-from ccxtbt.exchange.binance.binance__exchange__specifications import BINANCE_EXCHANGE_ID
-from ccxtbt.exchange.bybit.bybit__exchange__helper import get_wallet_currency
+from ccxtbt.exchange_or_broker.binance.binance__exchange__specifications import BINANCE_EXCHANGE_ID
+from ccxtbt.exchange_or_broker.bybit.bybit__exchange__helper import get_wallet_currency
+from ccxtbt.expansion.bt_ccxt_expansion__helper import construct_standalone_account_or_store, \
+    construct_standalone_instrument
 from ccxtbt.utils import get_time_diff
-
-from ccxtbt.bt_ccxt_expansion__helper import construct_standalone_account_or_store, construct_standalone_instrument
 
 
 class Binance__bt_ccxt_account_or_store__Prepare_Account__TestCases(unittest.TestCase):

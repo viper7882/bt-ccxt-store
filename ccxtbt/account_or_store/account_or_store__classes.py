@@ -39,30 +39,30 @@ from pybit import usdt_perpetual
 from pprint import pprint
 from time import time as timer
 
-from ccxtbt.bt_ccxt_exchange__classes import BT_CCXT_Exchange
-from ccxtbt.bt_ccxt_persistent_storage__helper import delete_from_persistent_storage, \
-    read_from_persistent_storage, save_to_persistent_storage
-from ccxtbt.bt_ccxt_order__classes import BT_CCXT_Order
-from ccxtbt.bt_ccxt_order__helper import converge_ccxt_reduce_only_value, force_ccxt_order_status, get_ccxt_order_id, \
-    reverse_engineer__ccxt_order
-from ccxtbt.bt_ccxt__specifications import CANCELED_ORDER, CASH_DIGITS, CCXT_COMMON_MAPPING_VALUES, \
-    CCXT_ORDER_KEYS__MUST_BE_IN_FLOAT, \
-    CCXT_ORDER_TYPES, CCXT_SIDE_KEY, CCXT_SYMBOL_KEY, CCXT__MARKET_TYPES, CCXT__MARKET_TYPE__FUTURE, \
+from ccxtbt.bt_ccxt__specifications import CASH_DIGITS, CCXT__MARKET_TYPES, CCXT__MARKET_TYPE__FUTURE, \
     CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP, CCXT__MARKET_TYPE__SPOT, \
-    CLOSED_ORDER, CLOSED_VALUE, DERIVED__CCXT_ORDER__KEYS, EXECUTION_TYPE, EXPIRED_ORDER, \
-    LIST_OF_CCXT_KEY_TO_BE_RENAMED, \
-    MAX_LEVERAGE_IN_PERCENT, MAX_LIVE_EXCHANGE_RETRIES, MIN_LEVERAGE, MIN_LEVERAGE_IN_PERCENT, OPENED_ORDER, \
-    ORDERING_TYPE, ORDER_INTENT, \
-    PARTIALLY_FILLED_ORDER, PERSISTENT_STORAGE_CSV_HEADERS, POSITION_TYPE, PS_CCXT_ORDER_ID, PS_ORDERING_TYPE, \
-    REJECTED_ORDER, STATUS
-from ccxtbt.exchange.binance.binance__exchange__helper import get_binance_leverages, set_binance_leverage
-from ccxtbt.exchange.binance.binance__exchange__specifications import BINANCE_EXCHANGE_ID, \
+    MAX_LEVERAGE_IN_PERCENT, MIN_LEVERAGE, MIN_LEVERAGE_IN_PERCENT
+from ccxtbt.exchange_or_broker.binance.binance__exchange__helper import get_binance_leverages, set_binance_leverage
+from ccxtbt.exchange_or_broker.binance.binance__exchange__specifications import BINANCE_EXCHANGE_ID, \
     BINANCE__FUTURES__DEFAULT_DUAL_POSITION_MODE
-from ccxtbt.exchange.bybit.bybit__exchange__helper import get_bybit_leverages, get_ccxt_market_symbol_name, \
+from ccxtbt.exchange_or_broker.bybit.bybit__exchange__helper import get_bybit_leverages, get_ccxt_market_symbol_name, \
     set_bybit_leverage
-from ccxtbt.exchange.bybit.bybit__exchange__specifications import BYBIT_EXCHANGE_ID
-from ccxtbt.exchange.exchange__helper import get_symbol_id
-from ccxtbt.utils import capitalize_sentence, convert_slider_from_percent, dump_obj, legality_check_not_none_obj, \
+from ccxtbt.exchange_or_broker.bybit.bybit__exchange__specifications import BYBIT_EXCHANGE_ID
+from ccxtbt.exchange_or_broker.exchange__helper import get_symbol_id
+from ccxtbt.exchange_or_broker.exchange__classes import BT_CCXT_Exchange
+from ccxtbt.exchange_or_broker.exchange__specifications import CCXT_COMMON_MAPPING_VALUES, MAX_LIVE_EXCHANGE_RETRIES
+from ccxtbt.order.order__classes import BT_CCXT_Order
+from ccxtbt.order.order__helper import converge_ccxt_reduce_only_value, force_ccxt_order_status, get_ccxt_order_id, \
+    reverse_engineer__ccxt_order
+from ccxtbt.order.order__specifications import CCXT_ORDER_KEYS__MUST_BE_IN_FLOAT, CCXT_ORDER_TYPES, CCXT_SIDE_KEY, \
+    CCXT_SYMBOL_KEY, DERIVED__CCXT_ORDER__KEYS, LIST_OF_CCXT_KEY_TO_BE_RENAMED, CANCELED_ORDER, CLOSED_ORDER, \
+    EXECUTION_TYPE, EXPIRED_ORDER, OPENED_ORDER, ORDERING_TYPE, ORDER_INTENT, PARTIALLY_FILLED_ORDER, POSITION_TYPE, \
+    REJECTED_ORDER, STATUS
+from ccxtbt.persistent_storage.persistent_storage__helper import delete_from_persistent_storage, \
+    read_from_persistent_storage, save_to_persistent_storage
+from ccxtbt.persistent_storage.persistent_storage__specifications import PERSISTENT_STORAGE_CSV_HEADERS, \
+    PS_CCXT_ORDER_ID, PS_ORDERING_TYPE
+from ccxtbt.utils import capitalize_sentence, convert_slider_from_percent, legality_check_not_none_obj, \
     round_to_nearest_decimal_points, truncate, get_time_diff
 
 

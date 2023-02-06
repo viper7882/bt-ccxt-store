@@ -2,31 +2,29 @@ import backtrader
 import json
 import time
 
-from ccxtbt.bt_ccxt__specifications import CANCELED_ORDER, CANCELED_VALUE, CCXT_COMMON_MAPPING_VALUES, \
-    CCXT_ORDER_TYPES, \
-    CCXT_STATUS_KEY, CCXT__MARKET_TYPES, \
-    CLOSED_ORDER, \
-    CLOSED_VALUE, EXPIRED_ORDER, EXPIRED_VALUE, MAX_LIVE_EXCHANGE_RETRIES, OPENED_ORDER, \
-    OPEN_VALUE, \
-    PARTIALLY_FILLED_ORDER, \
-    REJECTED_ORDER, REJECTED_VALUE
-from ccxtbt.bt_ccxt_account_or_store__classes import BT_CCXT_Account_or_Store
-from ccxtbt.bt_ccxt_exchange__classes import BT_CCXT_Exchange
-from ccxtbt.bt_ccxt_instrument__classes import BT_CCXT_Instrument
-from ccxtbt.bt_ccxt_order__helper import get_filtered_orders
-from ccxtbt.exchange.binance.binance__exchange__helper import get_binance_commission_rate
-from ccxtbt.exchange.binance.binance__exchange__specifications import BINANCE_EXCHANGE_ID, \
-    BINANCE__PARTIALLY_FILLED__ORDER_STATUS__VALUE
-from ccxtbt.exchange.bybit.bybit__exchange__helper import get_bybit_commission_rate
-from ccxtbt.exchange.bybit.bybit__exchange__specifications import BYBIT_EXCHANGE_ID, \
-    BYBIT__PARTIALLY_FILLED__ORDER_STATUS__VALUE
-from ccxtbt.exchange.exchange__helper import get_api_and_secret_file_path
+from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPES
+from ccxtbt.account_or_store.account_or_store__classes import BT_CCXT_Account_or_Store
+from ccxtbt.cerebro.cerebro__specifications import LIVE_CEREBRO__DICT
+from ccxtbt.datafeed.datafeed__classes import BT_CCXT_Feed
+from ccxtbt.exchange_or_broker.binance.binance__exchange__helper import get_binance_commission_rate
+from ccxtbt.exchange_or_broker.binance.binance__exchange__specifications import BINANCE_EXCHANGE_ID, \
+    BINANCE_OHLCV_LIMIT, BINANCE__PARTIALLY_FILLED__ORDER_STATUS__VALUE
+from ccxtbt.exchange_or_broker.bybit.bybit__exchange__helper import get_bybit_commission_rate
+from ccxtbt.exchange_or_broker.bybit.bybit__exchange__specifications import BYBIT_EXCHANGE_ID, \
+    BYBIT_OHLCV_LIMIT, BYBIT__PARTIALLY_FILLED__ORDER_STATUS__VALUE
+from ccxtbt.exchange_or_broker.exchange__classes import BT_CCXT_Exchange
+from ccxtbt.exchange_or_broker.exchange__helper import get_api_and_secret_file_path
+from ccxtbt.exchange_or_broker.exchange__specifications import CCXT_COMMON_MAPPING_VALUES, MAX_LIVE_EXCHANGE_RETRIES, \
+    OPEN_VALUE, CANCELED_VALUE, CLOSED_VALUE, EXPIRED_VALUE, REJECTED_VALUE
+from ccxtbt.expansion.bt_ccxt_expansion__classes import FAKE_COMMISSION_INFO, FAKE_EXCHANGE
+from ccxtbt.instrument.instrument__classes import BT_CCXT_Instrument
+from ccxtbt.order.order__helper import get_filtered_orders
+from ccxtbt.order.order__specifications import CANCELED_ORDER, CLOSED_ORDER, EXPIRED_ORDER, OPENED_ORDER, \
+    PARTIALLY_FILLED_ORDER, REJECTED_ORDER, CCXT_ORDER_TYPES, CCXT_STATUS_KEY
 from ccxtbt.utils import legality_check_not_none_obj
 
-from ccxtbt.bt_ccxt_expansion__classes import FAKE_COMMISSION_INFO, FAKE_EXCHANGE
 
-
-def construct_standalone_exchange(params) -> object:
+def construct_standalone_exchange(params) -> type(BT_CCXT_Exchange):
     # Un-serialize Params
     exchange_dropdown_value = params['exchange_dropdown_value']
 
@@ -111,6 +109,20 @@ def construct_standalone_exchange(params) -> object:
     ccxt__broker_mapping.update(ccxt__order_types__broker_mapping)
     bt_ccxt_exchange = BT_CCXT_Exchange(broker_mapping=ccxt__broker_mapping)
     return bt_ccxt_exchange
+
+
+def construct_standalone_cerebro(params) -> type(backtrader.Cerebro):
+    # Un-serialize Params
+    bt_ccxt_exchange = params['bt_ccxt_exchange']
+
+    # Legality Check
+    assert type(bt_ccxt_exchange).__name__ == BT_CCXT_Exchange.__name__
+
+    # Reference: https://www.backtrader.com/docu/mixing-timeframes/indicators-mixing-timeframes/
+    # data feeds from different timeframes can be mixed in indicators if runonce=False
+    cerebro = backtrader.Cerebro(**LIVE_CEREBRO__DICT)
+    cerebro.set_broker_or_exchange(bt_ccxt_exchange)
+    return cerebro
 
 
 def construct_standalone_account_or_store(params) -> tuple:
@@ -199,11 +211,11 @@ def construct_standalone_account_or_store(params) -> tuple:
     bt_ccxt_account_or_store.set__parent(bt_ccxt_exchange)
     bt_ccxt_exchange.add__account_or_store(bt_ccxt_account_or_store)
 
-    ret_value = bt_ccxt_account_or_store, exchange_specific_config
+    ret_value = (bt_ccxt_account_or_store, exchange_specific_config, )
     return ret_value
 
 
-def construct_standalone_instrument(params) -> object:
+def construct_standalone_instrument(params) -> type(BT_CCXT_Instrument):
     # Un-serialize Params
     bt_ccxt_account_or_store = params['bt_ccxt_account_or_store']
     market_type = params['market_type']
@@ -252,6 +264,54 @@ def construct_standalone_instrument(params) -> object:
     # notify here
     bt_ccxt_account_or_store.add__instrument(instrument)
     return instrument
+
+
+def construct_dual_position_datafeeds(params) -> tuple:
+    # Un-serialize Params
+    exchange_dropdown_value = params['exchange_dropdown_value']
+    instrument = params['instrument']
+    bt_ccxt_feed__dict = params['bt_ccxt_feed__dict']
+    wallet_currency = params['wallet_currency']
+
+    # Validate assumption made
+    assert isinstance(bt_ccxt_feed__dict, dict)
+
+    if exchange_dropdown_value == BINANCE_EXCHANGE_ID:
+        ohlcv_limit = BINANCE_OHLCV_LIMIT
+    elif exchange_dropdown_value == BYBIT_EXCHANGE_ID:
+        ohlcv_limit = BYBIT_OHLCV_LIMIT
+    else:
+        raise NotImplementedError(
+            "{} exchange is yet to be supported!!!".format(exchange_dropdown_value))
+
+    # Long datafeed
+    dual_positions__bt_ccxt_feed__dict = dict(
+        exchange=exchange_dropdown_value,
+        name=backtrader.Position.Position_Types[backtrader.Position.LONG_POSITION],
+        dataname=instrument.symbol_id,
+        ohlcv_limit=ohlcv_limit,
+        currency=wallet_currency,
+        max_retries=MAX_LIVE_EXCHANGE_RETRIES,
+    )
+    dual_positions__bt_ccxt_feed__dict.update(bt_ccxt_feed__dict)
+    long_bb_data = BT_CCXT_Feed(**dual_positions__bt_ccxt_feed__dict)
+    long_bb_data.set__parent(instrument)
+
+    # Short datafeed
+    dual_positions__bt_ccxt_feed__dict = dict(
+        exchange=exchange_dropdown_value,
+        name=backtrader.Position.Position_Types[backtrader.Position.SHORT_POSITION],
+        dataname=instrument.symbol_id,
+        ohlcv_limit=ohlcv_limit,
+        currency=wallet_currency,
+        max_retries=MAX_LIVE_EXCHANGE_RETRIES,
+    )
+    dual_positions__bt_ccxt_feed__dict.update(bt_ccxt_feed__dict)
+    short_bb_data = BT_CCXT_Feed(**dual_positions__bt_ccxt_feed__dict)
+    short_bb_data.set__parent(instrument)
+
+    ret_value = (long_bb_data, short_bb_data, )
+    return ret_value
 
 
 def query__entry_or_exit_order(params):

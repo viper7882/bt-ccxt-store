@@ -26,10 +26,9 @@ import datetime
 import inspect
 import json
 
-from ccxtbt.bt_ccxt__specifications import CCXT_SIDE_KEY, DERIVED__CCXT_ORDER__KEYS, \
-    EXECUTION_TYPE, STATUS
-from ccxtbt.exchange.binance.binance__exchange__specifications import BINANCE_EXCHANGE_ID
-from ccxtbt.exchange.bybit.bybit__exchange__specifications import BYBIT_EXCHANGE_ID
+from ccxtbt.order.order__specifications import CCXT_SIDE_KEY, DERIVED__CCXT_ORDER__KEYS, EXECUTION_TYPE, STATUS
+from ccxtbt.exchange_or_broker.binance.binance__exchange__specifications import BINANCE_EXCHANGE_ID
+from ccxtbt.exchange_or_broker.bybit.bybit__exchange__specifications import BYBIT_EXCHANGE_ID
 
 
 class BT_CCXT_Order(backtrader.OrderBase):

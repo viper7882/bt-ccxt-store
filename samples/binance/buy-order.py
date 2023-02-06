@@ -6,8 +6,8 @@ from datetime import datetime, timedelta
 import backtrader as bt
 from backtrader import Order
 
-from ccxtbt.bt_ccxt__specifications import CANCELED_ORDER, CCXT_ORDER_TYPES, CLOSED_ORDER
-from ccxtbt.bt_ccxt_account_or_store__classes import BT_CCXT_Account_or_Store
+from ccxtbt.account_or_store.account_or_store__classes import BT_CCXT_Account_or_Store
+from ccxtbt.order.order__specifications import CCXT_ORDER_TYPES, CANCELED_ORDER, CLOSED_ORDER
 
 
 class TestStrategy(bt.Strategy):

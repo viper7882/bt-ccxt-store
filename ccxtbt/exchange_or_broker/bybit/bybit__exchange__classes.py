@@ -4,13 +4,13 @@ import requests
 
 from pprint import pprint
 
-from ccxtbt.bt_ccxt_expansion__classes import Exchange_HTTP_Parser_Per_Symbol
 from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPES, CCXT__MARKET_TYPE__SPOT, \
     CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP, \
     MIN_LEVERAGE, symbol_stationary__dict_template
-from ccxtbt.exchange.bybit.bybit__exchange__specifications import BYBIT__DERIVATIVES_V2_ENDPOINT, \
+from ccxtbt.exchange_or_broker.bybit.bybit__exchange__specifications import BYBIT__DERIVATIVES_V2_ENDPOINT, \
     BYBIT__SPOT__HTTP_ENDPOINT_URL, BYBIT__SPOT_V3_ENDPOINT, BYBIT__SYMBOLS_COMMAND, \
     BINANCE__USDT__DERIVATIVES__HTTP_ENDPOINT_URL
+from ccxtbt.expansion.bt_ccxt_expansion__classes import Exchange_HTTP_Parser_Per_Symbol
 from ccxtbt.utils import legality_check_not_none_obj, get_digits
 
 

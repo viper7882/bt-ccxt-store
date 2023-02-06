@@ -3,14 +3,15 @@ import datetime
 import threading
 import unittest
 
-from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPE__FUTURE, CCXT__MARKET_TYPE__SPOT, \
-    DEFAULT__INITIAL__CAPITAL_RESERVATION__VALUE, DEFAULT__LEVERAGE_IN_PERCENT, MAX_LIVE_EXCHANGE_RETRIES
-from ccxtbt.bt_ccxt_feed__classes import BT_CCXT_Feed
-from ccxtbt.exchange.binance.binance__exchange__specifications import BINANCE_EXCHANGE_ID, BINANCE_OHLCV_LIMIT
-from ccxtbt.exchange.bybit.bybit__exchange__helper import get_wallet_currency
+from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPE__FUTURE, DEFAULT__INITIAL__CAPITAL_RESERVATION__VALUE, \
+    DEFAULT__LEVERAGE_IN_PERCENT
+from ccxtbt.datafeed.datafeed__classes import BT_CCXT_Feed
+from ccxtbt.exchange_or_broker.binance.binance__exchange__specifications import BINANCE_EXCHANGE_ID, BINANCE_OHLCV_LIMIT
+from ccxtbt.exchange_or_broker.bybit.bybit__exchange__helper import get_wallet_currency
+from ccxtbt.exchange_or_broker.exchange__specifications import MAX_LIVE_EXCHANGE_RETRIES
+from ccxtbt.expansion.bt_ccxt_expansion__helper import construct_standalone_account_or_store, \
+    construct_standalone_instrument
 from ccxtbt.utils import legality_check_not_none_obj
-
-from ccxtbt.bt_ccxt_expansion__helper import construct_standalone_account_or_store, construct_standalone_instrument
 
 
 class Test_Feed(unittest.TestCase):

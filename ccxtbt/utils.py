@@ -10,8 +10,9 @@ import pandas as pd
 from pprint import pprint
 from time import time as timer
 
-from ccxtbt.bt_ccxt__specifications import CCXT_DATA_COLUMNS, OPEN_COL, HIGH_COL, LOW_COL, CLOSE_COL, VOLUME_COL, \
-    DATE_TIME_FORMAT_WITH_MS_PRECISION
+from ccxtbt.bt_ccxt__specifications import DATE_TIME_FORMAT_WITH_MS_PRECISION
+from ccxtbt.datafeed.datafeed__specifications import CCXT_DATA_COLUMNS, OPEN_COL, HIGH_COL, LOW_COL, CLOSE_COL, \
+    VOLUME_COL
 
 
 def print_timestamp_checkpoint(function, lineno, comment="Checkpoint timestamp", start=None):
@@ -200,6 +201,7 @@ def truncate(f, n):
     return math.floor(f * 10 ** n) / 10 ** n
 
 
+# Credits: https://gist.github.com/rodrigo-brito/3b0fca2487c92ad97869247edd5fd852
 def get_time_diff(start):
     prog_time_diff = timer() - start
     hours, rem = divmod(prog_time_diff, 3600)

@@ -6,11 +6,12 @@ import unittest
 
 from time import time as timer
 
-from ccxtbt.bt_ccxt_expansion__helper import construct_standalone_account_or_store, construct_standalone_instrument
-from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP, CCXT__MARKET_TYPE__SPOT, \
+from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP, \
     DEFAULT__INITIAL__CAPITAL_RESERVATION__VALUE, DEFAULT__LEVERAGE_IN_PERCENT
-from ccxtbt.exchange.bybit.bybit__exchange__helper import get_wallet_currency
-from ccxtbt.exchange.bybit.bybit__exchange__specifications import BYBIT_EXCHANGE_ID
+from ccxtbt.exchange_or_broker.bybit.bybit__exchange__helper import get_wallet_currency
+from ccxtbt.exchange_or_broker.bybit.bybit__exchange__specifications import BYBIT_EXCHANGE_ID
+from ccxtbt.expansion.bt_ccxt_expansion__helper import construct_standalone_account_or_store, \
+    construct_standalone_instrument
 from ccxtbt.utils import get_time_diff
 
 

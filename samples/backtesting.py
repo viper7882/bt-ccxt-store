@@ -3,7 +3,7 @@ from datetime import datetime
 
 import backtrader as bt
 
-from ccxtbt.bt_ccxt_feed__classes import BT_CCXT_Feed
+from ccxtbt.datafeed.datafeed__classes import BT_CCXT_Feed
 
 
 def main():

@@ -20,9 +20,10 @@
 ###############################################################################
 import backtrader
 
-from ccxtbt.bt_ccxt__specifications import CANCELED_ORDER, CANCELED_VALUE, CCXT_COMMON_MAPPING_VALUES, CCXT_ORDER_TYPES, \
-    CCXT_STATUS_KEY, CLOSED_ORDER, \
-    CLOSED_VALUE, EXPIRED_ORDER, EXPIRED_VALUE, OPENED_ORDER, OPEN_VALUE, REJECTED_ORDER, REJECTED_VALUE
+from ccxtbt.exchange_or_broker.exchange__specifications import CANCELED_VALUE, CCXT_COMMON_MAPPING_VALUES, \
+    CLOSED_VALUE, EXPIRED_VALUE, OPEN_VALUE, REJECTED_VALUE
+from ccxtbt.order.order__specifications import CCXT_ORDER_TYPES, CCXT_STATUS_KEY, CANCELED_ORDER, CLOSED_ORDER, \
+    EXPIRED_ORDER, OPENED_ORDER, REJECTED_ORDER
 from ccxtbt.utils import legality_check_not_none_obj
 
 
