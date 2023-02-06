@@ -328,7 +328,8 @@ def ut_get_partially_filled_order(params) -> tuple:
         [exchange_ccxt_order
          for exchange_ccxt_order in bt_ccxt_account_or_store.exchange_ccxt_orders
          if ccxt_order_id == exchange_ccxt_order['id']]
-    assert len(unmodified_ccxt_orders) == 1
+    assert len(unmodified_ccxt_orders) == 1, "Expected: 1, Observed: {}".format(
+        len(unmodified_ccxt_orders))
 
     # Create a copy so that we could modify it locally without affecting original order
     unmodified_ccxt_order = copy.deepcopy(unmodified_ccxt_orders[0])
@@ -402,6 +403,17 @@ def ut_get_partially_filled_order(params) -> tuple:
             simulated=True,
         ))
     partially_filled_order = BT_CCXT_Order(**bt_ccxt_order__dict)
+
+    # Legality Check
+    if not partially_filled_order.is_buy():
+        assert partially_filled_order.size <= 0.0, \
+            "Expected: Zero or Negative, Actual: {}".format(
+                partially_filled_order.size)
+    else:
+        assert partially_filled_order.size >= 0.0, \
+            "Expected: Zero or Positive, Actual: {}".format(
+                partially_filled_order.size)
+
     ret_value = (partially_filled_order, accepted_order, )
     return ret_value
 
@@ -418,7 +430,8 @@ def ut_get_rejected_order(params):
         [exchange_ccxt_order
          for exchange_ccxt_order in bt_ccxt_account_or_store.exchange_ccxt_orders
          if ccxt_order_id == exchange_ccxt_order['id']]
-    assert len(unmodified_ccxt_orders) == 1
+    assert len(unmodified_ccxt_orders) == 1, "Expected: 1, Observed: {}".format(
+        len(unmodified_ccxt_orders))
 
     # Create a copy so that we could modify it locally without affecting original order
     unmodified_ccxt_order = copy.deepcopy(unmodified_ccxt_orders[0])
@@ -461,6 +474,15 @@ def ut_get_rejected_order(params):
             simulated=True,
         ))
     rejected_order = BT_CCXT_Order(**bt_ccxt_order__dict)
+
+    # Legality Check
+    if not rejected_order.is_buy():
+        assert rejected_order.size <= 0.0, "Expected: Zero or Negative, Actual: {}".format(
+            rejected_order.size)
+    else:
+        assert rejected_order.size >= 0.0, "Expected: Zero or Positive, Actual: {}".format(
+            rejected_order.size)
+
     ret_value = (rejected_order, accepted_order, )
     return ret_value
 
@@ -473,11 +495,13 @@ def ut_get_bt_ccxt_account_or_stores(params) -> list:
         'construct_standalone_account_or_store__dict']
 
     # Optional Params
-    callback_func__has_calls = params.get('callback_func__has_calls', None)
+    ut_callback_func__has_calls = params.get(
+        'ut_callback_func__has_calls', None)
     ut_assert_not_called = params.get('ut_assert_not_called', None)
     ut_keep_original_ccxt_order = params.get(
         'ut_keep_original_ccxt_order', None)
-    ut_clear_opened_bt_status = params.get('ut_clear_opened_bt_status', None)
+    ut_modify_open_to_ccxt_status = params.get(
+        'ut_modify_open_to_ccxt_status', None)
 
     # Legality Check
     assert isinstance(exchange_dropdown_values, tuple)
@@ -510,7 +534,7 @@ def ut_get_bt_ccxt_account_or_stores(params) -> list:
                 # Optional Params
                 bt_ccxt_exchange=bt_ccxt_exchange,
                 ut_keep_original_ccxt_order=ut_keep_original_ccxt_order,
-                ut_clear_opened_bt_status=ut_clear_opened_bt_status,
+                ut_modify_open_to_ccxt_status=ut_modify_open_to_ccxt_status,
             ))
             (bt_ccxt_account_or_store, exchange_specific_config,) = \
                 construct_standalone_account_or_store(
@@ -567,16 +591,17 @@ def ut_get_bt_ccxt_account_or_stores(params) -> list:
                     short_bb_data = BT_CCXT_Feed(**bt_ccxt_feed__dict)
                     short_bb_data.set__parent(instrument)
 
-                if callback_func__has_calls is not None:
+                if ut_callback_func__has_calls is not None:
                     identify_calls__dict = dict(
                         bt_ccxt_account_or_store=bt_ccxt_account_or_store,
                         instrument=instrument,
+                        ut_modify_open_to_ccxt_status=ut_modify_open_to_ccxt_status,
                     )
-                    calls = callback_func__has_calls(
+                    calls = ut_callback_func__has_calls(
                         params=identify_calls__dict)
                     assert isinstance(calls, list)
 
-                    # Confirm bt_ccxt_account_or_store.notify has been called twice
+                    # Confirm bt_ccxt_account_or_store.notify has been called
                     mock.assert_has_calls(calls)
 
                 if ut_assert_not_called:

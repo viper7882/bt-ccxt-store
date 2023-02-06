@@ -1,14 +1,11 @@
-import inspect
-
 import backtrader
+import inspect
 
 from ccxtbt.bt_ccxt_order__classes import BT_CCXT_Order
 from ccxtbt.bt_ccxt__specifications import CCXT_TYPE_KEY, STATUSES, CANCELED_ORDER, CCXT_ORDER_KEYS__MUST_BE_IN_FLOAT, \
     CCXT_ORDER_KEYS__MUST_EXIST, \
     CCXT_ORDER_TYPES, CLOSED_ORDER, DERIVED__CCXT_ORDER__KEYS, EXECUTION_TYPE, EXECUTION_TYPES, EXPIRED_ORDER, \
-    OPENED_ORDER, \
-    ORDERING_TYPE, \
-    ORDERING_TYPES, ORDER_INTENT, \
+    OPENED_ORDER, ORDERING_TYPE, ORDERING_TYPES, ORDER_INTENT, \
     ORDER_INTENTS, PARTIALLY_FILLED_ORDER, PLURAL__CCXT_ORDER__KEYS, POSITION_TYPE, POSITION_TYPES, REJECTED_ORDER, \
     SIDE, SIDES, STATUS
 from ccxtbt.exchange.binance.binance__exchange__specifications import BINANCE_EXCHANGE_ID
@@ -318,3 +315,23 @@ def get_filtered_orders(params):
         if accepted == True:
             ret_orders.append(order)
     return ret_orders
+
+
+def force_ccxt_order_status(params) -> object:
+    # Un-serialize Params
+    ccxt_order = params['ccxt_order']
+    ut_modify_open_to_ccxt_status = params['ut_modify_open_to_ccxt_status']
+    bt_ccxt_exchange = params['bt_ccxt_exchange']
+
+    # Alias
+    ccxt_order_type = CCXT_ORDER_TYPES[ut_modify_open_to_ccxt_status]
+    ccxt_status_key = bt_ccxt_exchange.mappings[ccxt_order_type]['key']
+    ccxt_status_value = bt_ccxt_exchange.mappings[ccxt_order_type]['value']
+
+    ccxt_order["{}_name".format(
+        DERIVED__CCXT_ORDER__KEYS[STATUS])] = ccxt_status_value
+    ccxt_order[DERIVED__CCXT_ORDER__KEYS[STATUS]
+               ] = ut_modify_open_to_ccxt_status
+    ccxt_order[ccxt_status_key] = ccxt_status_value
+
+    return ccxt_order

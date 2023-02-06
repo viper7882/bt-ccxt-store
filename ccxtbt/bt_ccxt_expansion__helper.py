@@ -2,11 +2,12 @@ import backtrader
 import json
 import time
 
-from ccxtbt.bt_ccxt__specifications import CANCELED_ORDER, CANCELED_VALUE, CANCELLED_VALUE, CCXT_COMMON_MAPPING_VALUES, \
+from ccxtbt.bt_ccxt__specifications import CANCELED_ORDER, CANCELED_VALUE, CCXT_COMMON_MAPPING_VALUES, \
     CCXT_ORDER_TYPES, \
     CCXT_STATUS_KEY, CCXT__MARKET_TYPES, \
     CLOSED_ORDER, \
-    CLOSED_VALUE, EXPIRED_ORDER, EXPIRED_VALUE, MAX_LIVE_EXCHANGE_RETRIES, OPENED_ORDER, OPEN_VALUE, \
+    CLOSED_VALUE, EXPIRED_ORDER, EXPIRED_VALUE, MAX_LIVE_EXCHANGE_RETRIES, OPENED_ORDER, \
+    OPEN_VALUE, \
     PARTIALLY_FILLED_ORDER, \
     REJECTED_ORDER, REJECTED_VALUE
 from ccxtbt.bt_ccxt_account_or_store__classes import BT_CCXT_Account_or_Store
@@ -131,7 +132,8 @@ def construct_standalone_account_or_store(params) -> tuple:
     bt_ccxt_exchange = params.get('bt_ccxt_exchange', None)
     ut_keep_original_ccxt_order = params.get(
         'ut_keep_original_ccxt_order', None)
-    ut_clear_opened_bt_status = params.get('ut_clear_opened_bt_status', None)
+    ut_modify_open_to_ccxt_status = params.get(
+        'ut_modify_open_to_ccxt_status', None)
 
     market_type_name = CCXT__MARKET_TYPES[market_type]
 
@@ -181,7 +183,7 @@ def construct_standalone_account_or_store(params) -> tuple:
 
             # Optional Params
             ut_keep_original_ccxt_order=ut_keep_original_ccxt_order,
-            ut_clear_opened_bt_status=ut_clear_opened_bt_status,
+            ut_modify_open_to_ccxt_status=ut_modify_open_to_ccxt_status,
             # debug=True,
         ))
 
@@ -217,6 +219,8 @@ def construct_standalone_instrument(params) -> object:
         symbol_id=symbol_id,
     )
     instrument = BT_CCXT_Instrument(**bt_ccxt_instrument__dict)
+
+    # sync_symbol_positions here
     instrument.set__parent(bt_ccxt_account_or_store)
 
     commission_rate__dict = dict(
@@ -245,6 +249,7 @@ def construct_standalone_instrument(params) -> object:
 
     instrument.add_commission_info(commission_info)
 
+    # notify here
     bt_ccxt_account_or_store.add__instrument(instrument)
     return instrument
 

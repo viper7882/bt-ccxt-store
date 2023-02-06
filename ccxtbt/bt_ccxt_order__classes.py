@@ -26,8 +26,8 @@ import datetime
 import inspect
 import json
 
-from ccxtbt.bt_ccxt__specifications import CCXT_SIDE_KEY, DERIVED__CCXT_ORDER__KEYS, EXECUTION_TYPE, \
-    STATUS
+from ccxtbt.bt_ccxt__specifications import CCXT_SIDE_KEY, DERIVED__CCXT_ORDER__KEYS, \
+    EXECUTION_TYPE, STATUS
 from ccxtbt.exchange.binance.binance__exchange__specifications import BINANCE_EXCHANGE_ID
 from ccxtbt.exchange.bybit.bybit__exchange__specifications import BYBIT_EXCHANGE_ID
 
@@ -189,6 +189,8 @@ class BT_CCXT_Order(backtrader.OrderBase):
                 setattr(self, key, ccxt_order[key])
 
         self.size = ccxt_order['amount']
+        if not self.is_buy():
+            self.size = -abs(self.size)
 
         if ccxt_order['average'] != 0.0:
             self.price = ccxt_order['average']
@@ -245,6 +247,14 @@ class BT_CCXT_Order(backtrader.OrderBase):
             else:
                 raise NotImplementedError(
                     "{} exchange is yet to be supported!!!".format(self.p.exchange_dropdown_value))
+
+        # Legality Check
+        if not self.is_buy():
+            assert self.size <= 0.0, \
+                "Expected: Zero or Negative, Actual: {}".format(self.size)
+        else:
+            assert self.size >= 0.0, \
+                "Expected: Zero or Positive, Actual: {}".format(self.size)
 
     def __repr__(self):
         return str(self)

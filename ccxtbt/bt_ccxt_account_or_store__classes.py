@@ -43,14 +43,18 @@ from ccxtbt.bt_ccxt_exchange__classes import BT_CCXT_Exchange
 from ccxtbt.bt_ccxt_persistent_storage__helper import delete_from_persistent_storage, \
     read_from_persistent_storage, save_to_persistent_storage
 from ccxtbt.bt_ccxt_order__classes import BT_CCXT_Order
-from ccxtbt.bt_ccxt_order__helper import converge_ccxt_reduce_only_value, get_ccxt_order_id, \
+from ccxtbt.bt_ccxt_order__helper import converge_ccxt_reduce_only_value, force_ccxt_order_status, get_ccxt_order_id, \
     reverse_engineer__ccxt_order
-from ccxtbt.bt_ccxt__specifications import CANCELED_ORDER, CASH_DIGITS, CCXT_ORDER_KEYS__MUST_BE_IN_FLOAT, \
+from ccxtbt.bt_ccxt__specifications import CANCELED_ORDER, CASH_DIGITS, CCXT_COMMON_MAPPING_VALUES, \
+    CCXT_ORDER_KEYS__MUST_BE_IN_FLOAT, \
     CCXT_ORDER_TYPES, CCXT_SIDE_KEY, CCXT_SYMBOL_KEY, CCXT__MARKET_TYPES, CCXT__MARKET_TYPE__FUTURE, \
     CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP, CCXT__MARKET_TYPE__SPOT, \
-    CLOSED_ORDER, DERIVED__CCXT_ORDER__KEYS, EXECUTION_TYPE, EXPIRED_ORDER, LIST_OF_CCXT_KEY_TO_BE_RENAMED, \
-    MAX_LEVERAGE_IN_PERCENT, MIN_LEVERAGE, MIN_LEVERAGE_IN_PERCENT, OPENED_ORDER, ORDERING_TYPE, ORDER_INTENT, \
-    PARTIALLY_FILLED_ORDER, POSITION_TYPE, REJECTED_ORDER, STATUS
+    CLOSED_ORDER, CLOSED_VALUE, DERIVED__CCXT_ORDER__KEYS, EXECUTION_TYPE, EXPIRED_ORDER, \
+    LIST_OF_CCXT_KEY_TO_BE_RENAMED, \
+    MAX_LEVERAGE_IN_PERCENT, MAX_LIVE_EXCHANGE_RETRIES, MIN_LEVERAGE, MIN_LEVERAGE_IN_PERCENT, OPENED_ORDER, \
+    ORDERING_TYPE, ORDER_INTENT, \
+    PARTIALLY_FILLED_ORDER, PERSISTENT_STORAGE_CSV_HEADERS, POSITION_TYPE, PS_CCXT_ORDER_ID, PS_ORDERING_TYPE, \
+    REJECTED_ORDER, STATUS
 from ccxtbt.exchange.binance.binance__exchange__helper import get_binance_leverages, set_binance_leverage
 from ccxtbt.exchange.binance.binance__exchange__specifications import BINANCE_EXCHANGE_ID, \
     BINANCE__FUTURES__DEFAULT_DUAL_POSITION_MODE
@@ -58,7 +62,7 @@ from ccxtbt.exchange.bybit.bybit__exchange__helper import get_bybit_leverages, g
     set_bybit_leverage
 from ccxtbt.exchange.bybit.bybit__exchange__specifications import BYBIT_EXCHANGE_ID
 from ccxtbt.exchange.exchange__helper import get_symbol_id
-from ccxtbt.utils import capitalize_sentence, convert_slider_from_percent, legality_check_not_none_obj, \
+from ccxtbt.utils import capitalize_sentence, convert_slider_from_percent, dump_obj, legality_check_not_none_obj, \
     round_to_nearest_decimal_points, truncate, get_time_diff
 
 
@@ -195,7 +199,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
     def __init__(self, exchange_dropdown_value, wallet_currency, config, retries, symbols_id,
                  main_net_toggle_switch_value, initial__capital_reservation__value, is_ohlcv_provider,
                  account__thread__connectivity__lock, isolated_toggle_switch_value, leverage_in_percent,
-                 ut_keep_original_ccxt_order=False, ut_clear_opened_bt_status=None, debug=False):
+                 ut_keep_original_ccxt_order=False, ut_modify_open_to_ccxt_status=None, debug=False):
         super().__init__()
 
         # WARNING: Must rename to init2 here or else it will cause
@@ -203,12 +207,12 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         self.init2(exchange_dropdown_value, wallet_currency, config, retries, symbols_id, main_net_toggle_switch_value,
                    initial__capital_reservation__value, is_ohlcv_provider, account__thread__connectivity__lock,
                    isolated_toggle_switch_value, leverage_in_percent, ut_keep_original_ccxt_order,
-                   ut_clear_opened_bt_status, debug)
+                   ut_modify_open_to_ccxt_status, debug)
 
     def init2(self, exchange_dropdown_value, wallet_currency, config, retries, symbols_id, main_net_toggle_switch_value,
               initial__capital_reservation__value, is_ohlcv_provider, account__thread__connectivity__lock,
               isolated_toggle_switch_value, leverage_in_percent, ut_keep_original_ccxt_order=False,
-              ut_clear_opened_bt_status=None, debug=False):
+              ut_modify_open_to_ccxt_status=None, debug=False):
         # Legality Check
         assert isinstance(retries, int)
         assert isinstance(symbols_id, list)
@@ -219,8 +223,10 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         assert isinstance(isolated_toggle_switch_value, bool)
         assert isinstance(leverage_in_percent, int) or \
             isinstance(leverage_in_percent, float)
-        if ut_clear_opened_bt_status is not None:
-            assert isinstance(ut_clear_opened_bt_status, bool)
+        if ut_modify_open_to_ccxt_status is not None:
+            if ut_modify_open_to_ccxt_status not in range(len(CCXT_COMMON_MAPPING_VALUES)):
+                raise ValueError("{}: {} ut_modify_open_to_ccxt_status must be one of {}!!!".format(
+                    inspect.currentframe(), ut_modify_open_to_ccxt_status, range(len(CCXT_COMMON_MAPPING_VALUES))))
 
         # Alias
         self.wallet_currency = wallet_currency
@@ -239,9 +245,9 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
 
         # True to keep a copy of original ccxt order
         self.ut_keep_original_ccxt_order = ut_keep_original_ccxt_order
-        self.ut_clear_opened_bt_status = ut_clear_opened_bt_status
+        self.ut_modify_open_to_ccxt_status = ut_modify_open_to_ccxt_status
         self.exchange_ccxt_orders = []
-        self.bt_ccxt_orders = []
+        self.notified_bt_ccxt_orders = []
 
         self.debug = debug
         self._cash_snapshot = 0.0
@@ -278,7 +284,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         self.indent = 4  # For pretty printing dictionaries
 
         # 30 seconds of retry
-        self.max_retry = 30 * 10
+        self.max_retry = MAX_LIVE_EXCHANGE_RETRIES
 
         # Track the partially_filled_earlier status
         self.partially_filled_earlier = None
@@ -528,9 +534,9 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         self.notifs.put(order)
 
     def remove_open_order(self, order):
-        ccxt_order_id = order.ccxt_id
         delete_from_persistent_storage__dict = dict(
-            ccxt_order_id=ccxt_order_id,
+            ordering_type=order.ordering_type,
+            ccxt_order_id=order.ccxt_id,
             exchange_dropdown_value=self.exchange_dropdown_value,
             market_type=self.market_type,
             main_net_toggle_switch_value=self.main_net_toggle_switch_value,
@@ -734,7 +740,11 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                     order.accept()
 
                     # Notify using clone so that UT could snapshot the order
-                    self.notify(order.clone())
+                    accepted_bt_ccxt_order = order.clone()
+                    if self.ut_keep_original_ccxt_order:
+                        self.notified_bt_ccxt_orders.append(
+                            accepted_bt_ccxt_order)
+                    self.notify(accepted_bt_ccxt_order)
             # Check if the exchange order is partially filled
             elif new_ccxt_order[self.parent.mappings[CCXT_ORDER_TYPES[PARTIALLY_FILLED_ORDER]]['key']] == \
                     self.parent.mappings[CCXT_ORDER_TYPES[PARTIALLY_FILLED_ORDER]]['value']:
@@ -747,9 +757,13 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                     # self.execute(order, order.price)
 
                     # Notify using clone so that UT could snapshot the order
-                    self.notify(order.clone())
+                    partially_filled_bt_ccxt_order = order.clone()
+                    if self.ut_keep_original_ccxt_order:
+                        self.notified_bt_ccxt_orders.append(
+                            partially_filled_bt_ccxt_order)
+                    self.notify(partially_filled_bt_ccxt_order)
 
-                    # Carry forward partially_filled_earlier status to the next order
+                    # Carry forward partially_filled_earlier status to the next ccxt order
                     self.partially_filled_earlier = order.partially_filled_earlier
 
                     instrument = self.get__child(order.p.symbol_id)
@@ -762,7 +776,11 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                 order.completed()
 
                 # Notify using clone so that UT could snapshot the order
-                self.notify(order.clone())
+                completed_bt_ccxt_order = order.clone()
+                if self.ut_keep_original_ccxt_order:
+                    self.notified_bt_ccxt_orders.append(
+                        completed_bt_ccxt_order)
+                self.notify(completed_bt_ccxt_order)
 
                 self.execute(order, order.price)
                 assert order.executed.remaining_size == 0.0
@@ -778,7 +796,10 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                 order.extract_from_ccxt_order(new_ccxt_order)
                 order.reject()
                 # Notify using clone so that UT could snapshot the order
-                self.notify(order.clone())
+                rejected_bt_ccxt_order = order.clone()
+                if self.ut_keep_original_ccxt_order:
+                    self.notified_bt_ccxt_orders.append(rejected_bt_ccxt_order)
+                self.notify(rejected_bt_ccxt_order)
                 self.remove_open_order(order)
             # Manage case when an order is being Canceled or Expired from the Exchange
             # from https://github.com/juancols/bt-ccxt-store/
@@ -788,14 +809,20 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                 order.extract_from_ccxt_order(new_ccxt_order)
                 order.cancel()
                 # Notify using clone so that UT could snapshot the order
-                self.notify(order.clone())
+                canceled_bt_ccxt_order = order.clone()
+                if self.ut_keep_original_ccxt_order:
+                    self.notified_bt_ccxt_orders.append(canceled_bt_ccxt_order)
+                self.notify(canceled_bt_ccxt_order)
                 self.remove_open_order(order)
             elif new_ccxt_order[self.parent.mappings[CCXT_ORDER_TYPES[EXPIRED_ORDER]]['key']] == \
                     self.parent.mappings[CCXT_ORDER_TYPES[EXPIRED_ORDER]]['value']:
                 # Refresh the content of ccxt_order with the latest ccxt_order
                 order.extract_from_ccxt_order(new_ccxt_order)
                 order.expire()
-                self.notify(order.clone())
+                expired_bt_ccxt_order = order.clone()
+                if self.ut_keep_original_ccxt_order:
+                    self.notified_bt_ccxt_orders.append(expired_bt_ccxt_order)
+                self.notify(expired_bt_ccxt_order)
                 self.remove_open_order(order)
             else:
                 msg = "{} Line: {}: {}: WARNING: ".format(
@@ -1046,17 +1073,28 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
             bt_ccxt_order__dict.update(dict(
                 simulated=True,
             ))
-        order = BT_CCXT_Order(**bt_ccxt_order__dict)
+        bt_ccxt_order = BT_CCXT_Order(**bt_ccxt_order__dict)
 
-        instrument = self.get__child(order.p.symbol_id)
+        # Legality Check
+        if not bt_ccxt_order.is_buy():
+            assert bt_ccxt_order.size <= 0.0, "Expected: Zero or Negative, Actual: {}".format(
+                bt_ccxt_order.size)
+        else:
+            assert bt_ccxt_order.size >= 0.0, "Expected: Zero or Positive, Actual: {}".format(
+                bt_ccxt_order.size)
+
+        instrument = self.get__child(bt_ccxt_order.p.symbol_id)
         commission_info = instrument.get_commission_info()
-        order.add_commission_info(commission_info)
+        bt_ccxt_order.add_commission_info(commission_info)
 
         # Notify using clone so that UT could snapshot the order
-        self.notify(order.clone())
-        self.open_orders.append(order)
+        submitted_bt_ccxt_order = bt_ccxt_order.clone()
+        if self.ut_keep_original_ccxt_order:
+            self.notified_bt_ccxt_orders.append(submitted_bt_ccxt_order)
+        self.notify(submitted_bt_ccxt_order)
+        self.open_orders.append(bt_ccxt_order)
 
-        ccxt_order_id = order.ccxt_id
+        ccxt_order_id = bt_ccxt_order.ccxt_id
 
         # TODO: Debug use
         if self.debug:
@@ -1070,19 +1108,27 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
             )
             print(msg + sub_msg)
 
+        csv_dicts = []
+        csv_dict = {
+            PERSISTENT_STORAGE_CSV_HEADERS[PS_ORDERING_TYPE]: bt_ccxt_order.ordering_type,
+            PERSISTENT_STORAGE_CSV_HEADERS[PS_CCXT_ORDER_ID]: ccxt_order_id,
+        }
+        csv_dicts.append(csv_dict)
+
         save_to_persistent_storage__dict = dict(
-            ccxt_orders_id=[ccxt_order_id],
+            csv_headers=PERSISTENT_STORAGE_CSV_HEADERS,
+            csv_dicts=csv_dicts,
             exchange_dropdown_value=self.exchange_dropdown_value,
             market_type=self.market_type,
             main_net_toggle_switch_value=self.main_net_toggle_switch_value,
-            symbol_id=order.symbol_id,
+            symbol_id=bt_ccxt_order.symbol_id,
         )
         save_to_persistent_storage(params=save_to_persistent_storage__dict)
 
         # Explicitly call next one round prior to releasing order to caller. The intention is to provide guarantee for
         # caller to sync up position thereafter
-        self.next()
-        return order
+        self.next(ut_provided__new_ccxt_order=True)
+        return bt_ccxt_order
 
     def fetch_ccxt_order(self, symbol_id, order_id=None, stop_order_id=None):
         # Mutually exclusive legality check
@@ -1113,11 +1159,13 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                     ))
                     ccxt_order = \
                         self.fetch_order(
-                            order_id=None, symbol_id=symbol_id, params=params)
+                            order_id=None, symbol_id=symbol_id, params=params, index=retry_no+1,
+                            max_index=self.max_retry)
                 else:
                     # Active Order
                     ccxt_order = self.fetch_order(
-                        order_id=order_id, symbol_id=symbol_id, params=params)
+                        order_id=order_id, symbol_id=symbol_id, params=params, index=retry_no+1,
+                        max_index=self.max_retry)
 
                 if ccxt_order is not None:
                     if stop_order_id is not None:
@@ -1268,7 +1316,10 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         if size == 0.0:
             if skip_notification == False:
                 # Notify using clone so that UT could snapshot the order
-                self.notify(order.clone())
+                executed_bt_ccxt_order = order.clone()
+                if self.ut_keep_original_ccxt_order:
+                    self.notified_bt_ccxt_orders.append(executed_bt_ccxt_order)
+                self.notify(executed_bt_ccxt_order)
             return
 
         instrument = self.get__child(order.p.symbol_id)
@@ -1460,7 +1511,10 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         order.add_commission_info(commission_info)
         if skip_notification == False:
             # Notify using clone so that UT could snapshot the order
-            self.notify(order.clone())
+            executed_bt_ccxt_order = order.clone()
+            if self.ut_keep_original_ccxt_order:
+                self.notified_bt_ccxt_orders.append(executed_bt_ccxt_order)
+            self.notify(executed_bt_ccxt_order)
 
         # Legality Check
         throws_out_error = False
@@ -1598,19 +1652,26 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         fetch_order__dict = dict(
             type=self.market_type_name,   # CCXT Market Type
         )
-        if order.ordering_type == backtrader.Order.ACTIVE_ORDERING_TYPE:
-            new_ccxt_order = self.fetch_order(
-                ccxt_order_id, order.symbol_id, params=fetch_order__dict)
-        else:
-            # Validate assumption made
-            assert order.ordering_type == backtrader.Order.CONDITIONAL_ORDERING_TYPE
+        # Added finite retry as for exchange that practices async order, it could take quite a few of retries
+        new_ccxt_order = None
+        for retry_no in range(self.max_retry):
+            if order.ordering_type == backtrader.Order.ACTIVE_ORDERING_TYPE:
+                new_ccxt_order = self.fetch_order(
+                    ccxt_order_id, order.symbol_id, params=fetch_order__dict, index=retry_no+1,
+                    max_index=self.max_retry)
+            else:
+                # Validate assumption made
+                assert order.ordering_type == backtrader.Order.CONDITIONAL_ORDERING_TYPE
 
-            fetch_order__dict.update(dict(
-                stop_order_id=ccxt_order_id,
-            ))
-            new_ccxt_order = \
-                self.fetch_order(None, order.symbol_id,
-                                 params=fetch_order__dict)
+                fetch_order__dict.update(dict(
+                    stop_order_id=ccxt_order_id,
+                ))
+                new_ccxt_order = \
+                    self.fetch_order(None, order.symbol_id,
+                                     params=fetch_order__dict, index=retry_no+1, max_index=self.max_retry)
+
+            if new_ccxt_order is not None:
+                break
         legality_check_not_none_obj(new_ccxt_order, "new_ccxt_order")
 
         # Post-process the CCXT order so that they are consistent across multiple exchanges
@@ -1653,10 +1714,13 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
 
             # Confirm the ccxt_order is cancelled in the exchange
             if cancelled_ccxt_order['id'] is not None:
-                # In the event exchange requires time to reflect cancellation
-                while order in self.open_orders:
+                # Added finite retry as for exchange that practices async order, it could take quite a few of retries
+                for retry_no in range(self.max_retry):
                     self.next()
-                success = True
+
+                    if order not in self.open_orders:
+                        success = True
+                        break
         return success
 
     def modify_order(self, order_id, symbol, type, side, amount=None, price=None, trigger_price=None, params={}):
@@ -1672,15 +1736,15 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         if self.ut_keep_original_ccxt_order:
             self.exchange_ccxt_orders = copy.deepcopy(ccxt_orders)
 
+        from_items = []
+        to_items = []
+        for ccxt_key_tuple in LIST_OF_CCXT_KEY_TO_BE_RENAMED:
+            from_items.append(ccxt_key_tuple[0])
+            to_items.append(ccxt_key_tuple[1])
+
         ret_ccxt_orders = []
         for ccxt_order in ccxt_orders:
             assert isinstance(ccxt_order, dict)
-
-            from_items = []
-            to_items = []
-            for ccxt_key_tuple in LIST_OF_CCXT_KEY_TO_BE_RENAMED:
-                from_items.append(ccxt_key_tuple[0])
-                to_items.append(ccxt_key_tuple[1])
 
             # Rename dict while maintaining its ordering
             renamed_ccxt_order = {}
@@ -1748,15 +1812,19 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
 
         # Optional Params
         datafeed = params.get('datafeed', None)
+        skip_post_processing = params.get('skip_post_processing', False)
 
-        # Post-process the CCXT orders so that they are consistent across multiple exchanges
-        post_process__ccxt_orders__dict = dict(
-            bt_ccxt_exchange=self.parent,
-            bt_ccxt_account_or_store=self,
-            ccxt_orders=ccxt_orders,
-        )
-        post_processed__ccxt_opened_orders = self.post_process__ccxt_orders(
-            params=post_process__ccxt_orders__dict)
+        if not skip_post_processing:
+            # Post-process the CCXT orders so that they are consistent across multiple exchanges
+            post_process__ccxt_orders__dict = dict(
+                bt_ccxt_exchange=self.parent,
+                bt_ccxt_account_or_store=self,
+                ccxt_orders=ccxt_orders,
+            )
+            post_processed__ccxt_opened_orders = self.post_process__ccxt_orders(
+                params=post_process__ccxt_orders__dict)
+        else:
+            post_processed__ccxt_opened_orders = ccxt_orders
 
         ret_opened_orders = []
         for ccxt_order in post_processed__ccxt_opened_orders:
@@ -1781,7 +1849,17 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                 bt_ccxt_order__dict.update(dict(
                     simulated=True,
                 ))
-            ret_opened_orders.append(BT_CCXT_Order(**bt_ccxt_order__dict))
+            bt_ccxt_order = BT_CCXT_Order(**bt_ccxt_order__dict)
+
+            # Legality Check
+            if not bt_ccxt_order.is_buy():
+                assert bt_ccxt_order.size <= 0.0, "Expected: Zero or Negative, Actual: {}".format(
+                    bt_ccxt_order.size)
+            else:
+                assert bt_ccxt_order.size >= 0.0, "Expected: Zero or Positive, Actual: {}".format(
+                    bt_ccxt_order.size)
+
+            ret_opened_orders.append(bt_ccxt_order)
         return ret_opened_orders
 
     def get_orders(self, symbol=None, since=None, limit=None, datafeed=None, params=None):
@@ -2118,7 +2196,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         # In order to prevent manipulation from caller
         cloned_open_orders = []
         for open_order in self.open_orders:
-            cloned_open_orders.append(copy.copy(open_order))
+            cloned_open_orders.append(open_order.clone())
         return cloned_open_orders
 
     def get_granularity(self, timeframe, compression):
@@ -2639,7 +2717,7 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         # It is OK to have order is None here
         return order
 
-    def fetch_order(self, order_id, symbol_id, params={}):
+    def fetch_order(self, order_id, symbol_id, params={}, index=None, max_index=None):
         # Optional Params
         conditional_oid = params.get('stop_order_id', None)
 
@@ -2817,7 +2895,14 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                 frameinfo.function, frameinfo.lineno,
                 datetime.datetime.now().isoformat().replace("T", " ")[:-3],
             )
-            sub_msg = "Websocket is not available, searching order id: \'{}\' using HTTP...".format(
+            sub_msg = ""
+            if index is not None:
+                sub_msg += "{}".format(index)
+            if max_index is not None:
+                sub_msg += "/{}".format(max_index)
+            if index is not None or max_index is not None:
+                sub_msg += ": "
+            sub_msg += "Websocket is not available, searching order id: \'{}\' using HTTP...".format(
                 search_order_id,
             )
             print(msg + sub_msg)
@@ -2923,65 +3008,150 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
             main_net_toggle_switch_value=self.main_net_toggle_switch_value,
             symbol_id=instrument.symbol_id,
         )
-        ccxt_orders_id = \
+        dataframe = \
             read_from_persistent_storage(
                 params=read_from_persistent_storage__dict)
 
-        # If there is at least one ccxt_orders_id discovered
-        if len(ccxt_orders_id) > 0:
-            fetch_ccxt_orders__dict = dict(
-                # CCXT requires the market type name to be specified correctly
-                type=CCXT__MARKET_TYPES[self.market_type],
-            )
-            opened_bt_ccxt_orders = \
-                self.fetch_opened_orders(symbol=instrument.symbol_id,
-                                         since=None,
-                                         limit=None,
-                                         params=fetch_ccxt_orders__dict)
+        if dataframe is not None:
+            # If there is at least one ccxt_orders_id discovered
+            if len(dataframe) > 0:
+                ordering_type_list = dataframe[PERSISTENT_STORAGE_CSV_HEADERS[PS_ORDERING_TYPE]].tolist(
+                )
+                ccxt_orders_id = dataframe[PERSISTENT_STORAGE_CSV_HEADERS[PS_CCXT_ORDER_ID]].tolist(
+                )
 
-            if self.exchange_dropdown_value == BYBIT_EXCHANGE_ID:
-                fetch_ccxt_orders__dict.update(dict(
-                    stop=True,
-                ))
-                opened_bt_ccxt_orders += \
+                fetch_ccxt_orders__dict = dict(
+                    # CCXT requires the market type name to be specified correctly
+                    type=CCXT__MARKET_TYPES[self.market_type],
+                )
+                opened_bt_ccxt_orders = \
                     self.fetch_opened_orders(symbol=instrument.symbol_id,
                                              since=None,
                                              limit=None,
                                              params=fetch_ccxt_orders__dict)
 
-            if self.ut_clear_opened_bt_status:
-                if self.ut_keep_original_ccxt_order:
-                    self.bt_ccxt_orders = copy.copy(opened_bt_ccxt_orders)
+                if self.exchange_dropdown_value == BYBIT_EXCHANGE_ID:
+                    fetch_ccxt_orders__dict.update(dict(
+                        stop=True,
+                    ))
+                    opened_bt_ccxt_orders += \
+                        self.fetch_opened_orders(symbol=instrument.symbol_id,
+                                                 since=None,
+                                                 limit=None,
+                                                 params=fetch_ccxt_orders__dict)
 
-                # Clear the opened orders
-                opened_bt_ccxt_orders = []
+                if self.ut_modify_open_to_ccxt_status:
+                    # Clear the opened orders
+                    opened_bt_ccxt_orders = []
 
-            for ccxt_order_id in ccxt_orders_id:
-                found_opened = False
-                bt_ccxt_order = None
-                for opened_bt_ccxt_order in opened_bt_ccxt_orders:
-                    if opened_bt_ccxt_order.ccxt_id == ccxt_order_id:
-                        bt_ccxt_order = opened_bt_ccxt_order
-                        found_opened = True
-                        break
+                for ordering_type, ccxt_order_id in zip(ordering_type_list, ccxt_orders_id):
+                    found_opened = False
+                    bt_ccxt_order = None
+                    for opened_bt_ccxt_order in opened_bt_ccxt_orders:
+                        if opened_bt_ccxt_order.ccxt_id == ccxt_order_id:
+                            bt_ccxt_order = opened_bt_ccxt_order
+                            found_opened = True
+                            break
 
-                if found_opened == True:
-                    legality_check_not_none_obj(bt_ccxt_order, "bt_ccxt_order")
-                    self.open_orders.append(bt_ccxt_order)
+                    if found_opened == True:
+                        legality_check_not_none_obj(
+                            bt_ccxt_order, "bt_ccxt_order")
 
-                    # Delegate to next to handle next course of action
-                    self.next()
-                else:
-                    # If the order no longer present in the opened list
-                    delete_from_persistent_storage__dict = dict(
-                        ccxt_order_id=ccxt_order_id,
-                        exchange_dropdown_value=self.exchange_dropdown_value,
-                        market_type=self.market_type,
-                        main_net_toggle_switch_value=self.main_net_toggle_switch_value,
-                        symbol_id=instrument.symbol_id,
-                    )
-                    delete_from_persistent_storage(
-                        params=delete_from_persistent_storage__dict)
+                        # Stage 1 of STAGES_OF_RESEND_NOTIFICATION
+                        if bt_ccxt_order.status == backtrader.Order.Submitted:
+                            # Notify using clone so that UT could snapshot the order
+                            submitted_bt_ccxt_order = bt_ccxt_order.clone()
+                            if self.ut_keep_original_ccxt_order:
+                                self.notified_bt_ccxt_orders.append(
+                                    submitted_bt_ccxt_order)
+                            self.notify(submitted_bt_ccxt_order)
+
+                            # Convert to Accepted
+                            bt_ccxt_order.status = backtrader.Order.Accepted
+                            bt_ccxt_order.status_name = backtrader.Order.Status[bt_ccxt_order.status]
+
+                        self.open_orders.append(bt_ccxt_order)
+
+                        # Delegate to next to handle next course of action
+                        self.next(ut_provided__new_ccxt_order=True)
+                    else:
+                        # Validate assumption made
+                        assert bt_ccxt_order is None
+
+                        # Get the order from exchange
+                        if ordering_type == backtrader.Order.ACTIVE_ORDERING_TYPE:
+                            ccxt_order = self.fetch_ccxt_order(
+                                instrument.symbol_id, order_id=ccxt_order_id)
+                        else:
+                            # Validate assumption made
+                            assert ordering_type == backtrader.Order.CONDITIONAL_ORDERING_TYPE
+
+                            ccxt_order = self.fetch_ccxt_order(
+                                instrument.symbol_id, stop_order_id=ccxt_order_id)
+
+                        if ccxt_order is not None:
+                            if self.ut_modify_open_to_ccxt_status:
+                                force_ccxt_order_status__dict = dict(
+                                    ccxt_order=ccxt_order,
+                                    ut_modify_open_to_ccxt_status=self.ut_modify_open_to_ccxt_status,
+                                    bt_ccxt_exchange=self.parent,
+                                )
+                                ccxt_order = force_ccxt_order_status(
+                                    params=force_ccxt_order_status__dict)
+
+                            datafeed = None
+                            handle_orders_routine__dict = dict(
+                                ccxt_orders=[ccxt_order],
+
+                                # Optional Params
+                                datafeed=datafeed,
+                                skip_post_processing=True,
+                            )
+                            notified_bt_ccxt_orders = \
+                                self._common_handle_orders_routine(
+                                    params=handle_orders_routine__dict)
+                            assert len(notified_bt_ccxt_orders) == 1
+                            bt_ccxt_order = notified_bt_ccxt_orders[0]
+
+                            # Stage 1 of STAGES_OF_RESEND_NOTIFICATION
+                            if bt_ccxt_order.status == backtrader.Order.Submitted:
+                                # Notify using clone so that UT could snapshot the order
+                                submitted_bt_ccxt_order = bt_ccxt_order.clone()
+                                if self.ut_keep_original_ccxt_order:
+                                    self.notified_bt_ccxt_orders.append(
+                                        submitted_bt_ccxt_order)
+                                self.notify(submitted_bt_ccxt_order)
+
+                                # Convert to Accepted
+                                bt_ccxt_order.status = backtrader.Order.Accepted
+                                bt_ccxt_order.status_name = backtrader.Order.Status[bt_ccxt_order.status]
+
+                            # Stage 2 of STAGES_OF_RESEND_NOTIFICATION
+                            if bt_ccxt_order.status == backtrader.Order.Accepted:
+                                # Notify using clone so that UT could snapshot the order
+                                accepted_bt_ccxt_order = bt_ccxt_order.clone()
+                                if self.ut_keep_original_ccxt_order:
+                                    self.notified_bt_ccxt_orders.append(
+                                        accepted_bt_ccxt_order)
+                                self.notify(accepted_bt_ccxt_order)
+
+                            self.open_orders.append(bt_ccxt_order)
+
+                            # Stage 3 of STAGES_OF_RESEND_NOTIFICATION
+                            # Delegate to next to handle next course of action
+                            self.next(ut_provided__new_ccxt_order=True)
+
+                        # If the order no longer present in the opened list
+                        delete_from_persistent_storage__dict = dict(
+                            ordering_type=ordering_type,
+                            ccxt_order_id=ccxt_order_id,
+                            exchange_dropdown_value=self.exchange_dropdown_value,
+                            market_type=self.market_type,
+                            main_net_toggle_switch_value=self.main_net_toggle_switch_value,
+                            symbol_id=instrument.symbol_id,
+                        )
+                        delete_from_persistent_storage(
+                            params=delete_from_persistent_storage__dict)
 
     @retry
     def _get_orderbook(self, symbol_id):

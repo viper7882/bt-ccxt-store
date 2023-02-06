@@ -2,6 +2,7 @@ import backtrader
 import copy
 import datetime
 import inspect
+import sys
 import threading
 import traceback
 import unittest
@@ -12,20 +13,23 @@ from unittest.mock import patch, call
 
 from ccxtbt.bt_ccxt_expansion__helper import query__entry_or_exit_order
 from ccxtbt.bt_ccxt_persistent_storage__helper import read_from_persistent_storage, save_to_persistent_storage
-from ccxtbt.bt_ccxt__specifications import MIN_LIVE_EXCHANGE_RETRIES, ORDERING_TYPES, STATUSES, CCXT__MARKET_TYPES, \
+from ccxtbt.bt_ccxt__specifications import CANCELED_ORDER, CCXT_COMMON_MAPPING_VALUES, CLOSED_VALUE, \
+    EXPIRED_ORDER, MIN_LIVE_EXCHANGE_RETRIES, ORDERING_TYPES, PARTIALLY_FILLED_ORDER, PERSISTENT_STORAGE_CSV_HEADERS, \
+    PS_CCXT_ORDER_ID, PS_ORDERING_TYPE, REJECTED_ORDER, STAGES_OF_RESEND_NOTIFICATION, STATUSES, CCXT__MARKET_TYPES, \
     CCXT__MARKET_TYPE__FUTURE, \
     CCXT__MARKET_TYPE__LINEAR_PERPETUAL_SWAP, DEFAULT__INITIAL__CAPITAL_RESERVATION__VALUE, \
-    DEFAULT__LEVERAGE_IN_PERCENT, EXECUTION_TYPES, \
-    ORDER_INTENTS, PLURAL__CCXT_ORDER__KEYS, POSITION_TYPES, filter_order__dict_template
+    DEFAULT__LEVERAGE_IN_PERCENT, EXECUTION_TYPES, ORDER_INTENTS, PLURAL__CCXT_ORDER__KEYS, POSITION_TYPES, \
+    filter_order__dict_template
 from ccxtbt.exchange.binance.binance__exchange__specifications import BINANCE_EXCHANGE_ID
 from ccxtbt.exchange.bybit.bybit__exchange__helper import get_wallet_currency
 from ccxtbt.exchange.bybit.bybit__exchange__specifications import BYBIT_EXCHANGE_ID
-from ccxtbt.utils import get_opposite__position_type, get_order_entry_price_and_queue, get_order_exit_price_and_queue, \
+from ccxtbt.utils import get_opposite__position_type, get_order_entry_price_and_queue, \
+    get_order_exit_price_and_queue, \
     get_time_diff, legality_check_not_none_obj
 
 from check_in_gating_tests.common.test__helper import ut_enter_or_exit_using_limit_or_conditional_order, \
     ut_enter_or_exit_using_market_order, ut_get_bt_ccxt_account_or_stores, ut_get_partially_filled_order, \
-    ut_get_rejected_order
+    ut_get_rejected_order, ut_get_valid_market_types
 from check_in_gating_tests.common.test__specifications import MAX__HTTP__REAL_ORDER_WAITING_TIME__IN_SECONDS
 
 
@@ -69,30 +73,37 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
                 is_ohlcv_provider=self.is_ohlcv_provider,
                 account__thread__connectivity__lock=self.account__thread__connectivity__lock,
                 wallet_currency=self.wallet_currency,
-
-                # Optional Params
-                ut_keep_original_ccxt_order=True,
             )
 
             get_bt_ccxt_account_or_stores__dict = dict(
                 exchange_dropdown_values=self.exchange_dropdown_values,
                 target__market_types=self.target__market_types,
                 construct_standalone_account_or_store__dict=self.construct_standalone_account_or_store__dict,
+
+                # Optional Params
+                ut_keep_original_ccxt_order=True,
             )
             self.bt_ccxt_account_or_stores = \
                 ut_get_bt_ccxt_account_or_stores(
                     params=get_bt_ccxt_account_or_stores__dict)
 
             for exchange_dropdown_value in self.exchange_dropdown_values:
-                for market_type in self.target__market_types:
+                market_types = ut_get_valid_market_types(
+                    exchange_dropdown_value, self.target__market_types)
+                for market_type in market_types:
                     for symbol_id in self.symbols_id:
+                        csv_dicts = []
                         # Reset persistent storage
                         save_to_persistent_storage__dict = dict(
-                            ccxt_orders_id=[],
+                            csv_headers=PERSISTENT_STORAGE_CSV_HEADERS,
+                            csv_dicts=csv_dicts,
                             exchange_dropdown_value=exchange_dropdown_value,
                             market_type=market_type,
                             main_net_toggle_switch_value=self.main_net_toggle_switch_value,
                             symbol_id=symbol_id,
+
+                            # Optional Params
+                            mode="w",
                         )
                         save_to_persistent_storage(
                             params=save_to_persistent_storage__dict)
@@ -102,11 +113,70 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
             assert self.main_net_toggle_switch_value == False, \
                 "{} is created to ONLY work in Testnet!!!".format(
                     type(self).__name__)
+
+            # Confirm there is no opened position and/or no opened [Entry] orders
+            self.tearDown()
         except Exception:
             traceback.print_exc()
 
     def tearDown(self):
         try:
+            bt_ccxt_account_or_stores = self.bt_ccxt_account_or_stores
+            symbols_id = self.symbols_id
+
+            position_types = (backtrader.Position.LONG_POSITION,
+                              backtrader.Position.SHORT_POSITION, )
+
+            entry_ordering_types = (backtrader.Order.ACTIVE_ORDERING_TYPE,
+                                    backtrader.Order.CONDITIONAL_ORDERING_TYPE, )
+
+            # Run the tests using default bt_ccxt_account_or_stores instances
+            for bt_ccxt_account_or_store in bt_ccxt_account_or_stores:
+                for symbol_id in symbols_id:
+                    instrument = bt_ccxt_account_or_store.get__child(symbol_id)
+
+                    for position_type in position_types:
+                        position = instrument.get_position(position_type)
+
+                        # Confirm there is no opened position
+                        self.assertEqual(position.price, 0.0)
+
+                        for entry_ordering_type in entry_ordering_types:
+                            if entry_ordering_type == backtrader.Order.ACTIVE_ORDERING_TYPE:
+                                execution_type = backtrader.Order.Limit
+                            else:
+                                assert entry_ordering_type == backtrader.Order.CONDITIONAL_ORDERING_TYPE
+
+                                if bt_ccxt_account_or_store.exchange_dropdown_value == BYBIT_EXCHANGE_ID:
+                                    execution_type = backtrader.Order.Limit
+                                else:
+                                    execution_type = backtrader.Order.StopLimit
+
+                            # Confirm there is no [Entry] order in exchange
+                            # Look for [Entry] orders
+                            filter_order__dict = copy.deepcopy(
+                                filter_order__dict_template)
+                            filter_order__dict[PLURAL__CCXT_ORDER__KEYS[STATUSES]] = \
+                                [backtrader.Order.Accepted]
+                            filter_order__dict[PLURAL__CCXT_ORDER__KEYS[ORDERING_TYPES]] = \
+                                [entry_ordering_type]
+                            filter_order__dict[PLURAL__CCXT_ORDER__KEYS[EXECUTION_TYPES]] = \
+                                [execution_type]
+                            filter_order__dict[PLURAL__CCXT_ORDER__KEYS[ORDER_INTENTS]] = \
+                                [backtrader.Order.Entry_Order]
+                            filter_order__dict[PLURAL__CCXT_ORDER__KEYS[POSITION_TYPES]] = \
+                                [position_type]
+
+                            query__entry_or_exit_order__dict = dict(
+                                bt_ccxt_account_or_store=bt_ccxt_account_or_store,
+                                instrument=instrument,
+                                filter_order__dict=filter_order__dict,
+                            )
+                            opened_bt_ccxt_orders = \
+                                query__entry_or_exit_order(
+                                    params=query__entry_or_exit_order__dict)
+
+                            self.assertEqual(len(opened_bt_ccxt_orders), 0)
             pass
         except Exception:
             traceback.print_exc()
@@ -165,8 +235,11 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
                             (entry_order, total_time_spent_in_seconds, mock, ) = \
                                 ut_enter_or_exit_using_market_order(
                                     params=ut_enter_or_exit_using_market_order__dict)
-                            self.assertTrue(
-                                total_time_spent_in_seconds <= MAX__HTTP__REAL_ORDER_WAITING_TIME__IN_SECONDS)
+
+                            debugger_running = sys.gettrace() is not None
+                            if debugger_running == False:
+                                self.assertTrue(
+                                    total_time_spent_in_seconds <= MAX__HTTP__REAL_ORDER_WAITING_TIME__IN_SECONDS)
 
                             # Confirm bt_ccxt_account_or_store.notify has been called twice (Submitted + Completed)
                             submitted_entry_order = entry_order.clone()
@@ -227,9 +300,13 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
                                 main_net_toggle_switch_value=bt_ccxt_account_or_store.main_net_toggle_switch_value,
                                 symbol_id=instrument.symbol_id,
                             )
-                            ccxt_orders_id = \
+                            dataframe = \
                                 read_from_persistent_storage(
                                     params=read_from_persistent_storage__dict)
+                            legality_check_not_none_obj(dataframe, "dataframe")
+                            ccxt_orders_id = \
+                                dataframe[PERSISTENT_STORAGE_CSV_HEADERS[PS_CCXT_ORDER_ID]].tolist(
+                                )
 
                             # Test Assertion
                             self.assertEqual(len(ccxt_orders_id), 0)
@@ -276,8 +353,11 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
                             (exit_order, total_time_spent_in_seconds, mock, ) = \
                                 ut_enter_or_exit_using_market_order(
                                     params=ut_enter_or_exit_using_market_order__dict)
-                            self.assertTrue(
-                                total_time_spent_in_seconds <= MAX__HTTP__REAL_ORDER_WAITING_TIME__IN_SECONDS)
+
+                            debugger_running = sys.gettrace() is not None
+                            if debugger_running == False:
+                                self.assertTrue(
+                                    total_time_spent_in_seconds <= MAX__HTTP__REAL_ORDER_WAITING_TIME__IN_SECONDS)
 
                             # Confirm bt_ccxt_account_or_store.notify has been called twice (Submitted + Completed)
                             submitted_exit_order = exit_order.clone()
@@ -454,9 +534,12 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
                                     (entry_order, total_time_spent_in_seconds, mock, ) = \
                                         ut_enter_or_exit_using_limit_or_conditional_order(
                                             params=limit_or_conditional_order__dict)
-                                    self.assertTrue(
-                                        total_time_spent_in_seconds <=
-                                        MAX__HTTP__REAL_ORDER_WAITING_TIME__IN_SECONDS)
+
+                                    debugger_running = sys.gettrace() is not None
+                                    if debugger_running == False:
+                                        self.assertTrue(
+                                            total_time_spent_in_seconds <=
+                                            MAX__HTTP__REAL_ORDER_WAITING_TIME__IN_SECONDS)
 
                                     # Confirm bt_ccxt_account_or_store.notify has been called once (Submitted)
                                     calls = \
@@ -477,9 +560,14 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
                                         main_net_toggle_switch_value=bt_ccxt_account_or_store.main_net_toggle_switch_value,
                                         symbol_id=instrument.symbol_id,
                                     )
-                                    ccxt_orders_id = \
+                                    dataframe = \
                                         read_from_persistent_storage(
                                             params=read_from_persistent_storage__dict)
+                                    legality_check_not_none_obj(
+                                        dataframe, "dataframe")
+                                    ccxt_orders_id = \
+                                        dataframe[PERSISTENT_STORAGE_CSV_HEADERS[PS_CCXT_ORDER_ID]].tolist(
+                                        )
 
                                     # Test Assertion
                                     self.assertEqual(len(ccxt_orders_id), 1)
@@ -541,9 +629,14 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
                                         main_net_toggle_switch_value=bt_ccxt_account_or_store.main_net_toggle_switch_value,
                                         symbol_id=instrument.symbol_id,
                                     )
-                                    ccxt_orders_id = \
+                                    dataframe = \
                                         read_from_persistent_storage(
                                             params=read_from_persistent_storage__dict)
+                                    legality_check_not_none_obj(
+                                        dataframe, "dataframe")
+                                    ccxt_orders_id = \
+                                        dataframe[PERSISTENT_STORAGE_CSV_HEADERS[PS_CCXT_ORDER_ID]].tolist(
+                                        )
 
                                     # Test Assertion
                                     self.assertEqual(len(ccxt_orders_id), 1)
@@ -602,9 +695,14 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
                                         main_net_toggle_switch_value=bt_ccxt_account_or_store.main_net_toggle_switch_value,
                                         symbol_id=instrument.symbol_id,
                                     )
-                                    ccxt_orders_id = \
+                                    dataframe = \
                                         read_from_persistent_storage(
                                             params=read_from_persistent_storage__dict)
+                                    legality_check_not_none_obj(
+                                        dataframe, "dataframe")
+                                    ccxt_orders_id = \
+                                        dataframe[PERSISTENT_STORAGE_CSV_HEADERS[PS_CCXT_ORDER_ID]].tolist(
+                                        )
 
                                     # Test Assertion
                                     self.assertEqual(len(ccxt_orders_id), 0)
@@ -617,9 +715,16 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
 
                                     # Since we expected the rejected order will remove ccxt_order_id from
                                     # persistent storage, we will have to restore the accepted_order's ccxt_order_id
-                                    ccxt_order_id = accepted_order.ccxt_id
+                                    csv_dicts = []
+                                    csv_dict = {
+                                        PERSISTENT_STORAGE_CSV_HEADERS[PS_ORDERING_TYPE]: accepted_order.ordering_type,
+                                        PERSISTENT_STORAGE_CSV_HEADERS[PS_CCXT_ORDER_ID]: accepted_order.ccxt_id,
+                                    }
+                                    csv_dicts.append(csv_dict)
+
                                     save_to_persistent_storage__dict = dict(
-                                        ccxt_orders_id=[ccxt_order_id],
+                                        csv_headers=PERSISTENT_STORAGE_CSV_HEADERS,
+                                        csv_dicts=csv_dicts,
                                         exchange_dropdown_value=bt_ccxt_account_or_store.exchange_dropdown_value,
                                         market_type=bt_ccxt_account_or_store.market_type,
                                         main_net_toggle_switch_value=bt_ccxt_account_or_store.main_net_toggle_switch_value,
@@ -700,12 +805,14 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
                                             int(cancelled_order_minutes), cancelled_order_seconds)
                                         )
 
-                                        # Test Assertion
-                                        total_time_spent_in_seconds = \
-                                            cancelled_order_minutes * 60 + cancelled_order_seconds
-                                        self.assertTrue(
-                                            total_time_spent_in_seconds <=
-                                            MAX__HTTP__REAL_ORDER_WAITING_TIME__IN_SECONDS)
+                                        debugger_running = sys.gettrace() is not None
+                                        if debugger_running == False:
+                                            # Test Assertion
+                                            total_time_spent_in_seconds = \
+                                                cancelled_order_minutes * 60 + cancelled_order_seconds
+                                            self.assertTrue(
+                                                total_time_spent_in_seconds <=
+                                                MAX__HTTP__REAL_ORDER_WAITING_TIME__IN_SECONDS)
 
                                     # Confirm bt_ccxt_account_or_store.notify has been called once (Cancelled)
                                     calls = [call(order_for_cancellation)]
@@ -722,9 +829,14 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
                                         main_net_toggle_switch_value=bt_ccxt_account_or_store.main_net_toggle_switch_value,
                                         symbol_id=instrument.symbol_id,
                                     )
-                                    ccxt_orders_id = \
+                                    dataframe = \
                                         read_from_persistent_storage(
                                             params=read_from_persistent_storage__dict)
+                                    legality_check_not_none_obj(
+                                        dataframe, "dataframe")
+                                    ccxt_orders_id = \
+                                        dataframe[PERSISTENT_STORAGE_CSV_HEADERS[PS_CCXT_ORDER_ID]].tolist(
+                                        )
 
                                     # Test Assertion
                                     self.assertEqual(len(ccxt_orders_id), 0)
@@ -803,7 +915,6 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
 
     # @unittest.skip("To be enabled")
     # @unittest.skip("Ready for regression")
-
     def test_30__strategy_less__exit__using_limit_and_conditional_order(self):
         start = timer()
         try:
@@ -1007,9 +1118,12 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
                                     (exit_order, total_time_spent_in_seconds, mock, ) = \
                                         ut_enter_or_exit_using_limit_or_conditional_order(
                                             params=limit_or_conditional_order__dict)
-                                    self.assertTrue(
-                                        total_time_spent_in_seconds <=
-                                        MAX__HTTP__REAL_ORDER_WAITING_TIME__IN_SECONDS)
+
+                                    debugger_running = sys.gettrace() is not None
+                                    if debugger_running == False:
+                                        self.assertTrue(
+                                            total_time_spent_in_seconds <=
+                                            MAX__HTTP__REAL_ORDER_WAITING_TIME__IN_SECONDS)
 
                                     # Confirm bt_ccxt_account_or_store.notify has been called once (Submitted)
                                     calls = \
@@ -1212,8 +1326,8 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
                             # ----------------------------------------------------------------------------------------
                             ut_enter_or_exit_using_market_order__dict = dict(
                                 bt_ccxt_account_or_store=bt_ccxt_account_or_store,
-                                position_type=dual_position_type,
                                 instrument=instrument,
+                                position_type=dual_position_type,
                                 order_intent=backtrader.Order.Entry_Order,
                             )
                             (entry_order, total_time_spent_in_seconds, mock, ) = \
@@ -1330,9 +1444,12 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
                                     (entry_order, total_time_spent_in_seconds, mock,) = \
                                         ut_enter_or_exit_using_limit_or_conditional_order(
                                             params=limit_or_conditional_order__dict)
-                                    self.assertTrue(
-                                        total_time_spent_in_seconds <=
-                                        MAX__HTTP__REAL_ORDER_WAITING_TIME__IN_SECONDS)
+
+                                    debugger_running = sys.gettrace() is not None
+                                    if debugger_running == False:
+                                        self.assertTrue(
+                                            total_time_spent_in_seconds <=
+                                            MAX__HTTP__REAL_ORDER_WAITING_TIME__IN_SECONDS)
 
                                     # Confirm bt_ccxt_account_or_store.notify has been called once (Submitted)
                                     calls = \
@@ -1353,9 +1470,14 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
                                         main_net_toggle_switch_value=bt_ccxt_account_or_store.main_net_toggle_switch_value,
                                         symbol_id=instrument.symbol_id,
                                     )
-                                    ccxt_orders_id = \
+                                    dataframe = \
                                         read_from_persistent_storage(
                                             params=read_from_persistent_storage__dict)
+                                    legality_check_not_none_obj(
+                                        dataframe, "dataframe")
+                                    ccxt_orders_id = \
+                                        dataframe[PERSISTENT_STORAGE_CSV_HEADERS[PS_CCXT_ORDER_ID]].tolist(
+                                        )
 
                                     # Test Assertion
                                     self.assertEqual(len(ccxt_orders_id), 1)
@@ -1417,9 +1539,14 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
                                         main_net_toggle_switch_value=bt_ccxt_account_or_store.main_net_toggle_switch_value,
                                         symbol_id=instrument.symbol_id,
                                     )
-                                    ccxt_orders_id = \
+                                    dataframe = \
                                         read_from_persistent_storage(
                                             params=read_from_persistent_storage__dict)
+                                    legality_check_not_none_obj(
+                                        dataframe, "dataframe")
+                                    ccxt_orders_id = \
+                                        dataframe[PERSISTENT_STORAGE_CSV_HEADERS[PS_CCXT_ORDER_ID]].tolist(
+                                        )
 
                                     # Test Assertion
                                     self.assertEqual(len(ccxt_orders_id), 1)
@@ -1478,9 +1605,14 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
                                         main_net_toggle_switch_value=bt_ccxt_account_or_store.main_net_toggle_switch_value,
                                         symbol_id=instrument.symbol_id,
                                     )
-                                    ccxt_orders_id = \
+                                    dataframe = \
                                         read_from_persistent_storage(
                                             params=read_from_persistent_storage__dict)
+                                    legality_check_not_none_obj(
+                                        dataframe, "dataframe")
+                                    ccxt_orders_id = \
+                                        dataframe[PERSISTENT_STORAGE_CSV_HEADERS[PS_CCXT_ORDER_ID]].tolist(
+                                        )
 
                                     # Test Assertion
                                     self.assertEqual(len(ccxt_orders_id), 0)
@@ -1493,9 +1625,16 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
 
                                     # Since we expected the rejected order will remove ccxt_order_id from
                                     # persistent storage, we will have to restore the accepted_order's ccxt_order_id
-                                    ccxt_order_id = accepted_order.ccxt_id
+                                    csv_dicts = []
+                                    csv_dict = {
+                                        PERSISTENT_STORAGE_CSV_HEADERS[PS_ORDERING_TYPE]: accepted_order.ordering_type,
+                                        PERSISTENT_STORAGE_CSV_HEADERS[PS_CCXT_ORDER_ID]: accepted_order.ccxt_id,
+                                    }
+                                    csv_dicts.append(csv_dict)
+
                                     save_to_persistent_storage__dict = dict(
-                                        ccxt_orders_id=[ccxt_order_id],
+                                        csv_headers=PERSISTENT_STORAGE_CSV_HEADERS,
+                                        csv_dicts=csv_dicts,
                                         exchange_dropdown_value=bt_ccxt_account_or_store.exchange_dropdown_value,
                                         market_type=bt_ccxt_account_or_store.market_type,
                                         main_net_toggle_switch_value=bt_ccxt_account_or_store.main_net_toggle_switch_value,
@@ -1559,12 +1698,14 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
                                             int(cancelled_order_minutes), cancelled_order_seconds)
                                         )
 
-                                        # Test Assertion
-                                        total_time_spent_in_seconds = \
-                                            cancelled_order_minutes * 60 + cancelled_order_seconds
-                                        self.assertTrue(
-                                            total_time_spent_in_seconds <=
-                                            MAX__HTTP__REAL_ORDER_WAITING_TIME__IN_SECONDS)
+                                        debugger_running = sys.gettrace() is not None
+                                        if debugger_running == False:
+                                            # Test Assertion
+                                            total_time_spent_in_seconds = \
+                                                cancelled_order_minutes * 60 + cancelled_order_seconds
+                                            self.assertTrue(
+                                                total_time_spent_in_seconds <=
+                                                MAX__HTTP__REAL_ORDER_WAITING_TIME__IN_SECONDS)
 
                                     # Confirm bt_ccxt_account_or_store.notify has been called once (Cancelled)
                                     calls = [call(order_for_cancellation)]
@@ -1581,9 +1722,14 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
                                         main_net_toggle_switch_value=bt_ccxt_account_or_store.main_net_toggle_switch_value,
                                         symbol_id=instrument.symbol_id,
                                     )
-                                    ccxt_orders_id = \
+                                    dataframe = \
                                         read_from_persistent_storage(
                                             params=read_from_persistent_storage__dict)
+                                    legality_check_not_none_obj(
+                                        dataframe, "dataframe")
+                                    ccxt_orders_id = \
+                                        dataframe[PERSISTENT_STORAGE_CSV_HEADERS[PS_CCXT_ORDER_ID]].tolist(
+                                        )
 
                                     # Test Assertion
                                     self.assertEqual(len(ccxt_orders_id), 0)
@@ -1635,6 +1781,51 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
                                     )
                                     print(msg + sub_msg)
                                     pass
+
+                        for dual_position_type in dual_position_types:
+                            # ------------------------------------------------------------------------------------------
+                            # Close using Market Order
+                            # ------------------------------------------------------------------------------------------
+                            position = instrument.get_position(
+                                dual_position_type)
+
+                            # If there is opened position
+                            if position.price != 0.0:
+                                # To close a position you need to make the inverse operation with same amount
+                                ut_enter_or_exit_using_market_order__dict = dict(
+                                    bt_ccxt_account_or_store=bt_ccxt_account_or_store,
+                                    instrument=instrument,
+                                    position_type=dual_position_type,
+                                    order_intent=backtrader.Order.Exit_Order,
+
+                                    # Optional Params
+                                    size=abs(position.size),
+                                )
+                                (exit_order, total_time_spent_in_seconds, mock, ) = \
+                                    ut_enter_or_exit_using_market_order(
+                                        params=ut_enter_or_exit_using_market_order__dict)
+
+                                # Minimum confirmation as the [Exit] Market Order should already have done the coverage
+                                self.assertEqual(
+                                    exit_order.status_name,
+                                    backtrader.Order.Status[backtrader.Order.Completed])
+                                self.assertEqual(
+                                    exit_order.status, backtrader.Order.Completed)
+
+                                frameinfo = inspect.getframeinfo(
+                                    inspect.currentframe())
+                                msg = "{}: {}: {} Line: {}: INFO: {}: ".format(
+                                    bt_ccxt_account_or_store.exchange_dropdown_value,
+                                    CCXT__MARKET_TYPES[bt_ccxt_account_or_store.market_type],
+                                    frameinfo.function, frameinfo.lineno,
+                                    instrument.symbol_id,
+                                )
+                                sub_msg = "{}: type: {}, exit_order:".format(
+                                    backtrader.Order.Ordering_Types[backtrader.Order.ACTIVE_ORDERING_TYPE],
+                                    type(exit_order),
+                                )
+                                print(msg + sub_msg)
+                                pprint(str(exit_order))
                     else:
                         msg = "{}: {}: WARNING: {}: ".format(
                             bt_ccxt_account_or_store.exchange_dropdown_value,
@@ -1644,6 +1835,17 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
                         sub_msg = "Unable to detect dual positions. Please retry"
                         print(msg + sub_msg)
                     pass
+
+                    number_of_empty_positions = 0
+                    for dual_position_type in dual_position_types:
+                        position = instrument.get_position(dual_position_type)
+
+                        # If there is no opened position
+                        if position.price == 0.0:
+                            number_of_empty_positions += 1
+
+                    # If there is no opened positions
+                    assert number_of_empty_positions == 2
         except Exception:
             traceback.print_exc()
 
@@ -1654,7 +1856,7 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
 
     # @unittest.skip("To be enabled")
     # @unittest.skip("Ready for regression")
-    def test_50__strategy_less__power_cycle(self):
+    def test_50__strategy_less__power_cycle__submitted_to_accepted__order(self):
         start = timer()
         try:
             exchange_dropdown_values = self.exchange_dropdown_values
@@ -1752,9 +1954,12 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
                                 (entry_order, total_time_spent_in_seconds, mock,) = \
                                     ut_enter_or_exit_using_limit_or_conditional_order(
                                         params=limit_or_conditional_order__dict)
-                                self.assertTrue(
-                                    total_time_spent_in_seconds <=
-                                    MAX__HTTP__REAL_ORDER_WAITING_TIME__IN_SECONDS)
+
+                                debugger_running = sys.gettrace() is not None
+                                if debugger_running == False:
+                                    self.assertTrue(
+                                        total_time_spent_in_seconds <=
+                                        MAX__HTTP__REAL_ORDER_WAITING_TIME__IN_SECONDS)
 
                                 # Confirm bt_ccxt_account_or_store.notify has been called once (Submitted)
                                 calls = \
@@ -1775,16 +1980,21 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
                                     main_net_toggle_switch_value=bt_ccxt_account_or_store.main_net_toggle_switch_value,
                                     symbol_id=instrument.symbol_id,
                                 )
-                                ccxt_orders_id = \
+                                dataframe = \
                                     read_from_persistent_storage(
                                         params=read_from_persistent_storage__dict)
+                                legality_check_not_none_obj(
+                                    dataframe, "dataframe")
+                                ccxt_orders_id = \
+                                    dataframe[PERSISTENT_STORAGE_CSV_HEADERS[PS_CCXT_ORDER_ID]].tolist(
+                                    )
 
                                 # Test Assertion
                                 self.assertTrue(
                                     entry_order.ccxt_id in ccxt_orders_id)
 
             # Run the tests using new bt_ccxt_account_or_stores instances
-            def callback_func__identify_calls(params):
+            def ut_callback_func__identify_calls(params):
                 # Un-serialize Params
                 bt_ccxt_account_or_store = params['bt_ccxt_account_or_store']
                 instrument = params['instrument']
@@ -1792,6 +2002,10 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
                 entry_orders = \
                     [open_order for open_order in bt_ccxt_account_or_store.open_orders
                      if open_order.symbol_id == instrument.symbol_id]
+
+                # Test assertion
+                self.assertEqual(len(entry_orders), len(
+                    entry_ordering_types) * len(position_types))
 
                 # Confirm bt_ccxt_account_or_store.notify has been called once for each order
                 calls = []
@@ -1805,7 +2019,7 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
                 construct_standalone_account_or_store__dict=construct_standalone_account_or_store__dict,
 
                 # Optional Params
-                callback_func__has_calls=callback_func__identify_calls,
+                ut_callback_func__has_calls=ut_callback_func__identify_calls,
             )
             accepted__bt_ccxt_account_or_stores = \
                 ut_get_bt_ccxt_account_or_stores(
@@ -1912,12 +2126,14 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
                                         int(cancelled_order_minutes), cancelled_order_seconds)
                                     )
 
-                                    # Test Assertion
-                                    total_time_spent_in_seconds = \
-                                        cancelled_order_minutes * 60 + cancelled_order_seconds
-                                    self.assertTrue(
-                                        total_time_spent_in_seconds <=
-                                        MAX__HTTP__REAL_ORDER_WAITING_TIME__IN_SECONDS)
+                                    debugger_running = sys.gettrace() is not None
+                                    if debugger_running == False:
+                                        # Test Assertion
+                                        total_time_spent_in_seconds = \
+                                            cancelled_order_minutes * 60 + cancelled_order_seconds
+                                        self.assertTrue(
+                                            total_time_spent_in_seconds <=
+                                            MAX__HTTP__REAL_ORDER_WAITING_TIME__IN_SECONDS)
 
                                 # Confirm accepted__bt_ccxt_account_or_store.notify has been called once (Cancelled)
                                 calls = [call(order_for_cancellation)]
@@ -1934,9 +2150,14 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
                                     main_net_toggle_switch_value=accepted__bt_ccxt_account_or_store.main_net_toggle_switch_value,
                                     symbol_id=instrument.symbol_id,
                                 )
-                                ccxt_orders_id = \
+                                dataframe = \
                                     read_from_persistent_storage(
                                         params=read_from_persistent_storage__dict)
+                                legality_check_not_none_obj(
+                                    dataframe, "dataframe")
+                                ccxt_orders_id = \
+                                    dataframe[PERSISTENT_STORAGE_CSV_HEADERS[PS_CCXT_ORDER_ID]].tolist(
+                                    )
 
                                 # Test Assertion
                                 self.assertTrue(
@@ -1997,8 +2218,7 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
 
     # @unittest.skip("To be enabled")
     # @unittest.skip("Ready for regression")
-
-    def test_51__strategy_less__power_cycle__non_accepted_ccxt_order(self):
+    def test_51__strategy_less__power_cycle__submitted_to_partially_filled__order(self):
         start = timer()
         try:
             exchange_dropdown_values = self.exchange_dropdown_values
@@ -2096,9 +2316,12 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
                                 (entry_order, total_time_spent_in_seconds, mock,) = \
                                     ut_enter_or_exit_using_limit_or_conditional_order(
                                         params=limit_or_conditional_order__dict)
-                                self.assertTrue(
-                                    total_time_spent_in_seconds <=
-                                    MAX__HTTP__REAL_ORDER_WAITING_TIME__IN_SECONDS)
+
+                                debugger_running = sys.gettrace() is not None
+                                if debugger_running == False:
+                                    self.assertTrue(
+                                        total_time_spent_in_seconds <=
+                                        MAX__HTTP__REAL_ORDER_WAITING_TIME__IN_SECONDS)
 
                                 # Confirm bt_ccxt_account_or_store.notify has been called once (Submitted)
                                 calls = \
@@ -2119,13 +2342,76 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
                                     main_net_toggle_switch_value=bt_ccxt_account_or_store.main_net_toggle_switch_value,
                                     symbol_id=instrument.symbol_id,
                                 )
-                                ccxt_orders_id = \
+                                dataframe = \
                                     read_from_persistent_storage(
                                         params=read_from_persistent_storage__dict)
+
+                                legality_check_not_none_obj(
+                                    dataframe, "dataframe")
+                                ccxt_orders_id = \
+                                    dataframe[PERSISTENT_STORAGE_CSV_HEADERS[PS_CCXT_ORDER_ID]].tolist(
+                                    )
 
                                 # Test Assertion
                                 self.assertTrue(
                                     entry_order.ccxt_id in ccxt_orders_id)
+
+            def ut_callback_func__identify_calls(params):
+                # Un-serialize Params
+                bt_ccxt_account_or_store = params['bt_ccxt_account_or_store']
+                instrument = params['instrument']
+                ut_modify_open_to_ccxt_status = params['ut_modify_open_to_ccxt_status']
+
+                # Legality Check
+                if ut_modify_open_to_ccxt_status not in range(len(CCXT_COMMON_MAPPING_VALUES)):
+                    raise ValueError("{}: {} ut_modify_open_to_ccxt_status must be one of {}!!!".format(
+                        inspect.currentframe(), ut_modify_open_to_ccxt_status, range(len(CCXT_COMMON_MAPPING_VALUES))))
+
+                # Locate the opened BT CCXT order
+                notified_bt_ccxt_orders = \
+                    [bt_ccxt_order for bt_ccxt_order in
+                     bt_ccxt_account_or_store.notified_bt_ccxt_orders
+                     if bt_ccxt_order.symbol_id == instrument.symbol_id]
+
+                # Test assertion
+                self.assertEqual(len(notified_bt_ccxt_orders),
+                                 len(entry_ordering_types) * STAGES_OF_RESEND_NOTIFICATION * len(position_types))
+
+                calls = []
+                # Scrutinize content called to notify()
+                for i, notified_bt_ccxt_order in enumerate(notified_bt_ccxt_orders):
+                    stage = i % STAGES_OF_RESEND_NOTIFICATION
+                    if stage == 0:
+                        # Stage 1 of STAGES_OF_RESEND_NOTIFICATION
+                        self.assertEqual(
+                            notified_bt_ccxt_order.status, backtrader.Order.Submitted)
+                    elif stage == 1:
+                        # Stage 2 of STAGES_OF_RESEND_NOTIFICATION
+                        self.assertEqual(
+                            notified_bt_ccxt_order.status, backtrader.Order.Accepted)
+                    elif stage == 2:
+                        # Stage 3 of STAGES_OF_RESEND_NOTIFICATION
+                        if ut_modify_open_to_ccxt_status == PARTIALLY_FILLED_ORDER:
+                            self.assertEqual(
+                                notified_bt_ccxt_order.status, backtrader.Order.Partial)
+                        elif ut_modify_open_to_ccxt_status == CLOSED_VALUE:
+                            self.assertEqual(
+                                notified_bt_ccxt_order.status, backtrader.Order.Completed)
+                        elif ut_modify_open_to_ccxt_status == REJECTED_ORDER:
+                            self.assertEqual(
+                                notified_bt_ccxt_order.status, backtrader.Order.Rejected)
+                        elif ut_modify_open_to_ccxt_status == CANCELED_ORDER:
+                            self.assertEqual(
+                                notified_bt_ccxt_order.status, backtrader.Order.Canceled)
+                        elif ut_modify_open_to_ccxt_status == EXPIRED_ORDER:
+                            self.assertEqual(
+                                notified_bt_ccxt_order.status, backtrader.Order.Expired)
+                        else:
+                            raise NotImplementedError()
+                    else:
+                        raise ValueError()
+                    calls.append(call(notified_bt_ccxt_order))
+                return calls
 
             # Run the tests using new bt_ccxt_account_or_stores instances
             get_bt_ccxt_account_or_stores__dict = dict(
@@ -2134,36 +2420,42 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
                 construct_standalone_account_or_store__dict=construct_standalone_account_or_store__dict,
 
                 # Optional Params
-                ut_assert_not_called=True,
+                ut_callback_func__has_calls=ut_callback_func__identify_calls,
                 ut_keep_original_ccxt_order=True,
-                ut_clear_opened_bt_status=True,
+                ut_modify_open_to_ccxt_status=PARTIALLY_FILLED_ORDER,
             )
-            non_accepted__bt_ccxt_account_or_stores = \
+            partially_filled__bt_ccxt_account_or_stores = \
                 ut_get_bt_ccxt_account_or_stores(
                     params=get_bt_ccxt_account_or_stores__dict)
 
-            for non_accepted__bt_ccxt_account_or_store in non_accepted__bt_ccxt_account_or_stores:
+            # Switch to partially_filled__bt_ccxt_account_or_stores
+            for partially_filled__bt_ccxt_account_or_store in partially_filled__bt_ccxt_account_or_stores:
                 for symbol_id in symbols_id:
-                    instrument = non_accepted__bt_ccxt_account_or_store.get__child(
+                    instrument = partially_filled__bt_ccxt_account_or_store.get__child(
                         symbol_id)
 
                     # Verify [Entry] order is NO longer present in Persistent Storage
                     read_from_persistent_storage__dict = dict(
-                        exchange_dropdown_value=non_accepted__bt_ccxt_account_or_store.exchange_dropdown_value,
-                        market_type=non_accepted__bt_ccxt_account_or_store.market_type,
-                        main_net_toggle_switch_value=non_accepted__bt_ccxt_account_or_store.main_net_toggle_switch_value,
+                        exchange_dropdown_value=partially_filled__bt_ccxt_account_or_store.exchange_dropdown_value,
+                        market_type=partially_filled__bt_ccxt_account_or_store.market_type,
+                        main_net_toggle_switch_value=partially_filled__bt_ccxt_account_or_store.main_net_toggle_switch_value,
                         symbol_id=instrument.symbol_id,
                     )
-                    ccxt_orders_id = \
+                    dataframe = \
                         read_from_persistent_storage(
                             params=read_from_persistent_storage__dict)
+                    legality_check_not_none_obj(dataframe, "dataframe")
+                    ccxt_orders_id = \
+                        dataframe[PERSISTENT_STORAGE_CSV_HEADERS[PS_CCXT_ORDER_ID]].tolist(
+                        )
 
                     # Test assertion
                     self.assertEqual(len(ccxt_orders_id), 0)
 
-            for non_accepted__bt_ccxt_account_or_store in non_accepted__bt_ccxt_account_or_stores:
+            # Return to the initial bt_ccxt_account_or_stores
+            for bt_ccxt_account_or_store in bt_ccxt_account_or_stores:
                 for symbol_id in symbols_id:
-                    instrument = non_accepted__bt_ccxt_account_or_store.get__child(
+                    instrument = bt_ccxt_account_or_store.get__child(
                         symbol_id)
 
                     for position_type in position_types:
@@ -2173,7 +2465,8 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
                             else:
                                 assert entry_ordering_type == backtrader.Order.CONDITIONAL_ORDERING_TYPE
 
-                                if non_accepted__bt_ccxt_account_or_store.exchange_dropdown_value == BYBIT_EXCHANGE_ID:
+                                if bt_ccxt_account_or_store.exchange_dropdown_value == \
+                                        BYBIT_EXCHANGE_ID:
                                     execution_type = backtrader.Order.Limit
                                 else:
                                     execution_type = backtrader.Order.StopLimit
@@ -2194,7 +2487,7 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
                                 [position_type]
 
                             query__entry_or_exit_order__dict = dict(
-                                bt_ccxt_account_or_store=non_accepted__bt_ccxt_account_or_store,
+                                bt_ccxt_account_or_store=bt_ccxt_account_or_store,
                                 instrument=instrument,
                                 filter_order__dict=filter_order__dict,
                             )
@@ -2211,24 +2504,21 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
                                 # ----------------------------------------------------------------------------------
                                 # [Entry] Order for cancellation must come from open_orders
                                 # Locate the opened BT CCXT order
-                                unmodified_bt_ccxt_orders = \
+                                open_orders = \
                                     [bt_ccxt_order for bt_ccxt_order in
-                                     non_accepted__bt_ccxt_account_or_store.bt_ccxt_orders
+                                     bt_ccxt_account_or_store.open_orders
                                      if opened_bt_ccxt_order.ccxt_id == bt_ccxt_order.ccxt_id]
 
                                 # Test assertion
-                                self.assertEqual(
-                                    len(unmodified_bt_ccxt_orders), 1)
+                                self.assertEqual(len(open_orders), 1)
 
-                                entry_order = unmodified_bt_ccxt_orders[0]
-                                non_accepted__bt_ccxt_account_or_store.open_orders.append(
-                                    entry_order)
+                                entry_order = open_orders[0]
 
                                 frameinfo = inspect.getframeinfo(
                                     inspect.currentframe())
                                 msg = "{}: {}: {} Line: {}: INFO: {}: ".format(
-                                    non_accepted__bt_ccxt_account_or_store.exchange_dropdown_value,
-                                    CCXT__MARKET_TYPES[non_accepted__bt_ccxt_account_or_store.market_type],
+                                    bt_ccxt_account_or_store.exchange_dropdown_value,
+                                    CCXT__MARKET_TYPES[bt_ccxt_account_or_store.market_type],
                                     frameinfo.function, frameinfo.lineno,
                                     instrument.symbol_id,
                                 )
@@ -2244,12 +2534,12 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
 
                                 self.assertEqual(
                                     order_for_cancellation.status_name,
-                                    backtrader.Order.Status[backtrader.Order.Submitted])
+                                    backtrader.Order.Status[backtrader.Order.Accepted])
                                 self.assertEqual(
-                                    order_for_cancellation.status, backtrader.Order.Submitted)
+                                    order_for_cancellation.status, backtrader.Order.Accepted)
 
                                 # Patch def notify so that we could perform UT assertion if it is called
-                                with patch.object(non_accepted__bt_ccxt_account_or_store, 'notify') as mock:
+                                with patch.object(bt_ccxt_account_or_store, 'notify') as mock:
                                     cancelled_order_start = timer()
 
                                     for _ in range(MIN_LIVE_EXCHANGE_RETRIES):
@@ -2267,14 +2557,16 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
                                         int(cancelled_order_minutes), cancelled_order_seconds)
                                     )
 
-                                    # Test Assertion
-                                    total_time_spent_in_seconds = \
-                                        cancelled_order_minutes * 60 + cancelled_order_seconds
-                                    self.assertTrue(
-                                        total_time_spent_in_seconds <=
-                                        MAX__HTTP__REAL_ORDER_WAITING_TIME__IN_SECONDS)
+                                    debugger_running = sys.gettrace() is not None
+                                    if debugger_running == False:
+                                        # Test Assertion
+                                        total_time_spent_in_seconds = \
+                                            cancelled_order_minutes * 60 + cancelled_order_seconds
+                                        self.assertTrue(
+                                            total_time_spent_in_seconds <=
+                                            MAX__HTTP__REAL_ORDER_WAITING_TIME__IN_SECONDS)
 
-                                # Confirm non_accepted__bt_ccxt_account_or_store.notify has been called once (Cancelled)
+                                # Confirm bt_ccxt_account_or_store.notify has been called once (Cancelled)
                                 calls = [call(order_for_cancellation)]
                                 mock.assert_has_calls(calls)
 
@@ -2284,14 +2576,19 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
 
                                 # Verify canceled [Entry] order is NOT captured in Persistent Storage
                                 read_from_persistent_storage__dict = dict(
-                                    exchange_dropdown_value=non_accepted__bt_ccxt_account_or_store.exchange_dropdown_value,
-                                    market_type=non_accepted__bt_ccxt_account_or_store.market_type,
-                                    main_net_toggle_switch_value=non_accepted__bt_ccxt_account_or_store.main_net_toggle_switch_value,
+                                    exchange_dropdown_value=bt_ccxt_account_or_store.exchange_dropdown_value,
+                                    market_type=bt_ccxt_account_or_store.market_type,
+                                    main_net_toggle_switch_value=bt_ccxt_account_or_store.main_net_toggle_switch_value,
                                     symbol_id=instrument.symbol_id,
                                 )
-                                ccxt_orders_id = \
+                                dataframe = \
                                     read_from_persistent_storage(
                                         params=read_from_persistent_storage__dict)
+                                legality_check_not_none_obj(
+                                    dataframe, "dataframe")
+                                ccxt_orders_id = \
+                                    dataframe[PERSISTENT_STORAGE_CSV_HEADERS[PS_CCXT_ORDER_ID]].tolist(
+                                    )
 
                                 # Test Assertion
                                 self.assertTrue(
@@ -2314,7 +2611,7 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
                                     [position_type]
 
                                 query__entry_or_exit_order__dict = dict(
-                                    bt_ccxt_account_or_store=non_accepted__bt_ccxt_account_or_store,
+                                    bt_ccxt_account_or_store=bt_ccxt_account_or_store,
                                     instrument=instrument,
                                     filter_order__dict=filter_order__dict,
                                 )
@@ -2329,8 +2626,8 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
                                 frameinfo = inspect.getframeinfo(
                                     inspect.currentframe())
                                 msg = "{}: {}: {} Line: {}: WARNING: {}: ".format(
-                                    non_accepted__bt_ccxt_account_or_store.exchange_dropdown_value,
-                                    CCXT__MARKET_TYPES[non_accepted__bt_ccxt_account_or_store.market_type],
+                                    bt_ccxt_account_or_store.exchange_dropdown_value,
+                                    CCXT__MARKET_TYPES[bt_ccxt_account_or_store.market_type],
                                     frameinfo.function, frameinfo.lineno,
                                     instrument.symbol_id,
                                 )

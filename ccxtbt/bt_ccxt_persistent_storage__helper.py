@@ -1,11 +1,16 @@
 import backtrader
+import csv
 import inspect
 import os
 
+import pandas as pd
+
+from pandas.core.frame import DataFrame
+from pandas.io.parsers import TextFileReader
 from pathlib import Path
 
-from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPES, PERSISTENT_STORAGE_DIR_NAME, \
-    PERSISTENT_STORAGE_ORDER_FILE_NAME
+from ccxtbt.bt_ccxt__specifications import CCXT__MARKET_TYPES, PERSISTENT_STORAGE_CSV_HEADERS, \
+    PERSISTENT_STORAGE_DIR_NAME, PERSISTENT_STORAGE_ORDER_FILE_NAME, PS_CCXT_ORDER_ID, PS_ORDERING_TYPE
 from ccxtbt.utils import legality_check_not_none_obj
 
 
@@ -46,12 +51,15 @@ def get_persistent_storage_file_path(params) -> str:
 
 def save_to_persistent_storage(params) -> bool:
     # Un-serialize Params
-    ccxt_orders_id = params['ccxt_orders_id']
+    csv_headers = params['csv_headers']
+    csv_dicts = params['csv_dicts']
 
     # Optional Params
     mode = params.get('mode', None)
 
-    assert isinstance(ccxt_orders_id, list)
+    # Reference: https://www.scaler.com/topics/how-to-create-a-csv-file-in-python/
+    assert isinstance(csv_headers, list)
+    assert isinstance(csv_dicts, list)
 
     success = False
     save_to_file_path = get_persistent_storage_file_path(params)
@@ -61,7 +69,7 @@ def save_to_persistent_storage(params) -> bool:
     if not os.path.exists(save_to_dir_path):
         Path(save_to_dir_path).mkdir(parents=True, exist_ok=True)
 
-    if len(ccxt_orders_id) > 0:
+    if len(csv_dicts) > 0:
         mode = "a" if mode is None else mode
     else:
         mode = "w" if mode is None else mode
@@ -69,65 +77,86 @@ def save_to_persistent_storage(params) -> bool:
     if not os.path.exists(save_to_file_path):
         mode += "+"
 
-    with open(save_to_file_path, mode) as file:
-        if len(ccxt_orders_id) > 0:
-            if len(ccxt_orders_id) == 1:
-                line = ccxt_orders_id[0]
-                file.write(line + "\n")
+    with open(save_to_file_path, mode, newline='') as file:
+        writer = csv.DictWriter(file, fieldnames=csv_headers)
 
-                # # TODO: Debug use
-                # frameinfo = inspect.getframeinfo(inspect.currentframe())
-                # msg = "{} Line: {}: DEBUG: ".format(
-                #     frameinfo.function, frameinfo.lineno,
-                # )
-                # sub_msg = "Saved \'{}\' into {}".format(
-                #     line,
-                #     save_to_file_path,
-                # )
-                # print(msg + sub_msg)
-            else:
-                file.writelines("\n".join(ccxt_orders_id))
-        else:
-            file.write("")
+        # Write header only if we are NOT in append mode
+        if "a" not in mode:
+            writer.writeheader()
+
+        writer.writerows(csv_dicts)
         success = True
         pass
     return success
 
 
-def read_from_persistent_storage(params) -> list:
+def read_from_persistent_storage(params) -> None | DataFrame | TextFileReader:
     read_from_file_path = get_persistent_storage_file_path(params)
     read_from_dir_path = os.path.dirname(os.path.abspath(read_from_file_path))
 
-    ccxt_orders_id = []
+    # Reference: https://www.scaler.com/topics/how-to-create-a-csv-file-in-python/
+    dataframe = None
     # Confirm if the directory must exist
     if os.path.exists(read_from_dir_path):
         # Confirm if the file must exist
         if os.path.exists(read_from_file_path):
-            with open(read_from_file_path, "r") as file:
-                ccxt_orders_id = file.read().splitlines()
-    return ccxt_orders_id
+            try:
+                dataframe = pd.read_csv(read_from_file_path)
+
+                # Reference: https://pbpython.com/pandas_dtypes.html
+                dataframe[PERSISTENT_STORAGE_CSV_HEADERS[PS_CCXT_ORDER_ID]] = \
+                    dataframe[PERSISTENT_STORAGE_CSV_HEADERS[PS_CCXT_ORDER_ID]].astype(
+                        str)
+                pass
+            except pd.errors.EmptyDataError:
+                pass
+    return dataframe
 
 
 def delete_from_persistent_storage(params) -> bool:
     # Un-serialize Params
+    ordering_type = params['ordering_type']
     ccxt_order_id = params['ccxt_order_id']
 
-    ccxt_orders_id = read_from_persistent_storage(params)
-    if ccxt_order_id in ccxt_orders_id:
-        ccxt_orders_id.remove(ccxt_order_id)
-    else:
+    success = False
+    dataframe = read_from_persistent_storage(params)
+
+    ordering_type_list = []
+    ccxt_orders_id = []
+    if dataframe is not None:
+        ordering_type_list = dataframe[PERSISTENT_STORAGE_CSV_HEADERS[PS_ORDERING_TYPE]].tolist(
+        )
+        ccxt_orders_id = dataframe[PERSISTENT_STORAGE_CSV_HEADERS[PS_CCXT_ORDER_ID]].tolist(
+        )
+
+    csv_dicts = []
+
+    found_match = False
+    for file_ordering_type, file_ccxt_order_id in zip(ordering_type_list, ccxt_orders_id):
+        if ordering_type != file_ordering_type or ccxt_order_id != file_ccxt_order_id:
+            csv_dict = {
+                PERSISTENT_STORAGE_CSV_HEADERS[PS_ORDERING_TYPE]: file_ordering_type,
+                PERSISTENT_STORAGE_CSV_HEADERS[PS_CCXT_ORDER_ID]: file_ccxt_order_id,
+            }
+            csv_dicts.append(csv_dict)
+        else:
+            found_match = True
+
+    if found_match == False:
         frameinfo = inspect.getframeinfo(inspect.currentframe())
         msg = "{} Line: {}: WARNING: ".format(
             frameinfo.function, frameinfo.lineno,
         )
-        sub_msg = "\'{}\' ccxt_order_id not found in {}".format(
+        sub_msg = "\'{}\' ccxt_order_id of {} ordering type not found in {}".format(
             ccxt_order_id,
+            backtrader.Order.Ordering_Types[ordering_type],
             ccxt_orders_id,
         )
         print(msg + sub_msg)
 
     save_to_persistent_storage__dict = dict(
-        ccxt_orders_id=ccxt_orders_id,
+        csv_headers=PERSISTENT_STORAGE_CSV_HEADERS,
+        csv_dicts=csv_dicts,
 
         # Optional Params
         mode="w",

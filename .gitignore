@@ -112,4 +112,4 @@ samples/.DS_Store
 *mainnet__api_key_and_secret.json
 
 # Persistent Storage
-*ccxt_orders_id.txt
+*ccxt_orders_id.csv
