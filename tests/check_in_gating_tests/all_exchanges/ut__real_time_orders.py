@@ -13,7 +13,7 @@ from unittest.mock import patch, call
 
 from ccxtbt.bt_ccxt_expansion__helper import query__entry_or_exit_order
 from ccxtbt.bt_ccxt_persistent_storage__helper import read_from_persistent_storage, save_to_persistent_storage
-from ccxtbt.bt_ccxt__specifications import CANCELED_ORDER, CCXT_COMMON_MAPPING_VALUES, CLOSED_VALUE, \
+from ccxtbt.bt_ccxt__specifications import CANCELED_ORDER, CCXT_COMMON_MAPPING_VALUES, CLOSED_ORDER, CLOSED_VALUE, \
     EXPIRED_ORDER, ORDERING_TYPES, PARTIALLY_FILLED_ORDER, PERSISTENT_STORAGE_CSV_HEADERS, \
     PS_CCXT_ORDER_ID, PS_ORDERING_TYPE, REJECTED_ORDER, STAGES_OF_RESEND_NOTIFICATION, STATUSES, CCXT__MARKET_TYPES, \
     CCXT__MARKET_TYPE__FUTURE, \
@@ -2431,6 +2431,378 @@ class Real_Time_Orders_and_Performance_Check__TestCases(unittest.TestCase):
                         exchange_dropdown_value=partially_filled__bt_ccxt_account_or_store.exchange_dropdown_value,
                         market_type=partially_filled__bt_ccxt_account_or_store.market_type,
                         main_net_toggle_switch_value=partially_filled__bt_ccxt_account_or_store.main_net_toggle_switch_value,
+                        symbol_id=instrument.symbol_id,
+                    )
+                    dataframe = \
+                        read_from_persistent_storage(
+                            params=read_from_persistent_storage__dict)
+                    legality_check_not_none_obj(dataframe, "dataframe")
+                    ccxt_orders_id = \
+                        dataframe[PERSISTENT_STORAGE_CSV_HEADERS[PS_CCXT_ORDER_ID]].tolist(
+                        )
+
+                    # Test assertion
+                    self.assertEqual(len(ccxt_orders_id), 0)
+
+            # Return to the initial bt_ccxt_account_or_stores
+            for bt_ccxt_account_or_store in bt_ccxt_account_or_stores:
+                for symbol_id in symbols_id:
+                    instrument = bt_ccxt_account_or_store.get__child(
+                        symbol_id)
+
+                    for position_type in position_types:
+                        for entry_ordering_type in entry_ordering_types:
+                            if entry_ordering_type == backtrader.Order.ACTIVE_ORDERING_TYPE:
+                                execution_type = backtrader.Order.Limit
+                            else:
+                                assert entry_ordering_type == backtrader.Order.CONDITIONAL_ORDERING_TYPE
+
+                                if bt_ccxt_account_or_store.exchange_dropdown_value == \
+                                        BYBIT_EXCHANGE_ID:
+                                    execution_type = backtrader.Order.Limit
+                                else:
+                                    execution_type = backtrader.Order.StopLimit
+
+                            # Confirm there is one [Entry] order in exchange
+                            # Look for [Entry] orders
+                            filter_order__dict = copy.deepcopy(
+                                filter_order__dict_template)
+                            filter_order__dict[PLURAL__CCXT_ORDER__KEYS[STATUSES]] = \
+                                [backtrader.Order.Accepted]
+                            filter_order__dict[PLURAL__CCXT_ORDER__KEYS[ORDERING_TYPES]] = \
+                                [entry_ordering_type]
+                            filter_order__dict[PLURAL__CCXT_ORDER__KEYS[EXECUTION_TYPES]] = \
+                                [execution_type]
+                            filter_order__dict[PLURAL__CCXT_ORDER__KEYS[ORDER_INTENTS]] = \
+                                [backtrader.Order.Entry_Order]
+                            filter_order__dict[PLURAL__CCXT_ORDER__KEYS[POSITION_TYPES]] = \
+                                [position_type]
+
+                            query__entry_or_exit_order__dict = dict(
+                                bt_ccxt_account_or_store=bt_ccxt_account_or_store,
+                                instrument=instrument,
+                                filter_order__dict=filter_order__dict,
+                            )
+                            opened_bt_ccxt_orders = \
+                                query__entry_or_exit_order(
+                                    params=query__entry_or_exit_order__dict)
+
+                            if len(opened_bt_ccxt_orders) == 1:
+                                # Alias
+                                opened_bt_ccxt_order = opened_bt_ccxt_orders[0]
+
+                                # ----------------------------------------------------------------------------------
+                                # Cancel [Entry] Order
+                                # ----------------------------------------------------------------------------------
+                                # [Entry] Order for cancellation must come from open_orders
+                                # Locate the opened BT CCXT order
+                                open_orders = \
+                                    [bt_ccxt_order for bt_ccxt_order in
+                                     bt_ccxt_account_or_store.open_orders
+                                     if opened_bt_ccxt_order.ccxt_id == bt_ccxt_order.ccxt_id]
+
+                                # Test assertion
+                                self.assertEqual(len(open_orders), 1)
+
+                                entry_order = open_orders[0]
+
+                                frameinfo = inspect.getframeinfo(
+                                    inspect.currentframe())
+                                msg = "{}: {}: {} Line: {}: INFO: {}: ".format(
+                                    bt_ccxt_account_or_store.exchange_dropdown_value,
+                                    CCXT__MARKET_TYPES[bt_ccxt_account_or_store.market_type],
+                                    frameinfo.function, frameinfo.lineno,
+                                    instrument.symbol_id,
+                                )
+                                sub_msg = "{}: type: {}, entry_order:".format(
+                                    backtrader.Order.Ordering_Types[entry_ordering_type],
+                                    type(entry_order),
+                                )
+                                print(msg + sub_msg)
+                                pprint(str(entry_order))
+
+                                # Alias
+                                order_for_cancellation = entry_order
+
+                                self.assertEqual(
+                                    order_for_cancellation.status_name,
+                                    backtrader.Order.Status[backtrader.Order.Accepted])
+                                self.assertEqual(
+                                    order_for_cancellation.status, backtrader.Order.Accepted)
+
+                                # Patch def notify so that we could perform UT assertion if it is called
+                                with patch.object(bt_ccxt_account_or_store, 'notify') as mock:
+                                    cancelled_order_start = timer()
+
+                                    # Cancel the opened position
+                                    success = \
+                                        instrument.cancel(
+                                            order_for_cancellation)
+                                    self.assertTrue(success)
+
+                                    _, cancelled_order_minutes, cancelled_order_seconds = \
+                                        get_time_diff(
+                                            cancelled_order_start)
+                                    print("HTTP [Cancel] Order Took {}m:{:.2f}s".format(
+                                        int(cancelled_order_minutes), cancelled_order_seconds)
+                                    )
+
+                                    debugger_running = sys.gettrace() is not None
+                                    if debugger_running == False:
+                                        # Test Assertion
+                                        total_time_spent_in_seconds = \
+                                            cancelled_order_minutes * 60 + cancelled_order_seconds
+                                        self.assertTrue(
+                                            total_time_spent_in_seconds <=
+                                            MAX__HTTP__REAL_ORDER_WAITING_TIME__IN_SECONDS)
+
+                                # Confirm bt_ccxt_account_or_store.notify has been called once (Cancelled)
+                                calls = [call(order_for_cancellation)]
+                                mock.assert_has_calls(calls)
+
+                                # For Canceled Order, since it has been removed in next(), there is no way to
+                                # confirm the last status here
+                                pass
+
+                                # Verify canceled [Entry] order is NOT captured in Persistent Storage
+                                read_from_persistent_storage__dict = dict(
+                                    exchange_dropdown_value=bt_ccxt_account_or_store.exchange_dropdown_value,
+                                    market_type=bt_ccxt_account_or_store.market_type,
+                                    main_net_toggle_switch_value=bt_ccxt_account_or_store.main_net_toggle_switch_value,
+                                    symbol_id=instrument.symbol_id,
+                                )
+                                dataframe = \
+                                    read_from_persistent_storage(
+                                        params=read_from_persistent_storage__dict)
+                                legality_check_not_none_obj(
+                                    dataframe, "dataframe")
+                                ccxt_orders_id = \
+                                    dataframe[PERSISTENT_STORAGE_CSV_HEADERS[PS_CCXT_ORDER_ID]].tolist(
+                                    )
+
+                                # Test Assertion
+                                self.assertTrue(
+                                    order_for_cancellation.ccxt_id not in ccxt_orders_id)
+
+                                # To confirm there is no opened order in queue
+                                # Look for [Entry] orders
+                                filter_order__dict = \
+                                    copy.deepcopy(
+                                        filter_order__dict_template)
+                                filter_order__dict[PLURAL__CCXT_ORDER__KEYS[STATUSES]] = \
+                                    [backtrader.Order.Accepted]
+                                filter_order__dict[PLURAL__CCXT_ORDER__KEYS[ORDERING_TYPES]] = \
+                                    [entry_ordering_type]
+                                filter_order__dict[PLURAL__CCXT_ORDER__KEYS[EXECUTION_TYPES]] = \
+                                    [execution_type]
+                                filter_order__dict[PLURAL__CCXT_ORDER__KEYS[ORDER_INTENTS]] = \
+                                    [backtrader.Order.Entry_Order]
+                                filter_order__dict[PLURAL__CCXT_ORDER__KEYS[POSITION_TYPES]] = \
+                                    [position_type]
+
+                                query__entry_or_exit_order__dict = dict(
+                                    bt_ccxt_account_or_store=bt_ccxt_account_or_store,
+                                    instrument=instrument,
+                                    filter_order__dict=filter_order__dict,
+                                )
+                                opened_bt_ccxt_orders = \
+                                    query__entry_or_exit_order(
+                                        params=query__entry_or_exit_order__dict)
+
+                                # Test Assertion
+                                self.assertEqual(
+                                    len(opened_bt_ccxt_orders), 0)
+                            else:
+                                frameinfo = inspect.getframeinfo(
+                                    inspect.currentframe())
+                                msg = "{}: {}: {} Line: {}: WARNING: {}: ".format(
+                                    bt_ccxt_account_or_store.exchange_dropdown_value,
+                                    CCXT__MARKET_TYPES[bt_ccxt_account_or_store.market_type],
+                                    frameinfo.function, frameinfo.lineno,
+                                    instrument.symbol_id,
+                                )
+                                sub_msg = "{} {} {} order(s) found for {} position".format(
+                                    len(opened_bt_ccxt_orders),
+                                    backtrader.Order.Ordering_Types[entry_ordering_type],
+                                    backtrader.Order.Execution_Types[execution_type],
+                                    backtrader.Position.Position_Types[position_type],
+                                )
+                                print(msg + sub_msg)
+                                pass
+        except Exception:
+            traceback.print_exc()
+
+        _, minutes, seconds = get_time_diff(start)
+        frameinfo = inspect.getframeinfo(inspect.currentframe())
+        print("{} Line: {}: Took {}m:{:.2f}s".format(frameinfo.function, frameinfo.lineno,
+                                                     int(minutes), seconds))
+
+    # @unittest.skip("To be enabled")
+    # @unittest.skip("Ready for regression")
+
+    def test_52__strategy_less__power_cycle__submitted_to_completed__order(self):
+        start = timer()
+        try:
+            exchange_dropdown_values = self.exchange_dropdown_values
+            target__market_types = self.target__market_types
+            construct_standalone_account_or_store__dict = self.construct_standalone_account_or_store__dict
+            bt_ccxt_account_or_stores = self.bt_ccxt_account_or_stores
+            symbols_id = self.symbols_id
+
+            position_types = (backtrader.Position.LONG_POSITION,
+                              backtrader.Position.SHORT_POSITION, )
+
+            entry_ordering_types = (backtrader.Order.ACTIVE_ORDERING_TYPE,
+                                    backtrader.Order.CONDITIONAL_ORDERING_TYPE, )
+
+            # Run the tests using default bt_ccxt_account_or_stores instances
+            for bt_ccxt_account_or_store in bt_ccxt_account_or_stores:
+                for symbol_id in symbols_id:
+                    instrument = bt_ccxt_account_or_store.get__child(symbol_id)
+
+                    for position_type in position_types:
+                        for entry_ordering_type in entry_ordering_types:
+                            if entry_ordering_type == backtrader.Order.ACTIVE_ORDERING_TYPE:
+                                execution_type = backtrader.Order.Limit
+                            else:
+                                assert entry_ordering_type == backtrader.Order.CONDITIONAL_ORDERING_TYPE
+
+                                if bt_ccxt_account_or_store.exchange_dropdown_value == BYBIT_EXCHANGE_ID:
+                                    execution_type = backtrader.Order.Limit
+                                else:
+                                    execution_type = backtrader.Order.StopLimit
+
+                            # Confirm there is no [Entry] order in exchange
+                            # Look for [Entry] orders
+                            filter_order__dict = copy.deepcopy(
+                                filter_order__dict_template)
+                            filter_order__dict[PLURAL__CCXT_ORDER__KEYS[STATUSES]] = \
+                                [backtrader.Order.Accepted]
+                            filter_order__dict[PLURAL__CCXT_ORDER__KEYS[ORDERING_TYPES]] = \
+                                [entry_ordering_type]
+                            filter_order__dict[PLURAL__CCXT_ORDER__KEYS[EXECUTION_TYPES]] = \
+                                [execution_type]
+                            filter_order__dict[PLURAL__CCXT_ORDER__KEYS[ORDER_INTENTS]] = \
+                                [backtrader.Order.Entry_Order]
+                            filter_order__dict[PLURAL__CCXT_ORDER__KEYS[POSITION_TYPES]] = \
+                                [position_type]
+
+                            query__entry_or_exit_order__dict = dict(
+                                bt_ccxt_account_or_store=bt_ccxt_account_or_store,
+                                instrument=instrument,
+                                filter_order__dict=filter_order__dict,
+                            )
+                            opened_bt_ccxt_orders = \
+                                query__entry_or_exit_order(
+                                    params=query__entry_or_exit_order__dict)
+
+                            if len(opened_bt_ccxt_orders) == 0:
+                                # ----------------------------------------------------------------------------------
+                                # [Entry] Order
+                                # ----------------------------------------------------------------------------------
+                                if bt_ccxt_account_or_store.exchange_dropdown_value == BINANCE_EXCHANGE_ID:
+                                    offset = 100
+                                else:
+                                    # In the event if the exchange supported greater than this value, go ahead and
+                                    # add another IF statement above
+                                    offset = 24
+
+                                (ask, bid,) = \
+                                    instrument.get_orderbook_price_by_offset(
+                                        offset)
+
+                                if entry_ordering_type == backtrader.Order.ACTIVE_ORDERING_TYPE:
+                                    entry_price = \
+                                        get_order_entry_price_and_queue(
+                                            position_type, ask, bid)
+                                else:
+                                    assert entry_ordering_type == backtrader.Order.CONDITIONAL_ORDERING_TYPE
+
+                                    # Hedging Conditional Order requires entry price as if from opposite position
+                                    opposite__position_type = \
+                                        get_opposite__position_type(
+                                            position_type)
+                                    entry_price = \
+                                        get_order_entry_price_and_queue(
+                                            opposite__position_type, ask, bid)
+
+                                limit_or_conditional_order__dict = dict(
+                                    bt_ccxt_account_or_store=bt_ccxt_account_or_store,
+                                    instrument=instrument,
+                                    position_type=position_type,
+                                    order_intent=backtrader.Order.Entry_Order,
+                                    execution_type=execution_type,
+                                    ordering_type=entry_ordering_type,
+                                    price=entry_price,
+                                )
+                                (entry_order, total_time_spent_in_seconds, mock,) = \
+                                    ut_enter_or_exit_using_limit_or_conditional_order(
+                                        params=limit_or_conditional_order__dict)
+
+                                debugger_running = sys.gettrace() is not None
+                                if debugger_running == False:
+                                    self.assertTrue(
+                                        total_time_spent_in_seconds <=
+                                        MAX__HTTP__REAL_ORDER_WAITING_TIME__IN_SECONDS)
+
+                                # Confirm bt_ccxt_account_or_store.notify has been called once (Submitted)
+                                calls = \
+                                    [call(entry_order)]
+                                mock.assert_has_calls(calls)
+
+                                # Confirm the last status
+                                self.assertEqual(
+                                    entry_order.status_name,
+                                    backtrader.Order.Status[backtrader.Order.Accepted])
+                                self.assertEqual(
+                                    entry_order.status, backtrader.Order.Accepted)
+
+                                # Verify [Entry] order is captured in Persistent Storage
+                                read_from_persistent_storage__dict = dict(
+                                    exchange_dropdown_value=bt_ccxt_account_or_store.exchange_dropdown_value,
+                                    market_type=bt_ccxt_account_or_store.market_type,
+                                    main_net_toggle_switch_value=bt_ccxt_account_or_store.main_net_toggle_switch_value,
+                                    symbol_id=instrument.symbol_id,
+                                )
+                                dataframe = \
+                                    read_from_persistent_storage(
+                                        params=read_from_persistent_storage__dict)
+
+                                legality_check_not_none_obj(
+                                    dataframe, "dataframe")
+                                ccxt_orders_id = \
+                                    dataframe[PERSISTENT_STORAGE_CSV_HEADERS[PS_CCXT_ORDER_ID]].tolist(
+                                    )
+
+                                # Test Assertion
+                                self.assertTrue(
+                                    entry_order.ccxt_id in ccxt_orders_id)
+
+            # Run the tests using new bt_ccxt_account_or_stores instances
+            get_bt_ccxt_account_or_stores__dict = dict(
+                exchange_dropdown_values=exchange_dropdown_values,
+                target__market_types=target__market_types,
+                construct_standalone_account_or_store__dict=construct_standalone_account_or_store__dict,
+
+                # Optional Params
+                ut_assert_not_called=True,
+                ut_modify_open_to_ccxt_status=CLOSED_ORDER,
+            )
+            completed__bt_ccxt_account_or_stores = \
+                ut_get_bt_ccxt_account_or_stores(
+                    params=get_bt_ccxt_account_or_stores__dict)
+
+            # Switch to completed__bt_ccxt_account_or_stores
+            for completed__bt_ccxt_account_or_store in completed__bt_ccxt_account_or_stores:
+                for symbol_id in symbols_id:
+                    instrument = completed__bt_ccxt_account_or_store.get__child(
+                        symbol_id)
+
+                    # Verify [Entry] order is NO longer present in Persistent Storage
+                    read_from_persistent_storage__dict = dict(
+                        exchange_dropdown_value=completed__bt_ccxt_account_or_store.exchange_dropdown_value,
+                        market_type=completed__bt_ccxt_account_or_store.market_type,
+                        main_net_toggle_switch_value=completed__bt_ccxt_account_or_store.main_net_toggle_switch_value,
                         symbol_id=instrument.symbol_id,
                     )
                     dataframe = \

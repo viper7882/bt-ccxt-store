@@ -3079,10 +3079,10 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
         if dataframe is not None:
             # If there is at least one ccxt_orders_id discovered
             if len(dataframe) > 0:
-                ordering_type_list = dataframe[PERSISTENT_STORAGE_CSV_HEADERS[PS_ORDERING_TYPE]].tolist(
-                )
-                ccxt_orders_id = dataframe[PERSISTENT_STORAGE_CSV_HEADERS[PS_CCXT_ORDER_ID]].tolist(
-                )
+                ordering_type_list = \
+                    dataframe[PERSISTENT_STORAGE_CSV_HEADERS[PS_ORDERING_TYPE]].tolist()
+                ccxt_orders_id = \
+                    dataframe[PERSISTENT_STORAGE_CSV_HEADERS[PS_CCXT_ORDER_ID]].tolist()
 
                 fetch_ccxt_orders__dict = dict(
                     # CCXT requires the market type name to be specified correctly
@@ -3104,7 +3104,26 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                                                  limit=None,
                                                  params=fetch_ccxt_orders__dict)
 
+                closed_bt_ccxt_orders = \
+                    self.fetch_closed_orders(symbol=instrument.symbol_id,
+                                             since=None,
+                                             limit=None,
+                                             params=fetch_ccxt_orders__dict)
+
+                if self.exchange_dropdown_value == BYBIT_EXCHANGE_ID:
+                    fetch_ccxt_orders__dict.update(dict(
+                        stop=True,
+                    ))
+                    closed_bt_ccxt_orders += \
+                        self.fetch_closed_orders(symbol=instrument.symbol_id,
+                                                 since=None,
+                                                 limit=None,
+                                                 params=fetch_ccxt_orders__dict)
+
                 if self.ut_modify_open_to_ccxt_status:
+                    if self.ut_modify_open_to_ccxt_status == CLOSED_ORDER:
+                        closed_bt_ccxt_orders += opened_bt_ccxt_orders
+
                     # Clear the opened orders
                     opened_bt_ccxt_orders = []
 
@@ -3116,6 +3135,13 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                             bt_ccxt_order = opened_bt_ccxt_order
                             found_opened = True
                             break
+
+                    found_closed = False
+                    if found_opened == False:
+                        for closed_bt_ccxt_order in closed_bt_ccxt_orders:
+                            if closed_bt_ccxt_order.ccxt_id == ccxt_order_id:
+                                found_closed = True
+                                break
 
                     if found_opened == True:
                         legality_check_not_none_obj(
@@ -3142,68 +3168,70 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                         # Validate assumption made
                         assert bt_ccxt_order is None
 
-                        # Get the order from exchange
-                        if ordering_type == backtrader.Order.ACTIVE_ORDERING_TYPE:
-                            ccxt_order = self.fetch_ccxt_order(
-                                instrument.symbol_id, order_id=ccxt_order_id)
-                        else:
-                            # Validate assumption made
-                            assert ordering_type == backtrader.Order.CONDITIONAL_ORDERING_TYPE
+                        if found_closed == False:
+                            # Get the order from exchange
+                            if ordering_type == backtrader.Order.ACTIVE_ORDERING_TYPE:
+                                ccxt_order = self.fetch_ccxt_order(
+                                    instrument.symbol_id, order_id=ccxt_order_id)
+                            else:
+                                # Validate assumption made
+                                assert ordering_type == backtrader.Order.CONDITIONAL_ORDERING_TYPE
 
-                            ccxt_order = self.fetch_ccxt_order(
-                                instrument.symbol_id, stop_order_id=ccxt_order_id)
+                                ccxt_order = self.fetch_ccxt_order(
+                                    instrument.symbol_id, stop_order_id=ccxt_order_id)
 
-                        if ccxt_order is not None:
-                            if self.ut_modify_open_to_ccxt_status:
-                                force_ccxt_order_status__dict = dict(
-                                    ccxt_order=ccxt_order,
-                                    ut_modify_open_to_ccxt_status=self.ut_modify_open_to_ccxt_status,
-                                    bt_ccxt_exchange=self.parent,
+                            if ccxt_order is not None:
+                                if self.ut_modify_open_to_ccxt_status:
+                                    force_ccxt_order_status__dict = dict(
+                                        ccxt_order=ccxt_order,
+                                        ut_modify_open_to_ccxt_status=self.ut_modify_open_to_ccxt_status,
+                                        bt_ccxt_exchange=self.parent,
+                                    )
+                                    ccxt_order = force_ccxt_order_status(
+                                        params=force_ccxt_order_status__dict)
+
+                                datafeed = None
+                                handle_orders_routine__dict = dict(
+                                    ccxt_orders=[ccxt_order],
+
+                                    # Optional Params
+                                    datafeed=datafeed,
+                                    skip_post_processing=True,
                                 )
-                                ccxt_order = force_ccxt_order_status(
-                                    params=force_ccxt_order_status__dict)
+                                notified_bt_ccxt_orders = \
+                                    self._common_handle_orders_routine(
+                                        params=handle_orders_routine__dict)
+                                assert len(notified_bt_ccxt_orders) == 1
+                                bt_ccxt_order = notified_bt_ccxt_orders[0]
 
-                            datafeed = None
-                            handle_orders_routine__dict = dict(
-                                ccxt_orders=[ccxt_order],
+                                # Stage 1 of STAGES_OF_RESEND_NOTIFICATION
+                                if bt_ccxt_order.status == backtrader.Order.Submitted:
+                                    # Notify using clone so that UT could snapshot the order
+                                    submitted_bt_ccxt_order = bt_ccxt_order.clone()
+                                    if self.ut_keep_original_ccxt_order:
+                                        self.notified_bt_ccxt_orders.append(
+                                            submitted_bt_ccxt_order)
+                                    self.notify(submitted_bt_ccxt_order)
 
-                                # Optional Params
-                                datafeed=datafeed,
-                                skip_post_processing=True,
-                            )
-                            notified_bt_ccxt_orders = \
-                                self._common_handle_orders_routine(
-                                    params=handle_orders_routine__dict)
-                            assert len(notified_bt_ccxt_orders) == 1
-                            bt_ccxt_order = notified_bt_ccxt_orders[0]
+                                    # Convert to Accepted
+                                    bt_ccxt_order.status = backtrader.Order.Accepted
+                                    bt_ccxt_order.status_name = \
+                                        backtrader.Order.Status[bt_ccxt_order.status]
 
-                            # Stage 1 of STAGES_OF_RESEND_NOTIFICATION
-                            if bt_ccxt_order.status == backtrader.Order.Submitted:
-                                # Notify using clone so that UT could snapshot the order
-                                submitted_bt_ccxt_order = bt_ccxt_order.clone()
-                                if self.ut_keep_original_ccxt_order:
-                                    self.notified_bt_ccxt_orders.append(
-                                        submitted_bt_ccxt_order)
-                                self.notify(submitted_bt_ccxt_order)
+                                # Stage 2 of STAGES_OF_RESEND_NOTIFICATION
+                                if bt_ccxt_order.status == backtrader.Order.Accepted:
+                                    # Notify using clone so that UT could snapshot the order
+                                    accepted_bt_ccxt_order = bt_ccxt_order.clone()
+                                    if self.ut_keep_original_ccxt_order:
+                                        self.notified_bt_ccxt_orders.append(
+                                            accepted_bt_ccxt_order)
+                                    self.notify(accepted_bt_ccxt_order)
 
-                                # Convert to Accepted
-                                bt_ccxt_order.status = backtrader.Order.Accepted
-                                bt_ccxt_order.status_name = backtrader.Order.Status[bt_ccxt_order.status]
+                                self.open_orders.append(bt_ccxt_order)
 
-                            # Stage 2 of STAGES_OF_RESEND_NOTIFICATION
-                            if bt_ccxt_order.status == backtrader.Order.Accepted:
-                                # Notify using clone so that UT could snapshot the order
-                                accepted_bt_ccxt_order = bt_ccxt_order.clone()
-                                if self.ut_keep_original_ccxt_order:
-                                    self.notified_bt_ccxt_orders.append(
-                                        accepted_bt_ccxt_order)
-                                self.notify(accepted_bt_ccxt_order)
-
-                            self.open_orders.append(bt_ccxt_order)
-
-                            # Stage 3 of STAGES_OF_RESEND_NOTIFICATION
-                            # Delegate to next to handle next course of action
-                            self.next(ut_provided__new_ccxt_order=True)
+                                # Stage 3 of STAGES_OF_RESEND_NOTIFICATION
+                                # Delegate to next to handle next course of action
+                                self.next(ut_provided__new_ccxt_order=True)
 
                         # If the order no longer present in the opened list
                         delete_from_persistent_storage__dict = dict(
