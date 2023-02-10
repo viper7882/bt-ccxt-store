@@ -145,6 +145,11 @@ class BT_CCXT_Account_or_Store(backtrader.with_metaclass(Meta_Account_or_Store, 
                                 'msg' = "Mandatory parameter 'orderId' was not sent, was empty/null, or malformed."
                                 '''
                                 break
+                            elif exchange_error_dict['code'] == -2011:
+                                '''
+                                'msg' = "Unknown order sent."
+                                '''
+                                break
                             pass
                         elif self.exchange_dropdown_value == BYBIT_EXCHANGE_ID:
                             if exchange_error_dict['ret_code'] == 130125:
